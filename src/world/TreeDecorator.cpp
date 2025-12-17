@@ -31,26 +31,43 @@ void TreeDecorator::Decorate(Chunk& chunk, WorldGenerator& generator)
                     if(b.type == GRASS)
                     {
                          if((rand() % 100) < 2) { // 2% chance
+                             // Variable Height: 4 to 7
+                             int treeHeight = 4 + (rand() % 4);
                              int y = localY;
                              
                              // Trunk
-                             for(int h=1; h<=4; ++h) chunk.setBlock(x, y+h, z, WOOD);
+                             for(int h=1; h<=treeHeight; ++h) chunk.setBlock(x, y+h, z, WOOD);
                              
-                             // Leaves
-                             for(int lx=x-2; lx<=x+2; ++lx) {
-                                 for(int lz=z-2; lz<=z+2; ++lz) {
-                                     for(int ly=y+3; ly<=y+4; ++ly) { // 2 layers of leaves
+                             // Leaves based on height
+                             // 2 layers of big leaves, 2 layers of small leaves?
+                             int leavesStart = y + treeHeight - 2;
+                             int leavesEnd = y + treeHeight; // top of trunk
+                             
+                             // Big canopy layer
+                             for(int ly=leavesStart; ly<=leavesEnd; ++ly) {
+                                 int radius = 2;
+                                 // Taper top
+                                 if(ly == leavesEnd) radius = 1; 
+
+                                 for(int lx=x-radius; lx<=x+radius; ++lx) {
+                                     for(int lz=z-radius; lz<=z+radius; ++lz) {
+                                         // Corner check for roundness
+                                         if(abs(lx-x) == radius && abs(lz-z) == radius && (rand()%2)==0) continue;
+                                         
                                          if(chunk.getBlock(lx, ly, lz).type == AIR)
                                              chunk.setBlock(lx, ly, lz, LEAVES);
                                      }
                                  }
                              }
-                             // Top leaves
-                             chunk.setBlock(x, y+5, z, LEAVES);
-                             chunk.setBlock(x+1, y+5, z, LEAVES);
-                             chunk.setBlock(x-1, y+5, z, LEAVES);
-                             chunk.setBlock(x, y+5, z+1, LEAVES);
-                             chunk.setBlock(x, y+5, z-1, LEAVES);
+                             
+                             // Very top crown
+                             chunk.setBlock(x, leavesEnd+1, z, LEAVES);
+                             chunk.setBlock(x+1, leavesEnd+1, z, LEAVES);
+                             chunk.setBlock(x-1, leavesEnd+1, z, LEAVES);
+                             chunk.setBlock(x, leavesEnd+1, z+1, LEAVES);
+                             chunk.setBlock(x, leavesEnd+1, z-1, LEAVES);
+                             // Tip
+                             chunk.setBlock(x, leavesEnd+2, z, LEAVES);
                          }
                     }
                 }

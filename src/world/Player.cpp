@@ -157,12 +157,15 @@ bool Player::CheckCollision(glm::vec3 pos, const World& world)
     float playerHeight = 1.8f; 
     float eyeHeight = 1.6f;
     
+    // Shrink the bounding box slightly to prevent treating "touching" as overlapping
+    float epsilon = 0.05f; // Small buffer
     float minX = pos.x - playerWidth / 2.0f;
     float maxX = pos.x + playerWidth / 2.0f;
     float minZ = pos.z - playerWidth / 2.0f;
     float maxZ = pos.z + playerWidth / 2.0f;
-    float minY = pos.y - eyeHeight;
-    float maxY = pos.y - eyeHeight + playerHeight;
+    // Contract Y to allow sliding on floor/ceiling without getting stuck
+    float minY = pos.y - eyeHeight + epsilon;
+    float maxY = pos.y - eyeHeight + playerHeight - epsilon;
 
     int minBlockX = (int)floor(minX);
     int maxBlockX = (int)floor(maxX);
