@@ -1,0 +1,169 @@
+#include "TextureAtlas.h"
+#include <cstdlib>
+#include <cmath>
+#include <algorithm>
+
+TextureAtlas::TextureAtlas(int width, int height, int slotSize)
+    : width(width), height(height), slotSize(slotSize)
+{
+    data.resize(width * height * 3);
+}
+
+TextureAtlas::~TextureAtlas()
+{
+}
+
+void TextureAtlas::Generate()
+{
+    // Slot Map (4x4 grid of 16px)
+    // 0,0: Stone
+    // 1,0: Dirt
+    // 2,0: Grass
+    // 0,1: Wood Side
+    // 1,1: Wood Top
+    // 2,1: Leaves
+    
+    GenerateStone(0, 0);
+    GenerateDirt(1, 0);
+    GenerateGrassTop(2, 0);
+    GenerateWoodSide(0, 1);
+    GenerateWoodTop(1, 1);
+    GenerateLeaves(2, 1);
+}
+
+void TextureAtlas::SetPixel(int x, int y, unsigned char r, unsigned char g, unsigned char b)
+{
+    if (x < 0 || x >= width || y < 0 || y >= height) return;
+    int idx = (y * width + x) * 3;
+    data[idx] = r;
+    data[idx+1] = g;
+    data[idx+2] = b;
+}
+
+void TextureAtlas::GenerateStone(int slotX, int slotY)
+{
+    int startX = slotX * slotSize;
+    int startY = slotY * slotSize;
+    
+    for(int y=0; y<slotSize; ++y) {
+        for(int x=0; x<slotSize; ++x) {
+            // Stone: Rough noise (Darker Grey)
+            int noise = rand() % 40 + 60; // 60-100
+            
+            // Add some "cracks" (darker spots)
+            if(rand() % 20 == 0) noise -= 30;
+            
+            SetPixel(startX + x, startY + y, (unsigned char)noise, (unsigned char)noise, (unsigned char)noise);
+        }
+    }
+}
+
+void TextureAtlas::GenerateDirt(int slotX, int slotY)
+{
+    int startX = slotX * slotSize;
+    int startY = slotY * slotSize;
+    
+    for(int y=0; y<slotSize; ++y) {
+        for(int x=0; x<slotSize; ++x) {
+            // Dirt: Smoother, speckled (Brownish Grey)
+            // We want it distinct from Stone.
+            // Dithered pattern checkboard?
+            int noise = rand() % 40 + 100;
+            
+            // Speckles
+            if((x + y) % 2 == 0) noise += 20;
+
+            // Reduce contrast compared to stone
+            unsigned char val = (unsigned char)noise;
+            SetPixel(startX + x, startY + y, val, val, val);
+        }
+    }
+}
+
+void TextureAtlas::GenerateGrassTop(int slotX, int slotY)
+{
+    int startX = slotX * slotSize;
+    int startY = slotY * slotSize;
+    
+    for(int y=0; y<slotSize; ++y) {
+        for(int x=0; x<slotSize; ++x) {
+            // Grass: Noise with some "blades" (lighter streaks)
+            int noise = rand() % 50 + 150;
+            
+            // Blade check?
+            if(rand() % 5 == 0) noise += 30;
+            
+            unsigned char val = (unsigned char)noise;
+            SetPixel(startX + x, startY + y, val, val, val);
+        }
+    }
+}
+
+void TextureAtlas::GenerateWoodSide(int slotX, int slotY)
+{
+    int startX = slotX * slotSize;
+    int startY = slotY * slotSize;
+    
+    for(int y=0; y<slotSize; ++y) {
+        for(int x=0; x<slotSize; ++x) {
+            // Wood Side: Chaotic Bark
+            int noise = rand() % 40;
+            // Wavy vertical stripes
+            int shift = (y / 3); 
+            bool fissure = ((x + shift) % 4 == 0);
+            int fVal = fissure ? 30 : 0;
+            if(rand()%10 > 7) fVal = 0; // Break fissures
+            
+            int val = 120 + noise - fVal;
+            // Keep Vertex Color = White, so bake Color here?
+            // User complained about "planks".
+            // Let's use the Brown color here.
+            unsigned char r = val; 
+            unsigned char g = (unsigned char)(val * 0.7f); 
+            unsigned char b = (unsigned char)(val * 0.5f);
+            SetPixel(startX + x, startY + y, r, g, b);
+        }
+    }
+}
+
+void TextureAtlas::GenerateWoodTop(int slotX, int slotY)
+{
+    int startX = slotX * slotSize;
+    int startY = slotY * slotSize;
+    float center = slotSize / 2.0f - 0.5f;
+
+    for(int y=0; y<slotSize; ++y) {
+        for(int x=0; x<slotSize; ++x) {
+            // Rings
+            float dx = (float)x - center;
+            float dy = (float)y - center;
+            float dist = sqrt(dx*dx + dy*dy);
+            
+            int ring = (int)(dist * 1.5f) % 2; 
+            int val = 140 + (ring * 40) + (rand()%20);
+            
+            unsigned char r = val; 
+            unsigned char g = (unsigned char)(val * 0.8f); 
+            unsigned char b = (unsigned char)(val * 0.6f);
+            SetPixel(startX + x, startY + y, r, g, b);
+        }
+    }
+}
+
+void TextureAtlas::GenerateLeaves(int slotX, int slotY)
+{
+    int startX = slotX * slotSize;
+    int startY = slotY * slotSize;
+    
+    for(int y=0; y<slotSize; ++y) {
+        for(int x=0; x<slotSize; ++x) {
+            // Leaves: Grid pattern + noise
+            int noise = rand() % 60;
+            if(x % 3 == 0 || y % 3 == 0) noise -= 20; 
+            int val = 100 + noise;
+            
+            // Greyscale (Tinted Green by Vertex Color)
+            SetPixel(startX + x, startY + y, (unsigned char)val, (unsigned char)val, (unsigned char)val);
+        }
+    }
+}
