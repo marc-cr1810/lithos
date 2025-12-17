@@ -28,7 +28,14 @@ void TextureAtlas::Generate()
     GenerateGrassTop(2, 0);
     GenerateWoodSide(0, 1);
     GenerateWoodTop(1, 1);
+    GenerateWoodTop(1, 1);
     GenerateLeaves(2, 1);
+    
+    // Ores
+    // Coal (3,0) - Black spots
+    GenerateOre(3, 0, 20, 20, 20); 
+    // Iron (3,1) - Tan spots
+    GenerateOre(3, 1, 210, 180, 140);
 }
 
 void TextureAtlas::SetPixel(int x, int y, unsigned char r, unsigned char g, unsigned char b)
@@ -164,6 +171,34 @@ void TextureAtlas::GenerateLeaves(int slotX, int slotY)
             
             // Greyscale (Tinted Green by Vertex Color)
             SetPixel(startX + x, startY + y, (unsigned char)val, (unsigned char)val, (unsigned char)val);
+        }
+    }
+}
+
+void TextureAtlas::GenerateOre(int slotX, int slotY, int r, int g, int b)
+{
+    int startX = slotX * slotSize;
+    int startY = slotY * slotSize;
+    
+    for(int y=0; y<slotSize; ++y) {
+        for(int x=0; x<slotSize; ++x) {
+            // Base Stone
+            int noise = rand() % 60 + 80;
+            if(rand() % 20 == 0) noise -= 30;
+            
+            unsigned char cr = (unsigned char)noise;
+            unsigned char cg = (unsigned char)noise;
+            unsigned char cb = (unsigned char)noise;
+            
+            // Ore spots
+            // Simple noise check for spots
+            if(rand() % 10 < 2) { 
+                cr = (unsigned char)r;
+                cg = (unsigned char)g;
+                cb = (unsigned char)b;
+            }
+            
+            SetPixel(startX + x, startY + y, cr, cg, cb);
         }
     }
 }

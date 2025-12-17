@@ -9,7 +9,9 @@ enum BlockType : uint8_t {
     STONE = 2,
     GRASS = 3,
     WOOD = 4,
-    LEAVES = 5
+    LEAVES = 5,
+    COAL_ORE = 6,
+    IRON_ORE = 7
 };
 
 struct Block {

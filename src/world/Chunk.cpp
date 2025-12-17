@@ -248,6 +248,8 @@ void Chunk::addFace(int x, int y, int z, int faceDir, int blockType)
     else if (blockType == WOOD) { r = 1.0f; g = 1.0f; b = 1.0f; } 
     // Leaves: Green Tint
     else if (blockType == LEAVES) { r = 0.2f; g = 0.8f; b = 0.2f; } 
+    // Ores: White Tint (Use texture)
+    else if (blockType == COAL_ORE || blockType == IRON_ORE) { r = 1.0f; g = 1.0f; b = 1.0f; }
     else { r = 1.0f; g = 0.0f; b = 1.0f; } // Pink error
 
     // Lighting
@@ -324,6 +326,16 @@ void Chunk::addFace(int x, int y, int z, int faceDir, int blockType)
     else if(blockType == LEAVES) {
         // Leaves (2,1)
         uMin = 0.50f; uMax = 0.75f;
+        vMin = 0.25f; vMax = 0.50f;
+    }
+    else if(blockType == COAL_ORE) {
+        // Coal (3,0)
+        uMin = 0.75f; uMax = 1.00f;
+        vMin = 0.00f; vMax = 0.25f;
+    }
+    else if(blockType == IRON_ORE) {
+        // Iron (3,1)
+        uMin = 0.75f; uMax = 1.00f;
         vMin = 0.25f; vMax = 0.50f;
     }
     // Else Stone uses default 0,0

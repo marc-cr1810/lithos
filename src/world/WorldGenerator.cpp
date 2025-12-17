@@ -3,7 +3,20 @@
 #include "Block.h"
 #include <glm/gtc/noise.hpp>
 
-WorldGenerator::WorldGenerator() {}
+#include "TreeDecorator.h"
+#include "OreDecorator.h"
+
+WorldGenerator::WorldGenerator() 
+{
+    decorators.push_back(new OreDecorator());
+    decorators.push_back(new TreeDecorator());
+}
+
+WorldGenerator::~WorldGenerator()
+{
+    for(auto d : decorators) delete d;
+    decorators.clear();
+}
 
 int WorldGenerator::GetHeight(int x, int z)
 {
@@ -39,30 +52,7 @@ void WorldGenerator::GenerateChunk(Chunk& chunk)
                 if(gy <= height) {
                     if(gy == height) {
                          type = GRASS;
-                         // Tree Generation
-                         // Simple random placement, only if inside chunk bounds (padding for leaves)
-                         // Padding 2 for leaves.
-                         if(x > 1 && x < 14 && z > 1 && z < 14 && gy < CHUNK_SIZE - 6) {
-                             if((rand() % 100) < 2) {
-                                 // Trunk
-                                 for(int h=1; h<=4; ++h) chunk.setBlock(x, y+h, z, WOOD);
-                                 // Leaves
-                                 for(int lx=x-2; lx<=x+2; ++lx) {
-                                     for(int lz=z-2; lz<=z+2; ++lz) {
-                                         for(int ly=y+3; ly<=y+4; ++ly) { // 2 layers of leaves
-                                             if(chunk.getBlock(lx, ly, lz).type == AIR)
-                                                 chunk.setBlock(lx, ly, lz, LEAVES);
-                                         }
-                                     }
-                                 }
-                                 // Top leaves
-                                 chunk.setBlock(x, y+5, z, LEAVES);
-                                 chunk.setBlock(x+1, y+5, z, LEAVES);
-                                 chunk.setBlock(x-1, y+5, z, LEAVES);
-                                 chunk.setBlock(x, y+5, z+1, LEAVES);
-                                 chunk.setBlock(x, y+5, z-1, LEAVES);
-                             }
-                         }
+                         // Tree logic removed, used Decorator
                     }
                     else if(gy > height - 3) type = DIRT;
                     else type = STONE;
@@ -83,5 +73,10 @@ void WorldGenerator::GenerateChunk(Chunk& chunk)
                 chunk.setBlock(x, y, z, type);
             }
         }
+    }
+    
+    // Apply Decorators
+    for(auto d : decorators) {
+        d->Decorate(chunk, *this);
     }
 }

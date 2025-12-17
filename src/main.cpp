@@ -307,6 +307,8 @@ BlockType selectedBlock = STONE;
         if(glfwGetKey(window, GLFW_KEY_3) == GLFW_PRESS) selectedBlock = GRASS;
         if(glfwGetKey(window, GLFW_KEY_4) == GLFW_PRESS) selectedBlock = WOOD;
         if(glfwGetKey(window, GLFW_KEY_5) == GLFW_PRESS) selectedBlock = LEAVES;
+        if(glfwGetKey(window, GLFW_KEY_6) == GLFW_PRESS) selectedBlock = COAL_ORE;
+        if(glfwGetKey(window, GLFW_KEY_7) == GLFW_PRESS) selectedBlock = IRON_ORE;
 
         // Draw Crosshair (Identity Matrix)
         ourShader.setMat4("model", glm::mat4(1.0f));
