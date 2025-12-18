@@ -30,7 +30,8 @@ public:
     // Returns true and fills info if hit
     bool raycast(glm::vec3 origin, glm::vec3 direction, float maxDist, glm::ivec3& outputPos, glm::ivec3& outputPrePos);
 
-    uint8_t getLight(int x, int y, int z);
+    uint8_t getSkyLight(int x, int y, int z);
+    uint8_t getBlockLight(int x, int y, int z);
 
     // Friend for generator if needed, or public method
     // Generator will just use addChunk/getChunk.

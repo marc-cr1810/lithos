@@ -118,6 +118,32 @@ int main()
         }
     }
 
+    // Global Lighting Pass 1: seeding sunlight
+    for(int x = -worldSize; x < worldSize; ++x) {
+        for(int z = -worldSize; z < worldSize; ++z) {
+            for(int y = worldHeight - 1; y >= 0; --y) {
+                 Chunk* c = world.getChunk(x, y, z);
+                 if(c) {
+                     c->calculateSunlight();
+                     c->calculateBlockLight();
+                 }
+            }
+        }
+    }
+
+    // Global Lighting Pass 2: Spread Light
+    for(int x = -worldSize; x < worldSize; ++x) {
+        for(int z = -worldSize; z < worldSize; ++z) {
+            for(int y = 0; y < worldHeight; ++y) {
+                 Chunk* c = world.getChunk(x, y, z);
+                 if(c) {
+                     c->spreadLight();
+                     c->meshDirty = true; // Force Rebuild to upload light data to GPU
+                 }
+            }
+        }
+    }
+
     // Safe Spawn Calculation
     int spawnX = 8;
     int spawnZ = 8;
@@ -181,6 +207,9 @@ int main()
 bool lastRightMouse = false;
 BlockType selectedBlock = STONE;
 
+    // Global Time
+    float globalTime = 0.0f;
+    
     // render loop
     // -----------
     while (!glfwWindowShouldClose(window))
@@ -192,6 +221,15 @@ BlockType selectedBlock = STONE;
         lastFrame = currentFrame;
         deltaTime = std::min(deltaTime, 0.1f); // Clamp
         
+        globalTime += deltaTime;
+
+        // Calculate Sun Brightness
+        // Simple Sine wave day/night cycle
+        // Speed: globalTime * 0.1 means cycle is 20*PI seconds ~= 60 seconds
+        float sunStrength = (sin(globalTime * 0.2f) + 1.0f) * 0.5f; 
+        // Clamp minimum brightness so it's not pitch black (moonlight)
+        sunStrength = std::max(0.05f, sunStrength);
+
         // input
         // -----
         processInput(window, world);
@@ -208,11 +246,13 @@ BlockType selectedBlock = STONE;
 
         // render
         // ------
-        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+        // Adjust clear color based on sunStrength?
+        glClearColor(0.2f * sunStrength, 0.3f * sunStrength, 0.3f * sunStrength, 1.0f);
         glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT); 
 
         // activate shader
         ourShader.use();
+        ourShader.setFloat("sunStrength", sunStrength);
 
         // pass projection matrix to shader (note: in this case it could change every frame)
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
@@ -309,6 +349,7 @@ BlockType selectedBlock = STONE;
         if(glfwGetKey(window, GLFW_KEY_5) == GLFW_PRESS) selectedBlock = LEAVES;
         if(glfwGetKey(window, GLFW_KEY_6) == GLFW_PRESS) selectedBlock = COAL_ORE;
         if(glfwGetKey(window, GLFW_KEY_7) == GLFW_PRESS) selectedBlock = IRON_ORE;
+        if(glfwGetKey(window, GLFW_KEY_8) == GLFW_PRESS) selectedBlock = GLOWSTONE;
 
         // Draw Crosshair (Identity Matrix)
         ourShader.setMat4("model", glm::mat4(1.0f));

@@ -3,23 +3,30 @@
 
 #include <cstdint>
 
-enum BlockType : uint8_t {
+enum BlockType {
     AIR = 0,
     DIRT = 1,
-    STONE = 2,
-    GRASS = 3,
+    GRASS = 2,
+    STONE = 3,
     WOOD = 4,
     LEAVES = 5,
     COAL_ORE = 6,
-    IRON_ORE = 7
+    IRON_ORE = 7,
+    GLOWSTONE = 8
 };
 
 struct Block {
     uint8_t type;
-    uint8_t light = 0; // 0-15
+    uint8_t skyLight = 0;   // 0-15 Sun
+    uint8_t blockLight = 0; // 0-15 Torches
     
     bool isActive() const {
         return type != AIR;
+    }
+    
+    uint8_t getEmission() const {
+        if(type == GLOWSTONE) return 15;
+        return 0;
     }
 };
 

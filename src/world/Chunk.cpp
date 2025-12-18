@@ -1,5 +1,6 @@
 #include "Chunk.h"
 #include "World.h"
+#include "WorldGenerator.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <queue>
 #include <tuple>
@@ -39,11 +40,32 @@ void Chunk::setBlock(int x, int y, int z, BlockType type)
     meshDirty = true;
 }
 
-uint8_t Chunk::getLight(int x, int y, int z) const
+uint8_t Chunk::getSkyLight(int x, int y, int z) const
 {
     if(x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_SIZE || z < 0 || z >= CHUNK_SIZE)
         return 0;
-    return blocks[x][y][z].light;
+    return blocks[x][y][z].skyLight;
+}
+
+uint8_t Chunk::getBlockLight(int x, int y, int z) const
+{
+    if(x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_SIZE || z < 0 || z >= CHUNK_SIZE)
+        return 0;
+    return blocks[x][y][z].blockLight;
+}
+
+void Chunk::setSkyLight(int x, int y, int z, uint8_t val)
+{
+    if(x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_SIZE || z < 0 || z >= CHUNK_SIZE)
+        return;
+    blocks[x][y][z].skyLight = val;
+}
+
+void Chunk::setBlockLight(int x, int y, int z, uint8_t val)
+{
+    if(x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_SIZE || z < 0 || z >= CHUNK_SIZE)
+        return;
+    blocks[x][y][z].blockLight = val;
 }
 
 void Chunk::updateMesh()
@@ -55,133 +77,10 @@ void Chunk::updateMesh()
     unsigned int vIndex = 0;
     
     // -------------------------------------------------------
-    // Lighting Calculation (BFS)
+    // Lighting Calculation (BFS) - MOVED TO calculateSunlight/spreadLight
     // -------------------------------------------------------
-    // 1. Reset Light
-    for(int x=0; x<CHUNK_SIZE; ++x)
-        for(int y=0; y<CHUNK_SIZE; ++y)
-            for(int z=0; z<CHUNK_SIZE; ++z)
-                blocks[x][y][z].light = 0;
-
-    std::queue<glm::ivec3> lightQueue;
-
-    // 2. Seed Sunlight
-    for(int x=0; x<CHUNK_SIZE; ++x) {
-        for(int z=0; z<CHUNK_SIZE; ++z) {
-            // Check world column above chunk
-            bool skyVisible = true;
-            if(world) {
-                int gx = chunkPosition.x * CHUNK_SIZE + x;
-                int gy_top = chunkPosition.y * CHUNK_SIZE + CHUNK_SIZE; // Start just above chunk
-                int gz = chunkPosition.z * CHUNK_SIZE + z;
-                
-                // Heuristic check up to height 32
-                for(int cy = gy_top; cy < 32; ++cy) {
-                    if(world->getBlock(gx, cy, gz).isActive()) {
-                        skyVisible = false; 
-                        break;
-                    }
-                }
-            }
-
-            if(skyVisible) {
-                // Propagate down in this chunk
-                for(int y=CHUNK_SIZE-1; y>=0; --y) {
-                    if(blocks[x][y][z].isActive()) {
-                        break; // Hit solid
-                    } else {
-                        blocks[x][y][z].light = 15;
-                        lightQueue.push(glm::ivec3(x, y, z));
-                    }
-                }
-            }
-        }
-    }
-
-
-    // 2b. Seed from Neighbor Chunks (Cross-Chunk Propagation)
-    if(world) {
-        int cx = chunkPosition.x;
-        int cy = chunkPosition.y;
-        int cz = chunkPosition.z;
-
-        struct Neighbor { int dx, dy, dz; int ox, oy, oz; int faceAxis; };
-        Neighbor neighbors[] = {
-            {-1, 0, 0,  CHUNK_SIZE-1, 0, 0,   0}, // Left Neighbor (Check its Right face x=15)
-            { 1, 0, 0,  0, 0, 0,              0}, // Right Neighbor (Check its Left face x=0)
-            { 0,-1, 0,  0, CHUNK_SIZE-1, 0,   1}, // Bottom
-            { 0, 1, 0,  0, 0, 0,              1}, // Top
-            { 0, 0,-1,  0, 0, CHUNK_SIZE-1,   2}, // Back
-            { 0, 0, 1,  0, 0, 0,              2}  // Front
-        };
-
-        for(const auto& n : neighbors) {
-            Chunk* nc = world->getChunk(cx + n.dx, cy + n.dy, cz + n.dz);
-            if(nc) {
-                // Iterate the interface face
-                // Axis 0 (X): Iterate Y, Z
-                // Axis 1 (Y): Iterate X, Z
-                // Axis 2 (Z): Iterate X, Y
-                
-                for(int u=0; u<CHUNK_SIZE; ++u) {
-                    for(int v=0; v<CHUNK_SIZE; ++v) {
-                        int lx, ly, lz; // Local coords in THIS chunk to update
-                        int nx, ny, nz; // Neighbor coords to read from
-
-                        if(n.faceAxis == 0) { // X-face
-                            lx = (n.dx == -1) ? 0 : CHUNK_SIZE-1;
-                            ly = u; lz = v;
-                            nx = n.ox; ny = u; nz = v;
-                        } else if(n.faceAxis == 1) { // Y-face
-                            lx = u; ly = (n.dy == -1) ? 0 : CHUNK_SIZE-1; lz = v;
-                            nx = u; ny = n.oy; nz = v;
-                        } else { // Z-face
-                            lx = u; ly = v; lz = (n.dz == -1) ? 0 : CHUNK_SIZE-1;
-                            nx = u; ny = v; nz = n.oz;
-                        }
-
-                        if(!blocks[lx][ly][lz].isActive()) {
-                             uint8_t nLight = nc->getLight(nx, ny, nz);
-                             if(nLight > 1 && nLight - 1 > blocks[lx][ly][lz].light) {
-                                 blocks[lx][ly][lz].light = nLight - 1;
-                                 lightQueue.push(glm::ivec3(lx, ly, lz));
-                             }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // 3. Propagate
-    int directions[6][3] = {
-        {1,0,0}, {-1,0,0},
-        {0,1,0}, {0,-1,0},
-        {0,0,1}, {0,0,-1}
-    };
-
-    while(!lightQueue.empty()) {
-        glm::ivec3 pos = lightQueue.front();
-        lightQueue.pop();
-        
-        int curLight = blocks[pos.x][pos.y][pos.z].light;
-        if(curLight <= 1) continue; // Can't spread darkness
-
-        for(int i=0; i<6; ++i) {
-            int nx = pos.x + directions[i][0];
-            int ny = pos.y + directions[i][1];
-            int nz = pos.z + directions[i][2];
-
-            if(nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
-                if(!blocks[nx][ny][nz].isActive()) { // Air only
-                    if(blocks[nx][ny][nz].light < curLight - 1) {
-                        blocks[nx][ny][nz].light = curLight - 1;
-                        lightQueue.push(glm::ivec3(nx, ny, nz));
-                    }
-                }
-            }
-        }
-    }
+    
+    // We assume light is already calculated when updateMesh runs.
     // -------------------------------------------------------
 
     for(int x=0; x<CHUNK_SIZE; ++x)
@@ -249,12 +148,16 @@ void Chunk::addFace(int x, int y, int z, int faceDir, int blockType)
     // Leaves: Green Tint
     else if (blockType == LEAVES) { r = 0.2f; g = 0.8f; b = 0.2f; } 
     // Ores: White Tint (Use texture)
-    else if (blockType == COAL_ORE || blockType == IRON_ORE) { r = 1.0f; g = 1.0f; b = 1.0f; }
+    // Ores: White Tint (Use texture)
+    else if (blockType == COAL_ORE || blockType == IRON_ORE || blockType == GLOWSTONE) { r = 1.0f; g = 1.0f; b = 1.0f; }
     else { r = 1.0f; g = 0.0f; b = 1.0f; } // Pink error
 
-    // Lighting
-    // Get light from the air block next to the face (where the face is looking)
-    float lightVal = 1.0f;
+    // Sky/Block Light
+    // Get light from the air block next to the face
+    float skyVal = 1.0f; // Default 15? No default 0 if dark?
+    float blockVal = 0.0f;
+    int nx=0, ny=0, nz=0;
+    
     if(world) {
         int gx = chunkPosition.x * CHUNK_SIZE + x;
         int gy = chunkPosition.y * CHUNK_SIZE + y;
@@ -268,24 +171,108 @@ void Chunk::addFace(int x, int y, int z, int faceDir, int blockType)
         else if(faceDir==4) dy=1; // Top
         else dy=-1;               // Bottom
 
-        uint8_t l = world->getLight(gx+dx, gy+dy, gz+dz);
-        // Base ambient of 1 (so not pitch black)
-        if(l < 1) l = 1; 
-        lightVal = (float)l / 15.0f;
+        int nx_local = gx+dx; int ny_local = gy+dy; int nz_local = gz+dz;
+        nx = nx_local; ny = ny_local; nz = nz_local;
         
-        // Gamma
-        lightVal = pow(lightVal, 0.6f); 
+        uint8_t s = world->getSkyLight(nx, ny, nz);
+        uint8_t bl = world->getBlockLight(nx, ny, nz);
+        
+        // Convert to float 0-1
+        skyVal = (float)s / 15.0f;
+        blockVal = (float)bl / 15.0f;
+        
+        // Gamma/Curve
+        skyVal = pow(skyVal, 0.8f); // Tweak power
+        blockVal = pow(blockVal, 0.8f);
     }
 
-    float lr, lg, lb;
-    if(faceDir == 4) { lr=1.0f; lg=1.0f; lb=1.0f; } // Top
-    else if(faceDir == 5) { lr=0.6f; lg=0.6f; lb=0.6f; } // Bottom
-    else { lr=0.8f; lg=0.8f; lb=0.8f; } // Side
+    // Face Shading (Ambient Occlusion placeholder / Directional Shade)
+    float faceShade = 1.0f;
+    if(faceDir == 4) faceShade = 1.0f;        // Top
+    else if(faceDir == 5) faceShade = 0.6f;   // Bottom
+    else faceShade = 0.8f;                    // Side
     
-    // Apply Light
-    lr *= lightVal;
-    lg *= lightVal;
-    lb *= lightVal;
+    // Apply Face Shade to Color Tint
+    r *= faceShade;
+    g *= faceShade;
+    b *= faceShade;
+
+    // Light Attribute now passes: Sky, Block, AO
+    // AO Calculation
+    // We need to calculate AO for 4 corners of the face.
+    // Neighbors relative to the AIR BLOCK (nx, ny, nz).
+    
+    float aoBL=0, aoBR=0, aoTL=0, aoTR=0; // 0..3
+    
+    if(world) {
+        auto isOcc = [&](int dX, int dY, int dZ) {
+            return world->getBlock(nx+dX, ny+dY, nz+dZ).isActive();
+        };
+
+        bool t=false, b=false, l=false, r=false;
+        bool tl=false, tr=false, bl=false, br=false;
+        
+        // Define T, B, L, R relative to face
+        if(faceDir == 0 || faceDir == 1) { // Front/Back (Z axis)
+             // Up=Y+, Right=X+ (for Front)
+             // Actually, Right depends on winding, but let's stick to world axis.
+             t = isOcc(0, 1, 0);
+             b = isOcc(0, -1, 0);
+             l = isOcc(-1, 0, 0);
+             r = isOcc(1, 0, 0);
+             tl = isOcc(-1, 1, 0);
+             tr = isOcc(1, 1, 0);
+             bl = isOcc(-1, -1, 0);
+             br = isOcc(1, -1, 0);
+             
+             // Map to corners (assuming Standard quad orientation)
+             // BL = (-1, -1), BR = (1, -1), TR = (1, 1), TL = (-1, 1)
+             aoBL = vertexAO(l, b, bl);
+             aoBR = vertexAO(r, b, br);
+             aoTR = vertexAO(r, t, tr);
+             aoTL = vertexAO(l, t, tl);
+        }
+        else if(faceDir == 2 || faceDir == 3) { // Lefty/Right (X axis)
+             // Up=Y+, Right=Z+ (For Right?)
+             t = isOcc(0, 1, 0);
+             b = isOcc(0, -1, 0);
+             l = isOcc(0, 0, -1); // Z-
+             r = isOcc(0, 0, 1);  // Z+
+             tl = isOcc(0, 1, -1);
+             tr = isOcc(0, 1, 1);
+             bl = isOcc(0, -1, -1);
+             br = isOcc(0, -1, 1);
+             
+             // BL (Z-, Y-), BR (Z+, Y-), TR (Z+, Y+), TL (Z-, Y+)
+             aoBL = vertexAO(l, b, bl);
+             aoBR = vertexAO(r, b, br);
+             aoTR = vertexAO(r, t, tr);
+             aoTL = vertexAO(l, t, tl);
+        }
+        else { // Top/Bottom (Y axis)
+             // Up=Z+, Right=X+
+             t = isOcc(0, 0, 1); // Z+ (Top in 2D plane)
+             b = isOcc(0, 0, -1); // Z-
+             l = isOcc(-1, 0, 0); // X-
+             r = isOcc(1, 0, 0); // X+
+             tl = isOcc(-1, 0, 1);
+             tr = isOcc(1, 0, 1);
+             bl = isOcc(-1, 0, -1);
+             br = isOcc(1, 0, -1);
+             
+             // BL (X-, Z-), BR (X+, Z-), TR (X+, Z+), TL (X-, Z+)
+             aoBL = vertexAO(l, b, bl);
+             aoBR = vertexAO(r, b, br);
+             aoTR = vertexAO(r, t, tr);
+             aoTL = vertexAO(l, t, tl);
+        }
+    }
+
+    float l1 = skyVal;
+    float l2 = blockVal;
+    // l3 is now unused placeholder in array setup, we will replace usage below.
+    float l3 = 0.0f;
+
 
     // (Redundant occlusion logic removed)
 
@@ -338,6 +325,11 @@ void Chunk::addFace(int x, int y, int z, int faceDir, int blockType)
         uMin = 0.75f; uMax = 1.00f;
         vMin = 0.25f; vMax = 0.50f;
     }
+    else if(blockType == GLOWSTONE) {
+        // Glowstone (0,2)
+        uMin = 0.00f; uMax = 0.25f;
+        vMin = 0.50f; vMax = 0.75f;
+    }
     // Else Stone uses default 0,0
 
     float fx = (float)x;
@@ -349,12 +341,12 @@ void Chunk::addFace(int x, int y, int z, int faceDir, int blockType)
     if(faceDir == 0) // Front
     {
         float faceData[] = {
-            fx, fy, fz+1.0f,    r,g,b,  uMin, vMin,  lr,lg,lb,
-            fx+1.0f, fy, fz+1.0f,  r,g,b,  uMax, vMin,  lr,lg,lb,
-            fx+1.0f, fy+1.0f, fz+1.0f,r,g,b,  uMax, vMax,  lr,lg,lb,
-            fx, fy, fz+1.0f,    r,g,b,  uMin, vMin,  lr,lg,lb,
-            fx+1.0f, fy+1.0f, fz+1.0f,r,g,b,  uMax, vMax,  lr,lg,lb,
-            fx, fy+1.0f, fz+1.0f,  r,g,b,  uMin, vMax,  lr,lg,lb
+            fx, fy, fz+1.0f,    r,g,b,  uMin, vMin,  l1,l2,aoBL,
+            fx+1.0f, fy, fz+1.0f,  r,g,b,  uMax, vMin,  l1,l2,aoBR,
+            fx+1.0f, fy+1.0f, fz+1.0f,r,g,b,  uMax, vMax,  l1,l2,aoTR,
+            fx, fy, fz+1.0f,    r,g,b,  uMin, vMin,  l1,l2,aoBL,
+            fx+1.0f, fy+1.0f, fz+1.0f,r,g,b,  uMax, vMax,  l1,l2,aoTR,
+            fx, fy+1.0f, fz+1.0f,  r,g,b,  uMin, vMax,  l1,l2,aoTL
         };
         vertices.insert(vertices.end(), faceData, faceData + 66);
     }
@@ -362,12 +354,12 @@ void Chunk::addFace(int x, int y, int z, int faceDir, int blockType)
     else if(faceDir == 1) // Back
     {
         float faceData[] = {
-            fx+1.0f, fy, fz,    r,g,b,  uMin, vMin,  lr,lg,lb,
-            fx, fy, fz,         r,g,b,  uMax, vMin,  lr,lg,lb,
-            fx, fy+1.0f, fz,    r,g,b,  uMax, vMax,  lr,lg,lb,
-            fx+1.0f, fy, fz,    r,g,b,  uMin, vMin,  lr,lg,lb,
-            fx, fy+1.0f, fz,    r,g,b,  uMax, vMax,  lr,lg,lb,
-            fx+1.0f, fy+1.0f, fz,  r,g,b,  uMin, vMax,  lr,lg,lb
+            fx+1.0f, fy, fz,    r,g,b,  uMin, vMin,  l1,l2,aoBR,
+            fx, fy, fz,         r,g,b,  uMax, vMin,  l1,l2,aoBL,
+            fx, fy+1.0f, fz,    r,g,b,  uMax, vMax,  l1,l2,aoTL,
+            fx+1.0f, fy, fz,    r,g,b,  uMin, vMin,  l1,l2,aoBR,
+            fx, fy+1.0f, fz,    r,g,b,  uMax, vMax,  l1,l2,aoTL,
+            fx+1.0f, fy+1.0f, fz,  r,g,b,  uMin, vMax,  l1,l2,aoTR
         };
         vertices.insert(vertices.end(), faceData, faceData + 66);
     }
@@ -375,25 +367,25 @@ void Chunk::addFace(int x, int y, int z, int faceDir, int blockType)
     else if(faceDir == 2)
     {
         float faceData[] = {
-            fx, fy, fz,         r,g,b,  uMin, vMin,  lr,lg,lb,
-            fx, fy, fz+1.0f,    r,g,b,  uMax, vMin,  lr,lg,lb,
-            fx, fy+1.0f, fz+1.0f,  r,g,b,  uMax, vMax,  lr,lg,lb,
-            fx, fy, fz,         r,g,b,  uMin, vMin,  lr,lg,lb,
-            fx, fy+1.0f, fz+1.0f,  r,g,b,  uMax, vMax,  lr,lg,lb,
-            fx, fy+1.0f, fz,    r,g,b,  uMin, vMax,  lr,lg,lb
+            fx, fy, fz,         r,g,b,  uMin, vMin,  l1,l2,aoBL,
+            fx, fy, fz+1.0f,    r,g,b,  uMax, vMin,  l1,l2,aoBR,
+            fx, fy+1.0f, fz+1.0f,  r,g,b,  uMax, vMax,  l1,l2,aoTR,
+            fx, fy, fz,         r,g,b,  uMin, vMin,  l1,l2,aoBL,
+            fx, fy+1.0f, fz+1.0f,  r,g,b,  uMax, vMax,  l1,l2,aoTR,
+            fx, fy+1.0f, fz,    r,g,b,  uMin, vMax,  l1,l2,aoTL
         };
         vertices.insert(vertices.end(), faceData, faceData + 66);
     }
     // Right (x=1)
     else if(faceDir == 3)
     {
-        float faceData[] = {
-            fx+1.0f, fy, fz+1.0f,  r,g,b,  uMin, vMin,  lr,lg,lb,
-            fx+1.0f, fy, fz,    r,g,b,  uMax, vMin,  lr,lg,lb,
-            fx+1.0f, fy+1.0f, fz,  r,g,b,  uMax, vMax,  lr,lg,lb,
-            fx+1.0f, fy, fz+1.0f,  r,g,b,  uMin, vMin,  lr,lg,lb,
-            fx+1.0f, fy+1.0f, fz,  r,g,b,  uMax, vMax,  lr,lg,lb,
-            fx+1.0f, fy+1.0f, fz+1.0f,r,g,b,  uMin, vMax,  lr,lg,lb
+         float faceData[] = {
+            fx+1.0f, fy, fz+1.0f,    r,g,b,  uMin, vMin,  l1,l2,aoBR,
+            fx+1.0f, fy, fz,         r,g,b,  uMax, vMin,  l1,l2,aoBL,
+            fx+1.0f, fy+1.0f, fz,    r,g,b,  uMax, vMax,  l1,l2,aoTL,
+            fx+1.0f, fy, fz+1.0f,    r,g,b,  uMin, vMin,  l1,l2,aoBR,
+            fx+1.0f, fy+1.0f, fz,    r,g,b,  uMax, vMax,  l1,l2,aoTL,
+            fx+1.0f, fy+1.0f, fz+1.0f,  r,g,b,  uMin, vMax,  l1,l2,aoTR
         };
         vertices.insert(vertices.end(), faceData, faceData + 66);
     }
@@ -401,25 +393,25 @@ void Chunk::addFace(int x, int y, int z, int faceDir, int blockType)
     else if(faceDir == 4)
     {
         float faceData[] = {
-            fx, fy+1.0f, fz+1.0f,  r,g,b,  uMin, vMin,  lr,lg,lb,
-            fx+1.0f, fy+1.0f, fz+1.0f,r,g,b,  uMax, vMin,  lr,lg,lb,
-            fx+1.0f, fy+1.0f, fz,  r,g,b,  uMax, vMax,  lr,lg,lb,
-            fx, fy+1.0f, fz+1.0f,  r,g,b,  uMin, vMin,  lr,lg,lb,
-            fx+1.0f, fy+1.0f, fz,  r,g,b,  uMax, vMax,  lr,lg,lb,
-            fx, fy+1.0f, fz,    r,g,b,  uMin, vMax,  lr,lg,lb
+            fx, fy+1.0f, fz+1.0f,    r,g,b,  uMin, vMin,  l1,l2,aoTL,
+            fx+1.0f, fy+1.0f, fz+1.0f,  r,g,b,  uMax, vMin,  l1,l2,aoTR,
+            fx+1.0f, fy+1.0f, fz,    r,g,b,  uMax, vMax,  l1,l2,aoBR,
+            fx, fy+1.0f, fz+1.0f,    r,g,b,  uMin, vMin,  l1,l2,aoTL,
+            fx+1.0f, fy+1.0f, fz,    r,g,b,  uMax, vMax,  l1,l2,aoBR,
+            fx, fy+1.0f, fz,      r,g,b,  uMin, vMax,  l1,l2,aoBL
         };
         vertices.insert(vertices.end(), faceData, faceData + 66);
     }
     // Bottom (y=0)
-    else if(faceDir == 5)
+    else
     {
         float faceData[] = {
-            fx, fy, fz,         r,g,b,  uMin, vMin,  lr,lg,lb,
-            fx+1.0f, fy, fz,    r,g,b,  uMax, vMin,  lr,lg,lb,
-            fx+1.0f, fy, fz+1.0f,  r,g,b,  uMax, vMax,  lr,lg,lb,
-            fx, fy, fz,         r,g,b,  uMin, vMin,  lr,lg,lb,
-            fx+1.0f, fy, fz+1.0f,  r,g,b,  uMax, vMax,  lr,lg,lb,
-            fx, fy, fz+1.0f,       r,g,b,  uMin, vMax,  lr,lg,lb
+            fx, fy, fz,         r,g,b,  uMin, vMin,  l1,l2,aoBL,
+            fx+1.0f, fy, fz,    r,g,b,  uMax, vMin,  l1,l2,aoBR,
+            fx+1.0f, fy, fz+1.0f,  r,g,b,  uMax, vMax,  l1,l2,aoTR,
+            fx, fy, fz,         r,g,b,  uMin, vMin,  l1,l2,aoBL,
+            fx+1.0f, fy, fz+1.0f,  r,g,b,  uMax, vMax,  l1,l2,aoTR,
+            fx, fy, fz+1.0f,    r,g,b,  uMin, vMax,  l1,l2,aoTL
         };
         vertices.insert(vertices.end(), faceData, faceData + 66);
     }
@@ -473,5 +465,221 @@ bool Chunk::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist, glm::i
         lastPos = pos;
     }
     return false;
+}
+
+void Chunk::calculateSunlight() {
+    // 1. Reset Sky Light
+    for(int x=0; x<CHUNK_SIZE; ++x)
+        for(int y=0; y<CHUNK_SIZE; ++y)
+            for(int z=0; z<CHUNK_SIZE; ++z)
+                blocks[x][y][z].skyLight = 0;
+
+    // 2. Sunlight Column Calculation (Y-Down)
+    for(int x=0; x<CHUNK_SIZE; ++x) {
+        for(int z=0; z<CHUNK_SIZE; ++z) {
+             // 2a. Determine if column start has access to sky
+             int gx = chunkPosition.x * CHUNK_SIZE + x;
+             int gz = chunkPosition.z * CHUNK_SIZE + z;
+             
+             bool exposedToSky = true;
+             if(world) {
+                 int startGy = (chunkPosition.y + 1) * CHUNK_SIZE;
+                 for(int cy = startGy; cy < 128; ++cy) { 
+                     int cx = (int)floor((float)gx / CHUNK_SIZE);
+                     int cz = (int)floor((float)gz / CHUNK_SIZE);
+                     int cY_index = (int)floor((float)cy / CHUNK_SIZE);
+                     
+                     Chunk* c = world->getChunk(cx, cY_index, cz);
+                     if(c) {
+                         int lx = gx % CHUNK_SIZE; if(lx<0) lx+=CHUNK_SIZE;
+                         int ly = cy % CHUNK_SIZE; if(ly<0) ly+=CHUNK_SIZE;
+                         int lz = gz % CHUNK_SIZE; if(lz<0) lz+=CHUNK_SIZE;
+                         if(c->getBlock(lx, ly, lz).isActive()) {
+                             exposedToSky = false;
+                             break;
+                         }
+                     } else {
+                         int terrainH = WorldGenerator::GetHeight(gx, gz);
+                         if(cy <= terrainH + 5) {
+                             exposedToSky = false;
+                             break;
+                         }
+                     }
+                 }
+             }
+             
+             if(exposedToSky) {
+                 for(int y=CHUNK_SIZE-1; y>=0; --y) {
+                     if(blocks[x][y][z].isActive()) {
+                         break;
+                     } else {
+                         blocks[x][y][z].skyLight = 15;
+                     }
+                 }
+             }
+        }
+    }
+}
+
+void Chunk::calculateBlockLight() {
+    // 1. Reset and Seed Block Light
+    for(int x=0; x<CHUNK_SIZE; ++x) {
+        for(int y=0; y<CHUNK_SIZE; ++y) {
+            for(int z=0; z<CHUNK_SIZE; ++z) {
+                blocks[x][y][z].blockLight = 0;
+                
+                if(blocks[x][y][z].isActive()) {
+                    uint8_t emission = blocks[x][y][z].getEmission();
+                    if(emission > 0) {
+                        blocks[x][y][z].blockLight = emission;
+                    }
+                }
+            }
+        }
+    }
+}
+
+void Chunk::spreadLight() {
+    std::queue<glm::ivec3> skyQueue;
+    std::queue<glm::ivec3> blockQueue;
+    
+    // 1. Seed from self
+    for(int x=0; x<CHUNK_SIZE; ++x) {
+        for(int y=0; y<CHUNK_SIZE; ++y) {
+            for(int z=0; z<CHUNK_SIZE; ++z) {
+                if(blocks[x][y][z].skyLight > 1) {
+                    skyQueue.push(glm::ivec3(x, y, z));
+                }
+                if(blocks[x][y][z].blockLight > 1) {
+                    blockQueue.push(glm::ivec3(x, y, z));
+                }
+            }
+        }
+    }
+
+    // 2. Seed from Neighbor Chunks
+    if(world) {
+        int cx = chunkPosition.x;
+        int cy = chunkPosition.y;
+        int cz = chunkPosition.z;
+
+        struct Neighbor { int dx, dy, dz; int ox, oy, oz; int faceAxis; };
+        Neighbor neighbors[] = {
+            {-1, 0, 0,  CHUNK_SIZE-1, 0, 0,   0},
+            { 1, 0, 0,  0, 0, 0,              0},
+            { 0,-1, 0,  0, CHUNK_SIZE-1, 0,   1},
+            { 0, 1, 0,  0, 0, 0,              1},
+            { 0, 0,-1,  0, 0, CHUNK_SIZE-1,   2},
+            { 0, 0, 1,  0, 0, 0,              2}
+        };
+
+        for(const auto& n : neighbors) {
+            Chunk* nc = world->getChunk(cx + n.dx, cy + n.dy, cz + n.dz);
+            if(nc) {
+                for(int u=0; u<CHUNK_SIZE; ++u) {
+                    for(int v=0; v<CHUNK_SIZE; ++v) {
+                        int lx, ly, lz; 
+                        int nx, ny, nz; 
+
+                        if(n.faceAxis == 0) {
+                            lx = (n.dx == -1) ? 0 : CHUNK_SIZE-1;
+                            ly = u; lz = v;
+                            nx = n.ox; ny = u; nz = v;
+                        } else if(n.faceAxis == 1) {
+                            lx = u; ly = (n.dy == -1) ? 0 : CHUNK_SIZE-1; lz = v;
+                            nx = u; ny = n.oy; nz = v;
+                        } else {
+                            lx = u; ly = v; lz = (n.dz == -1) ? 0 : CHUNK_SIZE-1;
+                            nx = u; ny = v; nz = n.oz;
+                        }
+
+                        if(!blocks[lx][ly][lz].isActive()) {
+                             // Sky Light
+                             uint8_t nSky = nc->getSkyLight(nx, ny, nz);
+                             if(nSky > 1 && nSky - 1 > blocks[lx][ly][lz].skyLight) {
+                                 blocks[lx][ly][lz].skyLight = nSky - 1;
+                                 skyQueue.push(glm::ivec3(lx, ly, lz));
+                                 meshDirty = true;
+                             }
+                             // Block Light
+                             uint8_t nBlock = nc->getBlockLight(nx, ny, nz);
+                             if(nBlock > 1 && nBlock - 1 > blocks[lx][ly][lz].blockLight) {
+                                 blocks[lx][ly][lz].blockLight = nBlock - 1;
+                                 blockQueue.push(glm::ivec3(lx, ly, lz));
+                                 meshDirty = true;
+                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Propagate BFS
+    int directions[6][3] = {
+        {1,0,0}, {-1,0,0},
+        {0,1,0}, {0,-1,0},
+        {0,0,1}, {0,0,-1}
+    };
+
+    // Process Sky Light
+    while(!skyQueue.empty()) {
+        glm::ivec3 pos = skyQueue.front();
+        skyQueue.pop();
+        
+        int curLight = blocks[pos.x][pos.y][pos.z].skyLight;
+        if(curLight <= 1) continue; 
+
+        for(int i=0; i<6; ++i) {
+            int nx = pos.x + directions[i][0];
+            int ny = pos.y + directions[i][1];
+            int nz = pos.z + directions[i][2];
+
+            if(nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
+                if(!blocks[nx][ny][nz].isActive()) {
+                    if(blocks[nx][ny][nz].skyLight < curLight - 1) {
+                        blocks[nx][ny][nz].skyLight = curLight - 1;
+                        skyQueue.push(glm::ivec3(nx, ny, nz));
+                        meshDirty = true;
+                    }
+                }
+            }
+        }
+    }
+    
+    // Process Block Light
+    while(!blockQueue.empty()) {
+        glm::ivec3 pos = blockQueue.front();
+        blockQueue.pop();
+        
+        int curLight = blocks[pos.x][pos.y][pos.z].blockLight;
+        if(curLight <= 1) continue; 
+
+        for(int i=0; i<6; ++i) {
+            int nx = pos.x + directions[i][0];
+            int ny = pos.y + directions[i][1];
+            int nz = pos.z + directions[i][2];
+
+            if(nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
+                if(!blocks[nx][ny][nz].isActive()) {
+                    if(blocks[nx][ny][nz].blockLight < curLight - 1) {
+                        blocks[nx][ny][nz].blockLight = curLight - 1;
+                        blockQueue.push(glm::ivec3(nx, ny, nz));
+                        meshDirty = true;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Helper for Ambient Occlusion
+// side1, side2 are the two blocks next to the vertex on the face plane
+// corner is the block diagonally from the vertex
+int Chunk::vertexAO(bool side1, bool side2, bool corner) {
+    if(side1 && side2) {
+        return 3;
+    }
+    return (side1 ? 1 : 0) + (side2 ? 1 : 0) + (corner ? 1 : 0);
 }
 

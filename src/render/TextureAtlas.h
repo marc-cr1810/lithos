@@ -30,6 +30,7 @@ private:
     void GenerateWoodTop(int slotX, int slotY);
     void GenerateLeaves(int slotX, int slotY);
     void GenerateOre(int slotX, int slotY, int r, int g, int b);
+    void GenerateGlowstone(int slotX, int slotY);
     
     void SetPixel(int x, int y, unsigned char r, unsigned char g, unsigned char b);
 };

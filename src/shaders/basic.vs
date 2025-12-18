@@ -17,5 +17,7 @@ void main()
     gl_Position = projection * view * model * vec4(aPos, 1.0);
     ourColor = aColor;
     TexCoord = aTexCoord;
-    Lighting = aLight;
+    ourColor = aColor;
+    TexCoord = aTexCoord;
+    Lighting = aLight; // x=Sky, y=Block, z=AO
 }

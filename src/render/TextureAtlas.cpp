@@ -36,6 +36,9 @@ void TextureAtlas::Generate()
     GenerateOre(3, 0, 20, 20, 20); 
     // Iron (3,1) - Tan spots
     GenerateOre(3, 1, 210, 180, 140);
+    
+    // Glowstone (0, 2)
+    GenerateGlowstone(0, 2);
 }
 
 void TextureAtlas::SetPixel(int x, int y, unsigned char r, unsigned char g, unsigned char b)
@@ -199,6 +202,39 @@ void TextureAtlas::GenerateOre(int slotX, int slotY, int r, int g, int b)
             }
             
             SetPixel(startX + x, startY + y, cr, cg, cb);
+        }
+    }
+}
+
+void TextureAtlas::GenerateGlowstone(int slotX, int slotY)
+{
+    int startX = slotX * slotSize;
+    int startY = slotY * slotSize;
+    
+    for(int y=0; y<slotSize; ++y) {
+        for(int x=0; x<slotSize; ++x) {
+            // Glowstone: Crystalline High contrast
+            // Core: Bright Yellow/White
+            // Crystal edges: Orange/Brown
+            
+            // Voronoi-ish or just simple blocky noise?
+            int noise = rand() % 50;
+            if(rand() % 5 == 0) noise -= 30; // Dark spots
+            
+            int baseVal = 200 + noise;
+            if(baseVal > 255) baseVal = 255;
+            if(baseVal < 0) baseVal = 0;
+            
+            unsigned char r = (unsigned char)baseVal; 
+            unsigned char g = (unsigned char)(baseVal * 0.8f); 
+            unsigned char b = (unsigned char)(baseVal * 0.4f);
+            
+            // Randomly very bright pixel (center of crystal)
+            if(rand() % 20 == 0) {
+                 r = 255; g = 255; b = 200;
+            }
+            
+            SetPixel(startX + x, startY + y, r, g, b);
         }
     }
 }
