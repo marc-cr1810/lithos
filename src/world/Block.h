@@ -23,6 +23,10 @@ struct Block {
     bool isActive() const {
         return type != AIR;
     }
+
+    bool isOpaque() const {
+        return type != AIR && type != LEAVES && type != GLOWSTONE;
+    }
     
     uint8_t getEmission() const {
         if(type == GLOWSTONE) return 15;

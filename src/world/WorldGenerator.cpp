@@ -63,7 +63,8 @@ void WorldGenerator::GenerateChunk(Chunk& chunk)
                 
                 // 3D Noise Caves
                 // Parameters: Scale 0.06 (Broader), Threshold 0.25 (More frequent)
-                if(gy < height - 4 && gy > 1) {
+                // Removed (gy < height - 4) restriction to expose caves
+                if(gy > 1) {
                      float caveNoise = glm::perlin(glm::vec3((float)gx, (float)gy, (float)gz) * 0.06f);
                      if(caveNoise > 0.25f) {
                          type = AIR;

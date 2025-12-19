@@ -5,11 +5,9 @@
 #include <queue>
 #include <tuple>
 
-Chunk::Chunk() : meshDirty(true), indexCount(0), chunkPosition(0,0,0), world(nullptr)
+Chunk::Chunk() : meshDirty(true), vertexCount(0), chunkPosition(0,0,0), world(nullptr), VAO(0), VBO(0), EBO(0)
 {
-    glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
-    glGenBuffers(1, &EBO);
+    // GL initialization deferred to Main Thread via initGL()
     // Initialize with air
     for(int x=0; x<CHUNK_SIZE; ++x)
         for(int y=0; y<CHUNK_SIZE; ++y)
@@ -24,6 +22,27 @@ Chunk::~Chunk()
     glDeleteBuffers(1, &EBO);
 }
 
+// ... Setters ...
+
+void Chunk::initGL() {
+    if(VAO == 0) {
+        glGenVertexArrays(1, &VAO);
+        glGenBuffers(1, &VBO);
+        glGenBuffers(1, &EBO);
+    }
+}
+
+void Chunk::render(Shader& shader, const glm::mat4& viewProjection)
+{
+    if(vertexCount == 0) return;
+    if(VAO == 0) initGL();
+    
+    shader.setMat4("model", glm::translate(glm::mat4(1.0f), glm::vec3(chunkPosition.x * CHUNK_SIZE, chunkPosition.y * CHUNK_SIZE, chunkPosition.z * CHUNK_SIZE)));
+    
+    glBindVertexArray(VAO);
+    glDrawArrays(GL_TRIANGLES, 0, vertexCount);
+    glBindVertexArray(0);
+}
 
 Block Chunk::getBlock(int x, int y, int z) const
 {
@@ -34,6 +53,7 @@ Block Chunk::getBlock(int x, int y, int z) const
 
 void Chunk::setBlock(int x, int y, int z, BlockType type)
 {
+    std::lock_guard<std::mutex> lock(chunkMutex);
     if(x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_SIZE || z < 0 || z >= CHUNK_SIZE)
         return;
     blocks[x][y][z].type = type;
@@ -42,6 +62,9 @@ void Chunk::setBlock(int x, int y, int z, BlockType type)
 
 uint8_t Chunk::getSkyLight(int x, int y, int z) const
 {
+    // Technically should lock, but single-byte read might be atomic-ish enough for visual artifacts...
+    // But strictly, we should lock. However, locking on every get is EXPENSIVE.
+    // For now, let's lock setters. get might read torn data but usually just old or new byte.
     if(x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_SIZE || z < 0 || z >= CHUNK_SIZE)
         return 0;
     return blocks[x][y][z].skyLight;
@@ -56,383 +79,308 @@ uint8_t Chunk::getBlockLight(int x, int y, int z) const
 
 void Chunk::setSkyLight(int x, int y, int z, uint8_t val)
 {
+    std::lock_guard<std::mutex> lock(chunkMutex);
     if(x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_SIZE || z < 0 || z >= CHUNK_SIZE)
         return;
     blocks[x][y][z].skyLight = val;
+    meshDirty = true;
 }
 
 void Chunk::setBlockLight(int x, int y, int z, uint8_t val)
 {
+    std::lock_guard<std::mutex> lock(chunkMutex);
     if(x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_SIZE || z < 0 || z >= CHUNK_SIZE)
         return;
     blocks[x][y][z].blockLight = val;
+    meshDirty = true;
+}
+
+std::vector<float> Chunk::generateGeometry()
+{
+    // Thread safety: Lock while reading blocks
+    std::lock_guard<std::mutex> lock(chunkMutex);
+    
+    std::vector<float> vertices;
+    // Pre-allocate decent amount
+    vertices.reserve(4096);
+
+    // Greedy Meshing
+    struct MaskInfo {
+        BlockType type;
+        uint8_t sky;
+        uint8_t block;
+        uint8_t ao[4]; // BL, BR, TR, TL
+        
+        bool operator==(const MaskInfo& other) const {
+            return type == other.type && sky == other.sky && block == other.block &&
+                   ao[0] == other.ao[0] && ao[1] == other.ao[1] && 
+                   ao[2] == other.ao[2] && ao[3] == other.ao[3];
+        }
+        bool operator!=(const MaskInfo& other) const {
+            return !(*this == other);
+        }
+    };
+    
+    // normal axis: 0=Z, 1=Z, 2=X, 3=X, 4=Y, 5=Y -> axis index: 2, 2, 0, 0, 1, 1
+
+    for(int faceDir = 0; faceDir < 6; ++faceDir) {
+        int axis = (faceDir <= 1) ? 2 : ((faceDir <= 3) ? 0 : 1);
+        int uAxis = (axis == 0) ? 2 : ((axis == 1) ? 0 : 0);
+        int vAxis = (axis == 0) ? 1 : ((axis == 1) ? 2 : 1);
+        
+        int nX=0, nY=0, nZ=0;
+            if(faceDir==0) nZ=1; else if(faceDir==1) nZ=-1;
+            else if(faceDir==2) nX=-1; else if(faceDir==3) nX=1;
+            else if(faceDir==4) nY=1; else if(faceDir==5) nY=-1;
+
+        auto getAt = [&](int u, int v, int d) -> Block {
+                int p[3]; p[axis] = d; p[uAxis] = u; p[vAxis] = v;
+                return blocks[p[0]][p[1]][p[2]];
+        };
+        auto getPos = [&](int u, int v, int d, int& ox, int& oy, int& oz) {
+                int p[3]; p[axis] = d; p[uAxis] = u; p[vAxis] = v;
+                ox = p[0]; oy = p[1]; oz = p[2];
+        };
+
+        for(int d = 0; d < CHUNK_SIZE; ++d) {
+                MaskInfo mask[CHUNK_SIZE][CHUNK_SIZE];
+                for(int u=0;u<CHUNK_SIZE;++u) for(int v=0;v<CHUNK_SIZE;++v) mask[u][v] = {AIR, 0, 0, {0,0,0,0}};
+
+                for(int v=0; v<CHUNK_SIZE; ++v) {
+                    for(int u=0; u<CHUNK_SIZE; ++u) {
+                        Block b = getAt(u, v, d);
+                        if(b.isActive()) {
+                            int lx, ly, lz; getPos(u, v, d, lx, ly, lz);
+                            int nx = lx + nX; int ny = ly + nY; int nz = lz + nZ;
+                            
+                            bool occluded = false;
+                            uint8_t skyVal = 0; uint8_t blockVal = 0;
+
+                            if(nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
+                                if(blocks[nx][ny][nz].isActive()) occluded = true;
+                                else { skyVal = blocks[nx][ny][nz].skyLight; blockVal = blocks[nx][ny][nz].blockLight; }
+                            } else if(world) {
+                                int gx = chunkPosition.x * CHUNK_SIZE + nx;
+                                int gy = chunkPosition.y * CHUNK_SIZE + ny;
+                                int gz = chunkPosition.z * CHUNK_SIZE + nz;
+                                Block nb = world->getBlock(gx, gy, gz);
+                                if(nb.isActive()) occluded = true;
+                                else { skyVal = world->getSkyLight(gx, gy, gz); blockVal = world->getBlockLight(gx, gy, gz); }
+                            }
+                            
+                            if(!occluded) {
+                                auto sampleAO = [&](int u1, int v1, int u2, int v2, int u3, int v3) -> uint8_t {
+                                    auto check = [&](int u, int v) -> bool {
+                                        int lx, ly, lz; getPos(u, v, d, lx, ly, lz);
+                                        int nx=lx+nX; int ny=ly+nY; int nz=lz+nZ;
+                                        if(nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) 
+                                            return blocks[nx][ny][nz].isOpaque();
+                                        if(world) {
+                                            int gx = chunkPosition.x * CHUNK_SIZE + nx;
+                                            int gy = chunkPosition.y * CHUNK_SIZE + ny;
+                                            int gz = chunkPosition.z * CHUNK_SIZE + nz;
+                                            return world->getBlock(gx, gy, gz).isOpaque();
+                                        }
+                                        return false;
+                                    };
+                                    bool s1 = check(u1, v1); bool s2 = check(u2, v2); bool c = check(u3, v3);
+                                    if(s1 && s2) return 3;
+                                    return (s1?1:0) + (s2?1:0) + (c?1:0);
+                                };
+                                uint8_t aos[4];
+                                aos[0] = sampleAO(u-1, v, u, v-1, u-1, v-1); 
+                                aos[1] = sampleAO(u+1, v, u, v-1, u+1, v-1); 
+                                aos[2] = sampleAO(u+1, v, u, v+1, u+1, v+1); 
+                                aos[3] = sampleAO(u-1, v, u, v+1, u-1, v+1); 
+                                mask[u][v] = { (BlockType)b.type, skyVal, blockVal, {aos[0], aos[1], aos[2], aos[3]} };
+                            }
+                        }
+                    }
+                }
+                // Greedy Mesh
+                for(int v=0; v<CHUNK_SIZE; ++v) {
+                    for(int u=0; u<CHUNK_SIZE; ++u) {
+                        if(mask[u][v].type != AIR) {
+                            MaskInfo current = mask[u][v];
+                            int w = 1, h = 1;
+                            while(u + w < CHUNK_SIZE && mask[u+w][v] == current) w++;
+                            bool canExtend = true;
+                            while(v + h < CHUNK_SIZE && canExtend) {
+                                for(int k=0; k<w; ++k) if(mask[u+k][v+h] != current) { canExtend = false; break; }
+                                if(canExtend) h++;
+                            }
+                            int lx, ly, lz; getPos(u, v, d, lx, ly, lz);
+                            addFace(vertices, lx, ly, lz, faceDir, current.type, w, h, current.ao[0], current.ao[1], current.ao[2], current.ao[3]);
+                            for(int j=0; j<h; ++j) for(int i=0; i<w; ++i) mask[u+i][v+j] = {AIR, 0, 0, {0,0,0,0}};
+                            u += w - 1; 
+                        }
+                    }
+                }
+        }
+    }
+    return vertices;
+}
+void Chunk::uploadMesh(const std::vector<float>& data)
+{
+    if(VAO == 0) initGL();
+
+    
+    // Upload to GPU (Main Thread)
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(float), data.data(), GL_STATIC_DRAW);
+    
+    vertexCount = data.size() / 13; // 13 floats per vert
+    
+    // Attribs
+    float stride = 13 * sizeof(float);
+    
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0); // Pos
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float))); // Color
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(6 * sizeof(float))); // UV
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride, (void*)(8 * sizeof(float))); // Light(Sky,Block,AO)
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, stride, (void*)(11 * sizeof(float))); // TexOrigin
+    glEnableVertexAttribArray(4);
 }
 
 void Chunk::updateMesh()
 {
-    vertices.clear();
-    indices.clear();
-    indexCount = 0;
-    
-    unsigned int vIndex = 0;
-    
-    // -------------------------------------------------------
-    // Lighting Calculation (BFS) - MOVED TO calculateSunlight/spreadLight
-    // -------------------------------------------------------
-    
-    // We assume light is already calculated when updateMesh runs.
-    // -------------------------------------------------------
-
-    for(int x=0; x<CHUNK_SIZE; ++x)
-    {
-        for(int y=0; y<CHUNK_SIZE; ++y)
-        {
-            for(int z=0; z<CHUNK_SIZE; ++z)
-            {
-                BlockType type = (BlockType)blocks[x][y][z].type;
-                if(type == AIR) continue;
-
-                // Check neighbors
-                // Front (Z+1)
-                if(!getBlock(x, y, z+1).isActive()) addFace(x, y, z, 0, type); // Front
-                if(!getBlock(x, y, z-1).isActive()) addFace(x, y, z, 1, type); // Back
-                if(!getBlock(x-1, y, z).isActive()) addFace(x, y, z, 2, type); // Left
-                if(!getBlock(x+1, y, z).isActive()) addFace(x, y, z, 3, type); // Right
-                if(!getBlock(x, y+1, z).isActive()) addFace(x, y, z, 4, type); // Top
-                if(!getBlock(x, y-1, z).isActive()) addFace(x, y, z, 5, type); // Bottom
-            }
-        }
-    }
-
-    glBindVertexArray(VAO);
-    
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
-
-    // Use 11 * float for stride (3 pos + 3 color + 2 tex + 3 light)
-    float stride = 11 * sizeof(float);
-    
-    // Position
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
-    glEnableVertexAttribArray(0);
-    // Color
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-    // TexCoord
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(6 * sizeof(float)));
-    glEnableVertexAttribArray(2);
-    // Lighting
-    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride, (void*)(8 * sizeof(float)));
-    glEnableVertexAttribArray(3);
-
-    // Use Element Buffer for indexed drawing if we were optimizing vertices, but here we just push triangles.
-    // Actually, my addFace implementation below will probably just push vertices for GL_TRIANGLES.
-    // Let's stick to draw arrays if I don't implement EBO logic for now, or use EBO correctly.
-    // I defined indices vector, but let's just use glDrawArrays for simplicity unless I deduplicate vertices.
-    // I'll stick to glDrawArrays.
+    std::vector<float> newVertices = generateGeometry();
+    uploadMesh(newVertices);
+    meshDirty = false;
 }
 
-void Chunk::addFace(int x, int y, int z, int faceDir, int blockType)
+void Chunk::addFace(std::vector<float>& vertices, int x, int y, int z, int faceDir, int blockType, int width, int height, int aoBL, int aoBR, int aoTR, int aoTL)
 {
-    // Colors
     float r, g, b;
-    // Set colors for tinting textures
-    // Grass: Green Tint (Texture is greyscale)
     if (blockType == GRASS) { r = 0.0f; g = 1.0f; b = 0.0f; } 
-    // Dirt: Brown Tint (Texture is greyscale)
     else if (blockType == DIRT) { r = 0.6f; g = 0.4f; b = 0.2f; }
-    // Stone: White Tint (Use texture color directly - which is Grey)
     else if (blockType == STONE) { r = 1.0f; g = 1.0f; b = 1.0f; } 
-    // Wood uses texture colors (White Tint)
     else if (blockType == WOOD) { r = 1.0f; g = 1.0f; b = 1.0f; } 
-    // Leaves: Green Tint
     else if (blockType == LEAVES) { r = 0.2f; g = 0.8f; b = 0.2f; } 
-    // Ores: White Tint (Use texture)
-    // Ores: White Tint (Use texture)
     else if (blockType == COAL_ORE || blockType == IRON_ORE || blockType == GLOWSTONE) { r = 1.0f; g = 1.0f; b = 1.0f; }
-    else { r = 1.0f; g = 0.0f; b = 1.0f; } // Pink error
+    else { r = 1.0f; g = 0.0f; b = 1.0f; }
 
-    // Sky/Block Light
-    // Get light from the air block next to the face
-    float skyVal = 1.0f; // Default 15? No default 0 if dark?
-    float blockVal = 0.0f;
-    int nx=0, ny=0, nz=0;
-    
-    if(world) {
-        int gx = chunkPosition.x * CHUNK_SIZE + x;
-        int gy = chunkPosition.y * CHUNK_SIZE + y;
-        int gz = chunkPosition.z * CHUNK_SIZE + z;
-        
-        int dx=0, dy=0, dz=0;
-        if(faceDir==0) dz=1;      // Front
-        else if(faceDir==1) dz=-1;// Back
-        else if(faceDir==2) dx=-1;// Left
-        else if(faceDir==3) dx=1; // Right
-        else if(faceDir==4) dy=1; // Top
-        else dy=-1;               // Bottom
-
-        int nx_local = gx+dx; int ny_local = gy+dy; int nz_local = gz+dz;
-        nx = nx_local; ny = ny_local; nz = nz_local;
-        
-        uint8_t s = world->getSkyLight(nx, ny, nz);
-        uint8_t bl = world->getBlockLight(nx, ny, nz);
-        
-        // Convert to float 0-1
-        skyVal = (float)s / 15.0f;
-        blockVal = (float)bl / 15.0f;
-        
-        // Gamma/Curve
-        skyVal = pow(skyVal, 0.8f); // Tweak power
-        blockVal = pow(blockVal, 0.8f);
-    }
-
-    // Face Shading (Ambient Occlusion placeholder / Directional Shade)
+    float l1 = 1.0f, l2 = 1.0f;
     float faceShade = 1.0f;
-    if(faceDir == 4) faceShade = 1.0f;        // Top
-    else if(faceDir == 5) faceShade = 0.6f;   // Bottom
-    else faceShade = 0.8f;                    // Side
-    
-    // Apply Face Shade to Color Tint
-    r *= faceShade;
-    g *= faceShade;
-    b *= faceShade;
-
-    // Light Attribute now passes: Sky, Block, AO
-    // AO Calculation
-    // We need to calculate AO for 4 corners of the face.
-    // Neighbors relative to the AIR BLOCK (nx, ny, nz).
-    
-    float aoBL=0, aoBR=0, aoTL=0, aoTR=0; // 0..3
+    if(faceDir == 4) faceShade = 1.0f;
+    else if(faceDir == 5) faceShade = 0.6f;
+    else faceShade = 0.8f;
+    r *= faceShade; g *= faceShade; b *= faceShade;
     
     if(world) {
-        auto isOcc = [&](int dX, int dY, int dZ) {
-            return world->getBlock(nx+dX, ny+dY, nz+dZ).isActive();
-        };
-
-        bool t=false, b=false, l=false, r=false;
-        bool tl=false, tr=false, bl=false, br=false;
-        
-        // Define T, B, L, R relative to face
-        if(faceDir == 0 || faceDir == 1) { // Front/Back (Z axis)
-             // Up=Y+, Right=X+ (for Front)
-             // Actually, Right depends on winding, but let's stick to world axis.
-             t = isOcc(0, 1, 0);
-             b = isOcc(0, -1, 0);
-             l = isOcc(-1, 0, 0);
-             r = isOcc(1, 0, 0);
-             tl = isOcc(-1, 1, 0);
-             tr = isOcc(1, 1, 0);
-             bl = isOcc(-1, -1, 0);
-             br = isOcc(1, -1, 0);
-             
-             // Map to corners (assuming Standard quad orientation)
-             // BL = (-1, -1), BR = (1, -1), TR = (1, 1), TL = (-1, 1)
-             aoBL = vertexAO(l, b, bl);
-             aoBR = vertexAO(r, b, br);
-             aoTR = vertexAO(r, t, tr);
-             aoTL = vertexAO(l, t, tl);
-        }
-        else if(faceDir == 2 || faceDir == 3) { // Lefty/Right (X axis)
-             // Up=Y+, Right=Z+ (For Right?)
-             t = isOcc(0, 1, 0);
-             b = isOcc(0, -1, 0);
-             l = isOcc(0, 0, -1); // Z-
-             r = isOcc(0, 0, 1);  // Z+
-             tl = isOcc(0, 1, -1);
-             tr = isOcc(0, 1, 1);
-             bl = isOcc(0, -1, -1);
-             br = isOcc(0, -1, 1);
-             
-             // BL (Z-, Y-), BR (Z+, Y-), TR (Z+, Y+), TL (Z-, Y+)
-             aoBL = vertexAO(l, b, bl);
-             aoBR = vertexAO(r, b, br);
-             aoTR = vertexAO(r, t, tr);
-             aoTL = vertexAO(l, t, tl);
-        }
-        else { // Top/Bottom (Y axis)
-             // Up=Z+, Right=X+
-             t = isOcc(0, 0, 1); // Z+ (Top in 2D plane)
-             b = isOcc(0, 0, -1); // Z-
-             l = isOcc(-1, 0, 0); // X-
-             r = isOcc(1, 0, 0); // X+
-             tl = isOcc(-1, 0, 1);
-             tr = isOcc(1, 0, 1);
-             bl = isOcc(-1, 0, -1);
-             br = isOcc(1, 0, -1);
-             
-             // BL (X-, Z-), BR (X+, Z-), TR (X+, Z+), TL (X-, Z+)
-             aoBL = vertexAO(l, b, bl);
-             aoBR = vertexAO(r, b, br);
-             aoTR = vertexAO(r, t, tr);
-             aoTL = vertexAO(l, t, tl);
-        }
+         int gx = chunkPosition.x * CHUNK_SIZE + x;
+         int gy = chunkPosition.y * CHUNK_SIZE + y;
+         int gz = chunkPosition.z * CHUNK_SIZE + z;
+         int dx=0, dy=0, dz=0;
+         if(faceDir==0) dz=1; else if(faceDir==1) dz=-1;
+         else if(faceDir==2) dx=-1; else if(faceDir==3) dx=1;
+         else if(faceDir==4) dy=1; else dy=-1;
+         
+         uint8_t s = world->getSkyLight(gx+dx, gy+dy, gz+dz);
+         uint8_t bl = world->getBlockLight(gx+dx, gy+dy, gz+dz);
+         l1 = pow((float)s/15.0f, 0.8f);
+         l2 = pow((float)bl/15.0f, 0.8f);
     }
 
-    float l1 = skyVal;
-    float l2 = blockVal;
-    // l3 is now unused placeholder in array setup, we will replace usage below.
-    float l3 = 0.0f;
-
-
-    // (Redundant occlusion logic removed)
-
-    // UV Mapping
-    // Atlas 64x64, Blocks 16x16 -> 0.25 step
-    // Stone: 0,0
-    // Dirt: 1,0
-    // Grass: 2,0
-    // WoodSide: 0,1
-    // WoodTop: 1,1
-    // Leaves: 2,1
-
-    float uMin = 0.00f, uMax = 0.25f;
-    float vMin = 0.00f, vMax = 0.25f;
+    float uMin = 0.00f, vMin = 0.00f; 
     
-    if(blockType == DIRT) {
-         uMin = 0.25f; uMax = 0.50f;
-         vMin = 0.00f; vMax = 0.25f;
-    }
-    else if(blockType == GRASS) {
-         uMin = 0.50f; uMax = 0.75f;
-         vMin = 0.00f; vMax = 0.25f;
-         if(faceDir == 4) { // Top of Grass (could vary?)
-             // For now same
-         }
-    }
+    if(blockType == DIRT) { uMin = 0.25f; vMin = 0.00f; }
+    else if(blockType == GRASS) { uMin = 0.50f; vMin = 0.00f; }
     else if(blockType == WOOD) {
-        if(faceDir == 4 || faceDir == 5) { // Top/Bottom
-            // Rings (1,1)
-            uMin = 0.25f; uMax = 0.50f;
-            vMin = 0.25f; vMax = 0.50f;
-        } else {
-            // Bark (0,1)
-            uMin = 0.00f; uMax = 0.25f;
-            vMin = 0.25f; vMax = 0.50f;
-        }
+        if(faceDir == 4 || faceDir == 5) { uMin = 0.25f; vMin = 0.25f; } 
+        else { uMin = 0.00f; vMin = 0.25f; } 
     } 
-    else if(blockType == LEAVES) {
-        // Leaves (2,1)
-        uMin = 0.50f; uMax = 0.75f;
-        vMin = 0.25f; vMax = 0.50f;
-    }
-    else if(blockType == COAL_ORE) {
-        // Coal (3,0)
-        uMin = 0.75f; uMax = 1.00f;
-        vMin = 0.00f; vMax = 0.25f;
-    }
-    else if(blockType == IRON_ORE) {
-        // Iron (3,1)
-        uMin = 0.75f; uMax = 1.00f;
-        vMin = 0.25f; vMax = 0.50f;
-    }
-    else if(blockType == GLOWSTONE) {
-        // Glowstone (0,2)
-        uMin = 0.00f; uMax = 0.25f;
-        vMin = 0.50f; vMax = 0.75f;
-    }
-    // Else Stone uses default 0,0
+    else if(blockType == LEAVES) { uMin = 0.50f; vMin = 0.25f; }
+    else if(blockType == COAL_ORE) { uMin = 0.75f; vMin = 0.00f; }
+    else if(blockType == IRON_ORE) { uMin = 0.75f; vMin = 0.25f; }
+    else if(blockType == GLOWSTONE) { uMin = 0.00f; vMin = 0.50f; }
 
-    float fx = (float)x;
-    float fy = (float)y;
-    float fz = (float)z;
+    float fx = (float)x, fy = (float)y, fz = (float)z;
+    float fw = (float)width, fh = (float)height;
 
-    // Offsets
-    // Front face (z=1)
-    if(faceDir == 0) // Front
-    {
-        float faceData[] = {
-            fx, fy, fz+1.0f,    r,g,b,  uMin, vMin,  l1,l2,aoBL,
-            fx+1.0f, fy, fz+1.0f,  r,g,b,  uMax, vMin,  l1,l2,aoBR,
-            fx+1.0f, fy+1.0f, fz+1.0f,r,g,b,  uMax, vMax,  l1,l2,aoTR,
-            fx, fy, fz+1.0f,    r,g,b,  uMin, vMin,  l1,l2,aoBL,
-            fx+1.0f, fy+1.0f, fz+1.0f,r,g,b,  uMax, vMax,  l1,l2,aoTR,
-            fx, fy+1.0f, fz+1.0f,  r,g,b,  uMin, vMax,  l1,l2,aoTL
-        };
-        vertices.insert(vertices.end(), faceData, faceData + 66);
-    }
-    // Back face (z=0)
-    else if(faceDir == 1) // Back
-    {
-        float faceData[] = {
-            fx+1.0f, fy, fz,    r,g,b,  uMin, vMin,  l1,l2,aoBR,
-            fx, fy, fz,         r,g,b,  uMax, vMin,  l1,l2,aoBL,
-            fx, fy+1.0f, fz,    r,g,b,  uMax, vMax,  l1,l2,aoTL,
-            fx+1.0f, fy, fz,    r,g,b,  uMin, vMin,  l1,l2,aoBR,
-            fx, fy+1.0f, fz,    r,g,b,  uMax, vMax,  l1,l2,aoTL,
-            fx+1.0f, fy+1.0f, fz,  r,g,b,  uMin, vMax,  l1,l2,aoTR
-        };
-        vertices.insert(vertices.end(), faceData, faceData + 66);
-    }
-    // Left (x=0)
-    else if(faceDir == 2)
-    {
-        float faceData[] = {
-            fx, fy, fz,         r,g,b,  uMin, vMin,  l1,l2,aoBL,
-            fx, fy, fz+1.0f,    r,g,b,  uMax, vMin,  l1,l2,aoBR,
-            fx, fy+1.0f, fz+1.0f,  r,g,b,  uMax, vMax,  l1,l2,aoTR,
-            fx, fy, fz,         r,g,b,  uMin, vMin,  l1,l2,aoBL,
-            fx, fy+1.0f, fz+1.0f,  r,g,b,  uMax, vMax,  l1,l2,aoTR,
-            fx, fy+1.0f, fz,    r,g,b,  uMin, vMax,  l1,l2,aoTL
-        };
-        vertices.insert(vertices.end(), faceData, faceData + 66);
-    }
-    // Right (x=1)
-    else if(faceDir == 3)
-    {
-         float faceData[] = {
-            fx+1.0f, fy, fz+1.0f,    r,g,b,  uMin, vMin,  l1,l2,aoBR,
-            fx+1.0f, fy, fz,         r,g,b,  uMax, vMin,  l1,l2,aoBL,
-            fx+1.0f, fy+1.0f, fz,    r,g,b,  uMax, vMax,  l1,l2,aoTL,
-            fx+1.0f, fy, fz+1.0f,    r,g,b,  uMin, vMin,  l1,l2,aoBR,
-            fx+1.0f, fy+1.0f, fz,    r,g,b,  uMax, vMax,  l1,l2,aoTL,
-            fx+1.0f, fy+1.0f, fz+1.0f,  r,g,b,  uMin, vMax,  l1,l2,aoTR
-        };
-        vertices.insert(vertices.end(), faceData, faceData + 66);
-    }
-    // Top (y=1)
-    else if(faceDir == 4)
-    {
-        float faceData[] = {
-            fx, fy+1.0f, fz+1.0f,    r,g,b,  uMin, vMin,  l1,l2,aoTL,
-            fx+1.0f, fy+1.0f, fz+1.0f,  r,g,b,  uMax, vMin,  l1,l2,aoTR,
-            fx+1.0f, fy+1.0f, fz,    r,g,b,  uMax, vMax,  l1,l2,aoBR,
-            fx, fy+1.0f, fz+1.0f,    r,g,b,  uMin, vMin,  l1,l2,aoTL,
-            fx+1.0f, fy+1.0f, fz,    r,g,b,  uMax, vMax,  l1,l2,aoBR,
-            fx, fy+1.0f, fz,      r,g,b,  uMin, vMax,  l1,l2,aoBL
-        };
-        vertices.insert(vertices.end(), faceData, faceData + 66);
-    }
-    // Bottom (y=0)
-    else
-    {
-        float faceData[] = {
-            fx, fy, fz,         r,g,b,  uMin, vMin,  l1,l2,aoBL,
-            fx+1.0f, fy, fz,    r,g,b,  uMax, vMin,  l1,l2,aoBR,
-            fx+1.0f, fy, fz+1.0f,  r,g,b,  uMax, vMax,  l1,l2,aoTR,
-            fx, fy, fz,         r,g,b,  uMin, vMin,  l1,l2,aoBL,
-            fx+1.0f, fy, fz+1.0f,  r,g,b,  uMax, vMax,  l1,l2,aoTR,
-            fx, fy, fz+1.0f,    r,g,b,  uMin, vMax,  l1,l2,aoTL
-        };
-        vertices.insert(vertices.end(), faceData, faceData + 66);
-    }
-    
-    indexCount += 6;
-}
+    auto pushVert = [&](float vx, float vy, float vz, float u, float v, float ao) {
+        vertices.push_back(vx); vertices.push_back(vy); vertices.push_back(vz);
+        vertices.push_back(r); vertices.push_back(g); vertices.push_back(b);
+        vertices.push_back(u); vertices.push_back(v); 
+        vertices.push_back(l1); vertices.push_back(l2); vertices.push_back(ao);
+        vertices.push_back(uMin); vertices.push_back(vMin); 
+    };
 
-void Chunk::render(Shader& shader)
-{
-    if(meshDirty)
-    {
-        updateMesh();
-        meshDirty = false;
+    if(faceDir == 0) { // Front Z+
+        // BL(0), BR(1), TR(2)
+        pushVert(fx, fy, fz+1, 0, 0, (float)aoBL);
+        pushVert(fx+fw, fy, fz+1, fw, 0, (float)aoBR);
+        pushVert(fx+fw, fy+fh, fz+1, fw, fh, (float)aoTR);
+        
+        // BL(0), TR(2), TL(3)
+        pushVert(fx, fy, fz+1, 0, 0, (float)aoBL);
+        pushVert(fx+fw, fy+fh, fz+1, fw, fh, (float)aoTR);
+        pushVert(fx, fy+fh, fz+1, 0, fh, (float)aoTL);
     }
-    
-    glm::mat4 model = glm::mat4(1.0f);
-    model = glm::translate(model, glm::vec3(chunkPosition * CHUNK_SIZE));
-    shader.setMat4("model", model);
-    
-    glBindVertexArray(VAO);
-    glDrawArrays(GL_TRIANGLES, 0, vertices.size() / 11);
+    else if(faceDir == 1) { // Back Z-
+        pushVert(fx+fw, fy, fz, 0, 0, (float)aoBR);
+        pushVert(fx, fy, fz, fw, 0, (float)aoBL);
+        pushVert(fx, fy+fh, fz, fw, fh, (float)aoTL);
+        
+        pushVert(fx+fw, fy, fz, 0, 0, (float)aoBR);
+        pushVert(fx, fy+fh, fz, fw, fh, (float)aoTL);
+        pushVert(fx+fw, fy+fh, fz, 0, fh, (float)aoTR);
+    }
+    else if(faceDir == 2) { // Left X-
+        pushVert(fx, fy, fz, 0, 0, (float)aoBL);
+        pushVert(fx, fy, fz+fw, fw, 0, (float)aoBR);
+        pushVert(fx, fy+fh, fz+fw, fw, fh, (float)aoTR);
+        
+        pushVert(fx, fy, fz, 0, 0, (float)aoBL);
+        pushVert(fx, fy+fh, fz+fw, fw, fh, (float)aoTR);
+        pushVert(fx, fy+fh, fz, 0, fh, (float)aoTL);
+    }
+    else if(faceDir == 3) { // Right X+
+        pushVert(fx+1, fy, fz+fw, 0, 0, (float)aoBR);
+        pushVert(fx+1, fy, fz, fw, 0, (float)aoBL);
+        pushVert(fx+1, fy+fh, fz, fw, fh, (float)aoTL);
+        
+        pushVert(fx+1, fy, fz+fw, 0, 0, (float)aoBR);
+        pushVert(fx+1, fy+fh, fz, fw, fh, (float)aoTL); 
+        pushVert(fx+1, fy+fh, fz+fw, 0, fh, (float)aoTR);
+    }
+    else if(faceDir == 4) { // Top Y+
+        // Reverting Z-swap. Restoring Logic:
+        // 1. (x, z+h)   -> (minX, maxZ) -> Top-Left -> aoTL (valAO[3])
+        // 2. (x+w, z+h) -> (maxX, maxZ) -> Top-Right -> aoTR (valAO[2])
+        // 3. (x+w, z)   -> (maxX, minZ) -> Bottom-Right -> aoBR (valAO[1])
+        // 4. (x, z)     -> (minX, minZ) -> Bottom-Left -> aoBL (valAO[0])
+        
+        // Quad 1: TL, TR, BR
+        pushVert(fx, fy+1, fz+fh, 0, 0, (float)aoTL); 
+        pushVert(fx+fw, fy+1, fz+fh, fw, 0, (float)aoTR);
+        pushVert(fx+fw, fy+1, fz, fw, fh, (float)aoBR);
+        
+        // Quad 2: TL, BR, BL
+        pushVert(fx, fy+1, fz+fh, 0, 0, (float)aoTL);
+        pushVert(fx+fw, fy+1, fz, fw, fh, (float)aoBR);
+        pushVert(fx, fy+1, fz, 0, fh, (float)aoBL);
+    }
+    else { // Bottom Y-
+        // Reverting Z-swap
+        // 1. (x, z)     -> (minX, minZ) -> aoBL
+        // 2. (x+w, z)   -> (maxX, minZ) -> aoBR
+        // 3. (x+w, z+h) -> (maxX, maxZ) -> aoTR
+        // 4. (x, z+h)   -> (minX, maxZ) -> aoTL
+        
+        pushVert(fx, fy, fz, 0, 0, (float)aoBL);
+        pushVert(fx+fw, fy, fz, fw, 0, (float)aoBR);
+        pushVert(fx+fw, fy, fz+fh, fw, fh, (float)aoTR);
+        
+        pushVert(fx, fy, fz, 0, 0, (float)aoBL);
+        pushVert(fx+fw, fy, fz+fh, fw, fh, (float)aoTR);
+        pushVert(fx, fy, fz+fh, 0, fh, (float)aoTL);
+    }
 }
 
 bool Chunk::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist, glm::ivec3& outputPos, glm::ivec3& outputPrePos)
@@ -483,24 +431,33 @@ void Chunk::calculateSunlight() {
              
              bool exposedToSky = true;
              if(world) {
-                 int startGy = (chunkPosition.y + 1) * CHUNK_SIZE;
-                 for(int cy = startGy; cy < 128; ++cy) { 
-                     int cx = (int)floor((float)gx / CHUNK_SIZE);
-                     int cz = (int)floor((float)gz / CHUNK_SIZE);
-                     int cY_index = (int)floor((float)cy / CHUNK_SIZE);
+                 int startCyIndex = chunkPosition.y + 1;
+                 int endCyIndex = 127 / CHUNK_SIZE; // Max world height index
+                 
+                 for(int cy_idx = startCyIndex; cy_idx <= endCyIndex; ++cy_idx) {
+                     int cx = chunkPosition.x;
+                     int cz = chunkPosition.z;
                      
-                     Chunk* c = world->getChunk(cx, cY_index, cz);
+                     Chunk* c = world->getChunk(cx, cy_idx, cz);
                      if(c) {
-                         int lx = gx % CHUNK_SIZE; if(lx<0) lx+=CHUNK_SIZE;
-                         int ly = cy % CHUNK_SIZE; if(ly<0) ly+=CHUNK_SIZE;
-                         int lz = gz % CHUNK_SIZE; if(lz<0) lz+=CHUNK_SIZE;
-                         if(c->getBlock(lx, ly, lz).isActive()) {
-                             exposedToSky = false;
-                             break;
+                         // Check all blocks in this chunk column
+                         bool blocked = false;
+                         for(int ly=0; ly<CHUNK_SIZE; ++ly) {
+                             if(c->getBlock(x, ly, z).isActive()) {
+                                 exposedToSky = false;
+                                 blocked = true;
+                                 break;
+                             }
                          }
+                         if(blocked) break;
                      } else {
+                         // Fallback using Heightmap
+                         int chunkBaseY = cy_idx * CHUNK_SIZE;
                          int terrainH = WorldGenerator::GetHeight(gx, gz);
-                         if(cy <= terrainH + 5) {
+                         
+                         // If the bottom of this chunk is below the potential terrain/tree height
+                         if(chunkBaseY <= terrainH + 6) {
+                             // Assuming solid if missing and below height
                              exposedToSky = false;
                              break;
                          }
@@ -540,6 +497,7 @@ void Chunk::calculateBlockLight() {
 }
 
 void Chunk::spreadLight() {
+    std::lock_guard<std::mutex> lock(chunkMutex);
     std::queue<glm::ivec3> skyQueue;
     std::queue<glm::ivec3> blockQueue;
     

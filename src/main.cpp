@@ -1,4 +1,9 @@
 #include <iostream>
+#include <vector>
+#include <thread>
+#include <atomic>
+#include <chrono>
+#include <algorithm>
 
 #ifdef USE_GLEW
 #include <GL/glew.h>
@@ -82,6 +87,8 @@ int main()
     // configure global opengl state
     // -----------------------------
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
 
     // build and compile our shader zprogram
     // ------------------------------------
@@ -104,6 +111,7 @@ int main()
     int worldSize = 4; // 8x8 chunks
     int worldHeight = 4; // 0..3 chunks vertically (64 blocks high)
     
+    std::vector<Chunk*> allChunks;
     for(int x = -worldSize; x < worldSize; ++x)
     {
         for(int z = -worldSize; z < worldSize; ++z)
@@ -112,11 +120,36 @@ int main()
             {
                 world.addChunk(x, y, z);
                 Chunk* c = world.getChunk(x, y, z);
-                if(c)
-                    generator.GenerateChunk(*c);
+                if(c) allChunks.push_back(c);
             }
         }
     }
+    
+    // Parallel Generation
+    int threadCount = std::thread::hardware_concurrency();
+    if(threadCount == 0) threadCount = 4;
+    std::vector<std::thread> threads;
+    std::atomic<int> chunkIdx(0);
+    int totalChunks = allChunks.size();
+    
+    for(int i=0; i<threadCount; ++i) {
+        threads.emplace_back([&](){
+            while(true) {
+                 int idx = chunkIdx.fetch_add(1);
+                 if(idx >= totalChunks) break;
+                 Chunk* c = allChunks[idx];
+                 generator.GenerateChunk(*c);
+                 c->calculateSunlight();
+                 c->calculateBlockLight();
+                 c->spreadLight();
+                 // No queue mesh update needed here, render loop handles it
+            }
+        });
+    }
+    
+    for(auto& t : threads) t.join();
+    
+
 
     // Global Lighting Pass 1: seeding sunlight
     for(int x = -worldSize; x < worldSize; ++x) {
@@ -138,7 +171,8 @@ int main()
                  Chunk* c = world.getChunk(x, y, z);
                  if(c) {
                      c->spreadLight();
-                     c->meshDirty = true; // Force Rebuild to upload light data to GPU
+                     // Queue for mesh rebuild
+                     world.QueueMeshUpdate(c);
                  }
             }
         }
@@ -222,11 +256,22 @@ BlockType selectedBlock = STONE;
         deltaTime = std::min(deltaTime, 0.1f); // Clamp
         
         globalTime += deltaTime;
+        
+        // World Update (Mesh Uploads)
+        world.Update();
+        
+        // LOD Check (Every 0.5s)
+        static float lodTimer = 0.0f;
+        lodTimer += deltaTime;
+        if(lodTimer > 0.5f) {
+
+            lodTimer = 0.0f;
+        }
 
         // Calculate Sun Brightness
         // Simple Sine wave day/night cycle
-        // Speed: globalTime * 0.1 means cycle is 20*PI seconds ~= 60 seconds
-        float sunStrength = (sin(globalTime * 0.2f) + 1.0f) * 0.5f; 
+        // Speed: globalTime * 0.05 means cycle is 40*PI seconds ~= 125 seconds
+        float sunStrength = (sin(globalTime * 0.05f) + 1.0f) * 0.5f; 
         // Clamp minimum brightness so it's not pitch black (moonlight)
         sunStrength = std::max(0.05f, sunStrength);
 
@@ -265,7 +310,7 @@ BlockType selectedBlock = STONE;
         // render chunk
         ourShader.setBool("useTexture", true);
         blockTexture.bind();
-        world.render(ourShader);
+        world.render(ourShader, projection * view);
 
         // Interaction
         glm::ivec3 hitPos;
@@ -328,14 +373,30 @@ BlockType selectedBlock = STONE;
 
             if (world.getBlock(placeX, placeY, placeZ).isActive() == false)
             {
-                // Try to place block
-                world.setBlock(placeX, placeY, placeZ, selectedBlock);
+                // Check if we stuck the player (PRE-CHECK)
+                // We do this BEFORE setBlock to avoid "Ghost Light" bugs where reverting (setBlock to AIR)
+                // fails to fully clean up lighting propagated to neighbors.
                 
-                // Check if we stuck the player
-                if(player.CheckCollision(player.Position, world))
-                {
-                    // Revert
-                     world.setBlock(placeX, placeY, placeZ, (BlockType)0); 
+                float playerWidth = 0.6f;
+                float playerHeight = 1.8f;
+                float eyeHeight = 1.6f;
+                float epsilon = 0.05f;
+                
+                float minX = player.Position.x - playerWidth / 2.0f;
+                float maxX = player.Position.x + playerWidth / 2.0f;
+                float minY = player.Position.y - eyeHeight + epsilon;
+                float maxY = player.Position.y - eyeHeight + playerHeight - epsilon;
+                float minZ = player.Position.z - playerWidth / 2.0f;
+                float maxZ = player.Position.z + playerWidth / 2.0f;
+                
+                bool intersects = (maxX > placeX && minX < placeX + 1) &&
+                                  (maxY > placeY && minY < placeY + 1) &&
+                                  (maxZ > placeZ && minZ < placeZ + 1);
+
+                if (!intersects) {
+                    world.setBlock(placeX, placeY, placeZ, selectedBlock);
+                } else {
+                    // Collision detected, do not place block.
                 }
             }
         }
@@ -374,6 +435,7 @@ BlockType selectedBlock = STONE;
 
     // glfw: terminate, clearing all previously allocated GLFW resources.
     // ------------------------------------------------------------------
+    
     glfwTerminate();
     return 0;
 }

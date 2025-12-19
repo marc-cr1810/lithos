@@ -2,6 +2,7 @@
 #define CHUNK_H
 
 #include <vector>
+#include <mutex>
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -20,13 +21,26 @@ public:
     void setWorld(World* w) { world = w; }
 
     glm::ivec3 chunkPosition; // Chunk coordinates (e.g. 0,0,0)
-    bool meshDirty;
+    // Thread Safety
+    // Thread Safety
+    std::mutex chunkMutex;
 
-    void updateMesh(); // Generate mesh data
+    // Generates vertex data on CPU (Thread-Safe if mutex passed or blocks read-only)
+    std::vector<float> generateGeometry(); 
+    
+    // Uploads data to GPU (Main Thread Only)
+    void uploadMesh(const std::vector<float>& data);
+    
+    // Helper for Sync update (Generate + Upload)
+    void updateMesh();
+
+    bool meshDirty; // Flag for light updates
+
     void calculateSunlight(); // Step 1: Seed Skylight
     void calculateBlockLight();
     void spreadLight(); // Step 2: Spread light
-    void render(Shader& shader);
+    void render(Shader& shader, const glm::mat4& viewProjection);
+    void initGL();
 
     Block getBlock(int x, int y, int z) const;
     void setBlock(int x, int y, int z, BlockType type);
@@ -41,15 +55,15 @@ public:
     // maxDist: Maximum distance to check
     bool raycast(glm::vec3 origin, glm::vec3 direction, float maxDist, glm::ivec3& outputPos, glm::ivec3& outputPrePos);
 
+
+
 private:
     Block blocks[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
     World* world;
     unsigned int VAO, VBO, EBO;
-    std::vector<float> vertices;
-    std::vector<unsigned int> indices;
-    int indexCount;
+    int vertexCount;
 
-    void addFace(int x, int y, int z, int faceDir, int blockType); // 0:front, 1:back, 2:left, 3:right, 4:top, 5:bottom
+    void addFace(std::vector<float>& vertices, int x, int y, int z, int faceDir, int blockType, int width, int height, int aoBL, int aoBR, int aoTR, int aoTL); 
     int vertexAO(bool side1, bool side2, bool corner);
 };
 

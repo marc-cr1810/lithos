@@ -4,6 +4,7 @@ out vec4 FragColor;
 in vec3 ourColor;
 in vec2 TexCoord;
 in vec3 Lighting;
+in vec2 TexOrigin;
 
 // texture sampler
 uniform sampler2D texture1;
@@ -12,7 +13,15 @@ uniform float sunStrength;
 
 void main()
 {
-    vec4 texColor = texture(texture1, TexCoord);
+    // Tiling Logic
+    // TexCoord contains 0..Width, 0..Height
+    // TexOrigin contains standard Atlas UVs (e.g. 0.25, 0.5)
+    // We Map 0..1 sub-tile to 0..0.25 atlas space
+    
+    vec2 tileUV = fract(TexCoord);
+    vec2 finalUV = TexOrigin + tileUV * 0.25;
+    
+    vec4 texColor = texture(texture1, finalUV);
     if(!useTexture)
         texColor = vec4(1.0, 1.0, 1.0, 1.0); // Use white if no texture, so Vertex Color indicates color
     

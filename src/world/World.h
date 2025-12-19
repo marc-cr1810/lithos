@@ -1,20 +1,38 @@
 #ifndef WORLD_H
 #define WORLD_H
 
-#include <map>
+#include <unordered_map>
 #include <tuple>
-#include <vector>
 #include <memory>
+#include <vector>
+#include <thread>
+#include <mutex>
+#include <queue>
+#include <condition_variable>
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
 #include "Chunk.h"
 #include "Block.h"
+#include "Chunk.h"
+#include "Block.h"
 #include "../render/Shader.h"
+#include "../render/Shader.h"
+
+// Hash function for std::tuple
+// Hash function for std::tuple
+struct key_hash
+{
+    std::size_t operator()(const std::tuple<int, int, int>& k) const
+    {
+        return std::get<0>(k) ^ std::get<1>(k) ^ std::get<2>(k);
+    }
+};
 
 class World {
 public:
     World();
+    ~World();
     
     void addChunk(int x, int y, int z); // Chunk coords
     Chunk* getChunk(int chunkX, int chunkY, int chunkZ);
@@ -24,7 +42,7 @@ public:
     Block getBlock(int x, int y, int z) const;
     void setBlock(int x, int y, int z, BlockType type);
 
-    void render(Shader& shader);
+    void render(Shader& shader, const glm::mat4& viewProjection);
     
     // Raycast against all chunks (or optimization)
     // Returns true and fills info if hit
@@ -33,11 +51,31 @@ public:
     uint8_t getSkyLight(int x, int y, int z);
     uint8_t getBlockLight(int x, int y, int z);
 
+    // Threading
+    void Update(); // Main Thread
+    void QueueMeshUpdate(Chunk* c);
+    
+
+
     // Friend for generator if needed, or public method
     // Generator will just use addChunk/getChunk.
 
 private:
-    std::map<std::tuple<int, int, int>, std::unique_ptr<Chunk>> chunks;
+    std::unordered_map<std::tuple<int, int, int>, std::unique_ptr<Chunk>, key_hash> chunks;
+    mutable std::mutex worldMutex; 
+
+    // Worker Thread
+    std::thread workerThread;
+    bool shutdown;
+    std::condition_variable condition;
+    
+    std::mutex queueMutex;
+    std::deque<Chunk*> meshQueue;
+    
+    std::mutex uploadMutex;
+    std::vector<std::pair<Chunk*, std::vector<float>>> uploadQueue;
+    
+    void WorkerLoop();
 };
 
 #endif
