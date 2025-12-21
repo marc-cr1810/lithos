@@ -67,12 +67,13 @@ private:
     mutable std::mutex worldMutex; 
 
     // Worker Thread
-    std::thread workerThread;
+    std::vector<std::thread> meshThreads;
     bool shutdown;
     std::condition_variable condition;
     
     std::mutex queueMutex;
     std::deque<Chunk*> meshQueue;
+    std::unordered_set<Chunk*> meshSet; // For deduplication
     
     std::mutex uploadMutex;
     std::vector<std::pair<Chunk*, std::vector<float>>> uploadQueue;

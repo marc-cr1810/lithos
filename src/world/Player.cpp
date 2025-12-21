@@ -7,7 +7,7 @@
 Player::Player(glm::vec3 position) 
     : Front(glm::vec3(0.0f, 0.0f, -1.0f)), MovementSpeed(5.0f), MouseSensitivity(0.1f), 
       Yaw(-90.0f), Pitch(0.0f), WorldUp(glm::vec3(0.0f, 1.0f, 0.0f)),
-      Velocity(0.0f), Gravity(18.0f), JumpForce(8.0f), IsGrounded(false)
+      Velocity(0.0f), Gravity(32.0f), JumpForce(13.0f), IsGrounded(false)
 {
     Position = position;
     updateCameraVectors();
@@ -115,8 +115,15 @@ void Player::Update(float deltaTime, const World& world)
 
     // Apply Gravity
     Velocity.y -= Gravity * deltaTime;
-    // Terminal Velocity
-    if (Velocity.y < -50.0f) Velocity.y = -50.0f;
+    
+    // Air Resistance (Drag)
+    // Reduce velocity by a factor over time to prevent infinite acceleration
+    // Damping factor of ~2.0 per second
+    // v -= v * damping * dt
+    Velocity.y -= Velocity.y * 2.0f * deltaTime;  
+    
+    // Terminal Velocity (Safety Clamp)
+    if (Velocity.y < -78.4f) Velocity.y = -78.4f;
 
     // Check Ceiling Collision
     if (Velocity.y > 0.0f) {

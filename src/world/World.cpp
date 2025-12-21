@@ -50,7 +50,15 @@ bool isAABBInFrustum(const glm::vec3& min, const glm::vec3& max, const std::arra
 }
 
 World::World() : shutdown(false) {
-    workerThread = std::thread(&World::WorkerLoop, this);
+    // Start Mesh Threads
+    int numMeshThreads = std::thread::hardware_concurrency();
+    if(numMeshThreads < 1) numMeshThreads = 1; 
+    
+    // We already use some for generation, maybe balance it?
+    // Let's just use hardware_concurrency for meshing as it's the bottleneck.
+    for(int i=0; i<numMeshThreads; ++i) {
+        meshThreads.emplace_back(&World::WorkerLoop, this);
+    }
     
     // Start Generation Threads (e.g., 2-4 threads)
     int numGenThreads = std::thread::hardware_concurrency() / 2;
@@ -65,9 +73,9 @@ World::~World() {
         std::lock_guard<std::mutex> lock(queueMutex);
         shutdown = true;
     }
-    condition.notify_one();
-    if(workerThread.joinable()) {
-        workerThread.join();
+    condition.notify_all();
+    for(auto& t : meshThreads) {
+        if(t.joinable()) t.join();
     }
     
     // Join Gen Threads
@@ -89,6 +97,7 @@ void World::WorkerLoop() {
             if(!meshQueue.empty()) {
                 c = meshQueue.front();
                 meshQueue.pop_front();
+                meshSet.erase(c);
             }
         }
         
@@ -123,9 +132,16 @@ void World::Update() {
 void World::QueueMeshUpdate(Chunk* c, bool priority) {
     if(c) {
         std::lock_guard<std::mutex> lock(queueMutex);
-        if(priority) meshQueue.push_front(c);
-        else meshQueue.push_back(c);
-        condition.notify_one();
+        if(meshSet.find(c) == meshSet.end()) {
+            if(priority) meshQueue.push_front(c);
+            else meshQueue.push_back(c);
+            meshSet.insert(c);
+            condition.notify_one();
+        } else {
+             // Already in queue. If priority is true, should we move it to front?
+             // Since std::deque/set makes it hard to move, we skip for now.
+             // Deduplication is more important.
+        }
     }
 }
 
@@ -497,25 +513,40 @@ void World::setBlock(int x, int y, int z, BlockType type)
 
 int World::render(Shader& shader, const glm::mat4& viewProjection)
 {
-    std::lock_guard<std::mutex> lock(worldMutex);
+    // Collect Visible Chunks under lock
+    std::vector<Chunk*> visibleChunks;
+    visibleChunks.reserve(chunks.size());
     
-    // Frustum Culling
-    auto planes = extractPlanes(viewProjection);
-    
-    int count = 0;
-    for(auto& pair : chunks)
     {
-        Chunk* c = pair.second.get();
-        if(c->meshDirty) {
-             QueueMeshUpdate(c);
-             c->meshDirty = false;
+        std::lock_guard<std::mutex> lock(worldMutex);
+        
+        // Frustum Culling
+        auto planes = extractPlanes(viewProjection);
+        
+        for(auto& pair : chunks)
+        {
+            Chunk* c = pair.second.get();
+            // Culling
+            glm::vec3 min = glm::vec3(c->chunkPosition.x * CHUNK_SIZE, c->chunkPosition.y * CHUNK_SIZE, c->chunkPosition.z * CHUNK_SIZE);
+            glm::vec3 max = min + glm::vec3(CHUNK_SIZE);
+            
+            bool visible = isAABBInFrustum(min, max, planes);
+            
+            if(c->meshDirty) {
+                 QueueMeshUpdate(c, visible); // Priority if visible
+                 c->meshDirty = false;
+            }
+            
+            if(visible) {
+                visibleChunks.push_back(c);
+            }
         }
-        
-        // Culling
-        glm::vec3 min = glm::vec3(c->chunkPosition.x * CHUNK_SIZE, c->chunkPosition.y * CHUNK_SIZE, c->chunkPosition.z * CHUNK_SIZE);
-        glm::vec3 max = min + glm::vec3(CHUNK_SIZE);
-        
-        if(isAABBInFrustum(min, max, planes)) {
+    }
+    
+    // Render outside lock
+    int count = 0;
+    for(Chunk* c : visibleChunks) {
+        if(c) {
             c->render(shader, viewProjection);
             count++;
         }
