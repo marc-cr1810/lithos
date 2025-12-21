@@ -38,6 +38,7 @@ public:
     float Gravity;
     float JumpForce;
     bool IsGrounded;
+    bool FlyMode = false;
     
     // Checks if the player at the given position collides with any blocks
     bool CheckCollision(glm::vec3 pos, const World& world);

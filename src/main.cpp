@@ -50,6 +50,32 @@ float lastFrame = 0.0f;
 bool isDebugMode = false;
 bool lastM = false;
 
+// Debug UI State
+float dbg_teleport_pos[3] = {0.0f, 0.0f, 0.0f};
+float dbg_frametimes[120] = {0};
+int dbg_frametime_offset = 0;
+bool dbg_vsync = false; // Default off or detect?
+bool dbg_timePaused = false;
+float dbg_timeSpeed = 1.0f;
+bool dbg_wireframe = false;
+int dbg_renderDistance = 8;
+
+// Helper
+const char* GetBlockName(int type) {
+    switch(type) {
+        case 0: return "AIR";
+        case 1: return "DIRT";
+        case 2: return "GRASS";
+        case 3: return "STONE";
+        case 4: return "WOOD";
+        case 5: return "LEAVES";
+        case 6: return "COAL_ORE";
+        case 7: return "IRON_ORE";
+        case 8: return "GLOWSTONE";
+        default: return "UNKNOWN";
+    }
+}
+
 int main()
 {
     // glfw: initialize and configure
@@ -143,9 +169,8 @@ int main()
     World world;
     WorldGenerator generator;
     
-    int renderDistance = 8;
     // Initial Load
-    world.loadChunks(player.Position, renderDistance);
+    world.loadChunks(player.Position, dbg_renderDistance);
     
     // Wait for initial chunks to spawn to avoid falling into void?
     // For now, let's just let it load asynchronously.
@@ -248,7 +273,9 @@ BlockType selectedBlock = STONE;
         lastFrame = currentFrame;
         deltaTime = std::min(deltaTime, 0.1f); // Clamp
         
-        globalTime += deltaTime;
+        if(!dbg_timePaused) {
+            globalTime += deltaTime * dbg_timeSpeed;
+        }
 
         // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
@@ -265,7 +292,7 @@ BlockType selectedBlock = STONE;
         if(lodTimer > 0.5f) {
 
             lodTimer = 0.0f;
-            world.loadChunks(player.Position, renderDistance);
+            world.loadChunks(player.Position, dbg_renderDistance);
         }
 
         // Calculate Sun Brightness
@@ -275,14 +302,94 @@ BlockType selectedBlock = STONE;
         // Clamp minimum brightness so it's not pitch black (moonlight)
         sunStrength = std::max(0.05f, sunStrength);
 
+        // Interaction (Raycast)
+        glm::ivec3 hitPos;
+        glm::ivec3 prePos;
+        bool hit = world.raycast(camera.Position, camera.Front, 5.0f, hitPos, prePos);
+
         // Debug Window
         if (isDebugMode) {
             ImGui::Begin("Debug Info");
-            ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
-            ImGui::Text("Pos: %.2f, %.2f, %.2f", player.Position.x, player.Position.y, player.Position.z);
-            ImGui::Text("Sun Strength: %.2f", sunStrength);
-            ImGui::Text("Chunks: %zu", world.getChunkCount());
             
+            if (ImGui::CollapsingHeader("Stats", ImGuiTreeNodeFlags_DefaultOpen)) {
+                ImGui::Text("FPS: %.1f (%.3f ms)", ImGui::GetIO().Framerate, 1000.0f / ImGui::GetIO().Framerate);
+                
+                // Plot Lines
+                dbg_frametimes[dbg_frametime_offset] = deltaTime * 1000.0f;
+                dbg_frametime_offset = (dbg_frametime_offset + 1) % 120;
+                ImGui::PlotLines("Frame Time", dbg_frametimes, 120, dbg_frametime_offset, "ms", 0.0f, 50.0f, ImVec2(0, 80));
+
+                ImGui::Separator();
+                ImGui::Text("Position: %.2f, %.2f, %.2f", player.Position.x, player.Position.y, player.Position.z);
+                ImGui::Text("Velocity: %.2f, %.2f, %.2f", player.Velocity.x, player.Velocity.y, player.Velocity.z);
+                ImGui::Text("Yaw: %.1f, Pitch: %.1f", player.Yaw, player.Pitch);
+                ImGui::Text("Grounded: %s", player.IsGrounded ? "Yes" : "No");
+                
+                ImGui::Separator();
+                ImGui::Text("Sun Strength: %.2f", sunStrength);
+                ImGui::Text("Chunks: %zu", world.getChunkCount());
+            }
+
+            if (ImGui::CollapsingHeader("Controls", ImGuiTreeNodeFlags_DefaultOpen)) {
+                 // Teleport
+                 if (ImGui::Button("Teleport")) {
+                     player.Position = glm::vec3(dbg_teleport_pos[0], dbg_teleport_pos[1], dbg_teleport_pos[2]);
+                     // Reset velocity to avoid carrying momentum into wall
+                     player.Velocity = glm::vec3(0.0f); 
+                 }
+                 ImGui::SameLine();
+                 ImGui::InputFloat3("##pos", dbg_teleport_pos);
+                 
+                 // Current Pos to Teleport Target
+                 if(ImGui::Button("Copy Current Pos")) {
+                     dbg_teleport_pos[0] = player.Position.x;
+                     dbg_teleport_pos[1] = player.Position.y;
+                     dbg_teleport_pos[2] = player.Position.z;
+                 }
+
+                 ImGui::Separator();
+                 // FOV
+                 ImGui::SliderFloat("FOV", &camera.Zoom, 1.0f, 120.0f);
+                 
+                 // VSync
+                 if(ImGui::Checkbox("VSync", &dbg_vsync)) {
+                     glfwSwapInterval(dbg_vsync ? 1 : 0);
+                 }
+
+                 ImGui::Separator();
+                 ImGui::Text("Time Controls");
+                 if(ImGui::Button(dbg_timePaused ? "Resume" : "Pause")) {
+                     dbg_timePaused = !dbg_timePaused;
+                 }
+                 ImGui::SameLine();
+                 ImGui::SliderFloat("Speed", &dbg_timeSpeed, 0.0f, 10.0f);
+                 ImGui::SliderFloat("Time", &globalTime, 0.0f, 126.0f); // 40*PI ~= 125.66
+                 
+                 ImGui::Separator();
+                 ImGui::Text("Player / Render");
+                 ImGui::Checkbox("Fly Mode (Noclip)", &player.FlyMode);
+                 ImGui::Checkbox("Wireframe", &dbg_wireframe);
+                 if(ImGui::SliderInt("Render Dist", &dbg_renderDistance, 2, 32)) {
+                     world.loadChunks(player.Position, dbg_renderDistance);
+                 }
+            }
+            
+            if (ImGui::CollapsingHeader("Raycast", ImGuiTreeNodeFlags_DefaultOpen)) {
+                if(hit) {
+                    ImGui::Text("Hit Block: %s (%d)", GetBlockName(world.getBlock(hitPos.x, hitPos.y, hitPos.z).type), world.getBlock(hitPos.x, hitPos.y, hitPos.z).type);
+                    ImGui::Text("Hit Pos: %d, %d, %d", hitPos.x, hitPos.y, hitPos.z);
+                    ImGui::Text("Pre Pos: %d, %d, %d", prePos.x, prePos.y, prePos.z);
+                    
+                    uint8_t sl = world.getSkyLight(hitPos.x, hitPos.y, hitPos.z);
+                    uint8_t bl = world.getBlockLight(hitPos.x, hitPos.y, hitPos.z);
+                    ImGui::Text("Light: Sky %d, Block %d", sl, bl);
+
+                } else {
+                    ImGui::Text("No Hit");
+                }
+            }
+
+            ImGui::Separator();
             #ifdef MINCERAFT_DEBUG
             ImGui::TextColored(ImVec4(1,1,0,1), "DEBUG BUILD");
             #else
@@ -327,12 +434,12 @@ BlockType selectedBlock = STONE;
         // render chunk
         ourShader.setBool("useTexture", true);
         blockTexture.bind();
+        
+        if(dbg_wireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         world.render(ourShader, projection * view);
+        if(dbg_wireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
-        // Interaction
-        glm::ivec3 hitPos;
-        glm::ivec3 prePos;
-        bool hit = world.raycast(camera.Position, camera.Front, 5.0f, hitPos, prePos);
+
 
         if(hit) {
             // Destruction
@@ -508,8 +615,16 @@ void processInput(GLFWwindow *window, const World& world)
         player.ProcessKeyboard(P_LEFT, deltaTime, world);
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         player.ProcessKeyboard(P_RIGHT, deltaTime, world);
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-        player.ProcessJump();
+        
+    if (player.FlyMode) {
+        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+            player.ProcessKeyboard(P_UP, deltaTime, world);
+        if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
+            player.ProcessKeyboard(P_DOWN, deltaTime, world);
+    } else {
+        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+            player.ProcessJump();
+    }
 
     // Mouse Polling
     if (!isDebugMode) {

@@ -37,23 +37,41 @@ void Player::ProcessKeyboard(Player_Movement direction, float deltaTime, const W
     if (direction == P_LEFT) moveDir -= flatRight;
     if (direction == P_RIGHT) moveDir += flatRight;
     
-    if (glm::length(moveDir) > 0.0f)
+    if (FlyMode) velocity *= 4.0f; // Fly faster
+
+    if (glm::length(moveDir) > 0.0f || (FlyMode && (direction == P_UP || direction == P_DOWN)))
     {
          moveDir = glm::normalize(moveDir) * velocity;
          
-         // Try X
-         glm::vec3 tryX = Position;
-         tryX.x += moveDir.x;
-         if (!CheckCollision(tryX, world))
-             Position.x = tryX.x;
+         if (FlyMode) {
+             // Free Fly (Noclip)
+             glm::vec3 flyDir(0.0f);
+             if (direction == P_FORWARD) flyDir += Front;
+             if (direction == P_BACKWARD) flyDir -= Front;
+             if (direction == P_LEFT) flyDir -= Right;
+             if (direction == P_RIGHT) flyDir += Right;
+             if (direction == P_UP) flyDir += WorldUp;
+             if (direction == P_DOWN) flyDir -= WorldUp;
              
-         // Try Z
-         glm::vec3 tryZ = Position;
-         tryZ.z += moveDir.z;
-         // Use current X
-         tryZ.x = Position.x;
-         if (!CheckCollision(tryZ, world))
-             Position.z = tryZ.z;
+             if(glm::length(flyDir) > 0.0f) {
+                 Position += glm::normalize(flyDir) * velocity;
+             }
+             
+         } else {
+             // Try X
+             glm::vec3 tryX = Position;
+             tryX.x += moveDir.x;
+             if (!CheckCollision(tryX, world))
+                 Position.x = tryX.x;
+                 
+             // Try Z
+             glm::vec3 tryZ = Position;
+             tryZ.z += moveDir.z;
+             // Use current X
+             tryZ.x = Position.x;
+             if (!CheckCollision(tryZ, world))
+                 Position.z = tryZ.z;
+         }
     }
 }
 
@@ -88,6 +106,13 @@ void Player::ProcessJump()
 
 void Player::Update(float deltaTime, const World& world)
 {
+    if (FlyMode) {
+        // No gravity, no collision.
+        // Maybe some drag?
+        Velocity = glm::vec3(0.0f); 
+        return;
+    }
+
     // Apply Gravity
     Velocity.y -= Gravity * deltaTime;
     // Terminal Velocity
