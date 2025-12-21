@@ -7,6 +7,7 @@
 #include <array>
 #include <algorithm>
 #include <glm/gtc/matrix_access.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 World::World() : shutdown(false) {
     workerThread = std::thread(&World::WorkerLoop, this);
@@ -571,4 +572,75 @@ bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist, glm::i
 
 size_t World::getChunkCount() const {
     return chunks.size();
+}
+
+void World::renderDebugBorders(Shader& shader, const glm::mat4& viewProjection) {
+    static unsigned int borderVAO = 0;
+    static unsigned int borderVBO = 0;
+    
+    if (borderVAO == 0) {
+        // Pos(3) + Color(3)
+        // Red color: 1,0,0
+        float r=1.0f, g=0.0f, b=0.0f;
+        float v[] = {
+            // Edge 1 (Bottom)
+             0,0,0, r,g,b,  1,0,0, r,g,b,
+             1,0,0, r,g,b,  1,0,1, r,g,b,
+             1,0,1, r,g,b,  0,0,1, r,g,b,
+             0,0,1, r,g,b,  0,0,0, r,g,b,
+            // Edge 2 (Top)
+             0,1,0, r,g,b,  1,1,0, r,g,b,
+             1,1,0, r,g,b,  1,1,1, r,g,b,
+             1,1,1, r,g,b,  0,1,1, r,g,b,
+             0,1,1, r,g,b,  0,1,0, r,g,b,
+            // Edge 3 (Pilars)
+             0,0,0, r,g,b,  0,1,0, r,g,b,
+             1,0,0, r,g,b,  1,1,0, r,g,b,
+             1,0,1, r,g,b,  1,1,1, r,g,b,
+             0,0,1, r,g,b,  0,1,1, r,g,b
+        };
+        
+        glGenVertexArrays(1, &borderVAO);
+        glGenBuffers(1, &borderVBO);
+        glBindVertexArray(borderVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, borderVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(v), v, GL_STATIC_DRAW);
+        
+        // Pos
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        // Color
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+        glEnableVertexAttribArray(1);
+    }
+    
+    glBindVertexArray(borderVAO);
+    shader.use();
+    shader.setBool("useTexture", false);
+    
+    // Disable generic attribute 3 if it was enabled, or just set its value?
+    // Using glVertexAttrib3f sets the constant value for the attribute when the array is disabled.
+    // Ensure array 3 is disabled.
+    glDisableVertexAttribArray(3); 
+    // Set Lighting (Sky=1, Block=1, AO=0 -> Max Brightness)
+    glVertexAttrib3f(3, 1.0f, 1.0f, 0.0f);
+    
+    // Frustum Culling (reuse helper)
+    auto planes = extractPlanes(viewProjection); // Need to move extractPlanes to be accessible or copy it 
+    // It's defined as a static helper in this file? check line 441. Yes.
+    
+    std::lock_guard<std::mutex> lock(worldMutex);
+    for(auto& pair : chunks) {
+        Chunk* c = pair.second.get();
+        glm::vec3 min = glm::vec3(c->chunkPosition.x * CHUNK_SIZE, c->chunkPosition.y * CHUNK_SIZE, c->chunkPosition.z * CHUNK_SIZE);
+        glm::vec3 max = min + glm::vec3(CHUNK_SIZE);
+        
+        if(isAABBInFrustum(min, max, planes)) {
+            glm::mat4 model = glm::mat4(1.0f);
+            model = glm::translate(model, min);
+            model = glm::scale(model, glm::vec3(CHUNK_SIZE)); 
+            shader.setMat4("model", model);
+            glDrawArrays(GL_LINES, 0, 24);
+        }
+    }
 }

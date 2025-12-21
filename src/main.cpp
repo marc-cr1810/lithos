@@ -59,6 +59,10 @@ bool dbg_timePaused = false;
 float dbg_timeSpeed = 1.0f;
 bool dbg_wireframe = false;
 int dbg_renderDistance = 8;
+bool dbg_chunkBorders = false;
+bool dbg_useHeatmap = false;
+bool dbg_useFog = false;
+float dbg_fogDist = 50.0f;
 
 // Helper
 const char* GetBlockName(int type) {
@@ -297,8 +301,10 @@ BlockType selectedBlock = STONE;
 
         // Calculate Sun Brightness
         // Simple Sine wave day/night cycle
-        // Speed: globalTime * 0.05 means cycle is 40*PI seconds ~= 125 seconds
-        float sunStrength = (sin(globalTime * 0.05f) + 1.0f) * 0.5f; 
+        // Cycle length: 2400 seconds
+        // Factor = 2*PI / 2400 = PI / 1200
+        const float cycleFactor = 3.14159265f / 1200.0f;
+        float sunStrength = (sin(globalTime * cycleFactor) + 1.0f) * 0.5f; 
         // Clamp minimum brightness so it's not pitch black (moonlight)
         sunStrength = std::max(0.05f, sunStrength);
 
@@ -363,7 +369,7 @@ BlockType selectedBlock = STONE;
                  }
                  ImGui::SameLine();
                  ImGui::SliderFloat("Speed", &dbg_timeSpeed, 0.0f, 10.0f);
-                 ImGui::SliderFloat("Time", &globalTime, 0.0f, 126.0f); // 40*PI ~= 125.66
+                 ImGui::SliderFloat("Time", &globalTime, 0.0f, 2400.0f); // 2400s cycle
                  
                  ImGui::Separator();
                  ImGui::Text("Player / Render");
@@ -372,6 +378,37 @@ BlockType selectedBlock = STONE;
                  if(ImGui::SliderInt("Render Dist", &dbg_renderDistance, 2, 32)) {
                      world.loadChunks(player.Position, dbg_renderDistance);
                  }
+                 ImGui::SliderFloat("Gravity", &player.Gravity, 0.0f, 50.0f);
+                 
+                 ImGui::Separator();
+                 ImGui::Text("Visualization");
+                 ImGui::Checkbox("Chunk Borders", &dbg_chunkBorders);
+                 ImGui::Checkbox("Light Heatmap", &dbg_useHeatmap);
+                 ImGui::Checkbox("Fog", &dbg_useFog);
+                 if(dbg_useFog) {
+                     ImGui::SliderFloat("Fog Dist", &dbg_fogDist, 10.0f, 200.0f);
+                 }
+            }
+            
+            if (ImGui::CollapsingHeader("Creative Menu", ImGuiTreeNodeFlags_DefaultOpen)) {
+                // Grid of blocks
+                int buttonsPerRow = 4;
+                for(int i=1; i<=8; ++i) { // 1 to 8 are valid blocks
+                    if(i > 1 && (i-1) % buttonsPerRow != 0) ImGui::SameLine();
+                    
+                    std::string label = GetBlockName(i);
+                    if(ImGui::Button((label + "##btn").c_str(), ImVec2(60, 60))) {
+                        selectedBlock = (BlockType)i;
+                    }
+                    
+                    // Highlight selected
+                    if((int)selectedBlock == i) {
+                        ImGui::GetWindowDrawList()->AddRect(
+                            ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), 
+                            IM_COL32(255, 255, 0, 255), 3.0f);
+                    }
+                }
+                ImGui::Text("Selected: %s", GetBlockName(selectedBlock));
             }
             
             if (ImGui::CollapsingHeader("Raycast", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -422,6 +459,10 @@ BlockType selectedBlock = STONE;
         // activate shader
         ourShader.use();
         ourShader.setFloat("sunStrength", sunStrength);
+        ourShader.setVec3("viewPos", camera.Position);
+        ourShader.setBool("useHeatmap", dbg_useHeatmap);
+        ourShader.setBool("useFog", dbg_useFog);
+        ourShader.setFloat("fogDist", dbg_fogDist);
 
         // pass projection matrix to shader (note: in this case it could change every frame)
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
@@ -438,6 +479,10 @@ BlockType selectedBlock = STONE;
         if(dbg_wireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         world.render(ourShader, projection * view);
         if(dbg_wireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        
+        if(dbg_chunkBorders) {
+            world.renderDebugBorders(ourShader, projection * view);
+        }
 
 
 

@@ -5,11 +5,20 @@ in vec3 ourColor;
 in vec2 TexCoord;
 in vec3 Lighting;
 in vec2 TexOrigin;
+in vec3 FragPos;
 
 // texture sampler
 uniform sampler2D texture1;
 uniform bool useTexture;
 uniform float sunStrength;
+uniform vec3 viewPos; // Camera Position for Fog
+
+// Phase 4: Heatmap
+uniform bool useHeatmap;
+
+// Phase 4: Fog
+uniform bool useFog;
+uniform float fogDist;
 
 void main()
 {
@@ -23,7 +32,15 @@ void main()
     
     vec4 texColor = texture(texture1, finalUV);
     if(!useTexture)
-        texColor = vec4(1.0, 1.0, 1.0, 1.0); // Use white if no texture, so Vertex Color indicates color
+        texColor = vec4(1.0, 1.0, 1.0, 1.0); // Use white if no texture
+        
+    if(useHeatmap) {
+        // Red = Dark, Green = Light
+        // Mix based on max light
+        float val = max(Lighting.x * sunStrength, Lighting.y);
+        FragColor = mix(vec4(1.0, 0.0, 0.0, 1.0), vec4(0.0, 1.0, 0.0, 1.0), val);
+        return;
+    }
     
     // Lighting.x = SkyLight (0-1)
     // Lighting.y = BlockLight (0-1)
@@ -46,5 +63,17 @@ void main()
     
     vec3 lightVec = vec3(lightVal * aoFactor);
     
-    FragColor = texColor * vec4(ourColor, 1.0) * vec4(lightVec, 1.0);
+    vec4 finalColor = texColor * vec4(ourColor, 1.0) * vec4(lightVec, 1.0);
+    
+    if(useFog) {
+        float distance = length(viewPos - FragPos);
+        float fogFactor = exp(-pow((distance / fogDist), 2.0)); // Exponential squared fog
+        fogFactor = clamp(fogFactor, 0.0, 1.0);
+        
+        // Fog Color (Sky Color approx)
+        vec3 fogColor = vec3(0.5, 0.6, 0.7) * sunStrength; 
+        
+        finalColor = mix(vec4(fogColor, 1.0), finalColor, fogFactor);
+    }
+    FragColor = finalColor;
 }
