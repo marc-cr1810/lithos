@@ -13,6 +13,8 @@ Chunk::Chunk() : meshDirty(true), vertexCount(0), chunkPosition(0,0,0), world(nu
         for(int y=0; y<CHUNK_SIZE; ++y)
             for(int z=0; z<CHUNK_SIZE; ++z)
                 blocks[x][y][z].type = AIR;
+    
+    for(int i=0; i<6; ++i) neighbors[i] = nullptr;
 }
 
 Chunk::~Chunk()
@@ -159,13 +161,31 @@ std::vector<float> Chunk::generateGeometry()
                             if(nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
                                 if(blocks[nx][ny][nz].isActive()) occluded = true;
                                 else { skyVal = blocks[nx][ny][nz].skyLight; blockVal = blocks[nx][ny][nz].blockLight; }
-                            } else if(world) {
-                                int gx = chunkPosition.x * CHUNK_SIZE + nx;
-                                int gy = chunkPosition.y * CHUNK_SIZE + ny;
-                                int gz = chunkPosition.z * CHUNK_SIZE + nz;
-                                Block nb = world->getBlock(gx, gy, gz);
-                                if(nb.isActive()) occluded = true;
-                                else { skyVal = world->getSkyLight(gx, gy, gz); blockVal = world->getBlockLight(gx, gy, gz); }
+                            } else {
+                                // Use cached neighbors
+                                int ni = -1;
+                                int nnx=nx, nny=ny, nnz=nz;
+                                
+                                if(nz >= CHUNK_SIZE) { ni = DIR_FRONT; nnz -= CHUNK_SIZE; }
+                                else if(nz < 0) { ni = DIR_BACK; nnz += CHUNK_SIZE; }
+                                else if(nx < 0) { ni = DIR_LEFT; nnx += CHUNK_SIZE; }
+                                else if(nx >= CHUNK_SIZE) { ni = DIR_RIGHT; nnx -= CHUNK_SIZE; }
+                                else if(ny >= CHUNK_SIZE) { ni = DIR_TOP; nny -= CHUNK_SIZE; }
+                                else if(ny < 0) { ni = DIR_BOTTOM; nny += CHUNK_SIZE; }
+                                
+                                if(ni != -1 && neighbors[ni]) {
+                                     Block nb = neighbors[ni]->getBlock(nnx, nny, nnz);
+                                     if(nb.isActive()) occluded = true;
+                                     else { skyVal = neighbors[ni]->getSkyLight(nnx, nny, nnz); blockVal = neighbors[ni]->getBlockLight(nnx, nny, nnz); }
+                                } else if(world) {
+                                    // Fallback (Should rarely happen if neighbors are linked correctly)
+                                    int gx = chunkPosition.x * CHUNK_SIZE + nx;
+                                    int gy = chunkPosition.y * CHUNK_SIZE + ny;
+                                    int gz = chunkPosition.z * CHUNK_SIZE + nz;
+                                    Block nb = world->getBlock(gx, gy, gz);
+                                    if(nb.isActive()) occluded = true;
+                                    else { skyVal = world->getSkyLight(gx, gy, gz); blockVal = world->getBlockLight(gx, gy, gz); }
+                                }
                             }
                             
                             if(!occluded) {
@@ -175,6 +195,21 @@ std::vector<float> Chunk::generateGeometry()
                                         int nx=lx+nX; int ny=ly+nY; int nz=lz+nZ;
                                         if(nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) 
                                             return blocks[nx][ny][nz].isOpaque();
+                                            
+                                        // Use Cached Neighbors
+                                        int ni = -1;
+                                        int nnx=nx, nny=ny, nnz=nz;
+                                        if(nz >= CHUNK_SIZE) { ni = DIR_FRONT; nnz -= CHUNK_SIZE; }
+                                        else if(nz < 0) { ni = DIR_BACK; nnz += CHUNK_SIZE; }
+                                        else if(nx < 0) { ni = DIR_LEFT; nnx += CHUNK_SIZE; }
+                                        else if(nx >= CHUNK_SIZE) { ni = DIR_RIGHT; nnx -= CHUNK_SIZE; }
+                                        else if(ny >= CHUNK_SIZE) { ni = DIR_TOP; nny -= CHUNK_SIZE; }
+                                        else if(ny < 0) { ni = DIR_BOTTOM; nny += CHUNK_SIZE; }
+                                        
+                                        if(ni != -1 && neighbors[ni]) {
+                                            return neighbors[ni]->getBlock(nnx, nny, nnz).isOpaque();
+                                        }
+
                                         if(world) {
                                             int gx = chunkPosition.x * CHUNK_SIZE + nx;
                                             int gy = chunkPosition.y * CHUNK_SIZE + ny;
@@ -195,8 +230,9 @@ std::vector<float> Chunk::generateGeometry()
                                 mask[u][v] = { (BlockType)b.type, skyVal, blockVal, {aos[0], aos[1], aos[2], aos[3]} };
                             }
                         }
+                        }
                     }
-                }
+                
                 // Greedy Mesh
                 for(int v=0; v<CHUNK_SIZE; ++v) {
                     for(int u=0; u<CHUNK_SIZE; ++u) {
@@ -216,8 +252,8 @@ std::vector<float> Chunk::generateGeometry()
                         }
                     }
                 }
-        }
-    }
+        } // End d loop
+    } // End faceDir loop
     return vertices;
 }
 void Chunk::uploadMesh(const std::vector<float>& data)
@@ -430,7 +466,59 @@ void Chunk::calculateSunlight() {
              int gz = chunkPosition.z * CHUNK_SIZE + z;
              
              bool exposedToSky = true;
-             if(world) {
+             
+             // Optimization: Use neighbors[DIR_TOP] to walk up
+             Chunk* current = this;
+             int currentY = chunkPosition.y;
+             
+             // Walk up using neighbors
+             while(current->neighbors[DIR_TOP]) {
+                 current = current->neighbors[DIR_TOP];
+                 currentY++;
+                 // Check column in upper chunk
+                 bool blocked = false;
+                 for(int ly=0; ly<CHUNK_SIZE; ++ly) {
+                     if(current->getBlock(x, ly, z).isActive()) {
+                         exposedToSky = false;
+                         blocked = true;
+                         break;
+                     }
+                 }
+                 if(blocked) break;
+             }
+             
+             // If we ran out of neighbors but didn't hit world height limit?
+             // Since we don't have infinite height, we assume things above the last known chunk are AIR?
+             // Or we fallback to WorldGenerator/World lookup if neighbor link is missing but chunk exists
+             
+             if(exposedToSky && currentY < (127/CHUNK_SIZE)) {
+                  // Fallback to World if we have holes in neighbor links (e.g. diagonal loading?)
+                  // Or just WorldGenerator check
+                  if(world) {
+                       int gx = chunkPosition.x * CHUNK_SIZE + x;
+                       int gz = chunkPosition.z * CHUNK_SIZE + z;
+                       int terrainH = WorldGenerator::GetHeight(gx, gz);
+                       if(chunkPosition.y * CHUNK_SIZE <= terrainH + 6) {
+                            // Only assume shadow if we are deep enough.
+                            // If we are high up, we are exposed (unless blocked by check above).
+                            // But wait, if we are below terrain height, we should be shadowed?
+                            // Yes, if we haven't found a blocking block yet, but we are essentially 'inside' the terrain 
+                            // (which might not be generated yet above us?)
+                            
+                            // If chunks above are not generated, we must assume something.
+                            // If we assume SKY, then when they generate as SOLID, we have to recalculate. (Harder)
+                            // If we assume DARK, then when they generate as AIR, we have to recalculate. (Easy - they trigger update)
+                            
+                            // So if neighbor is missing, we check Heightmap.
+                            // If Y < Heightmap, assume blocked.
+                            int myMaxY = chunkPosition.y * CHUNK_SIZE + CHUNK_SIZE;
+                            if(myMaxY <= terrainH) exposedToSky = false;
+                       }
+                  }
+             }
+
+             if(false) { // Disable old logic
+                 if(world) {
                  int startCyIndex = chunkPosition.y + 1;
                  int endCyIndex = 127 / CHUNK_SIZE; // Max world height index
                  
@@ -464,6 +552,7 @@ void Chunk::calculateSunlight() {
                      }
                  }
              }
+             } // End if(false)
              
              if(exposedToSky) {
                  for(int y=CHUNK_SIZE-1; y>=0; --y) {
@@ -516,6 +605,75 @@ void Chunk::spreadLight() {
     }
 
     // 2. Seed from Neighbor Chunks
+    // Neighbors: Left(-X), Right(+X), Back(-Z), Front(+Z), Bottom(-Y), Top(+Y)
+    struct NeighPtr { int ni; int ox, oy, oz; int faceAxis; };
+    NeighPtr nPtrs[] = {
+        {DIR_LEFT,  CHUNK_SIZE-1, 0, 0,   0},
+        {DIR_RIGHT, 0, 0, 0,              0},
+        {DIR_BACK,  0, 0, CHUNK_SIZE-1,   2}, // Back is Z- (Wait, in GreedyMesh faceDir=1 was Z- and called Back?)
+                                              // Let's standardise:
+                                              // Z- (Back) -> neighbors[DIR_BACK]
+                                              // Z+ (Front) -> neighbors[DIR_FRONT]
+                                              // X- (Left) -> neighbors[DIR_LEFT]
+                                              // X+ (Right) -> neighbors[DIR_RIGHT]
+                                              // Y- (Bottom) -> neighbors[DIR_BOTTOM]
+                                              // Y+ (Top) -> neighbors[DIR_TOP]
+        {DIR_FRONT, 0, 0, 0,              2},
+        {DIR_BOTTOM,0, CHUNK_SIZE-1, 0,   1},
+        {DIR_TOP,   0, 0, 0,              1}
+    };
+    // Note: nPtrs array matches iteration order or just explicit check?
+    // The loop below iterates 'neighbors' array which was struct...
+    // Let's rewrite the loop using explicit neighbors array
+    
+    for(const auto& np : nPtrs) {
+        Chunk* nc = neighbors[np.ni];
+        if(nc) {
+             // Iterate face
+             for(int u=0; u<CHUNK_SIZE; ++u) {
+                 for(int v=0; v<CHUNK_SIZE; ++v) {
+                       int lx, ly, lz; 
+                       int nx, ny, nz; 
+                       
+                       // Define iteration based on Face Axis (0=X-face, 1=Y-face, 2=Z-face)
+                       // If Axis=0 (Left/Right), u=y, v=z
+                       // If Axis=1 (Bot/Top), u=x, v=z
+                       // If Axis=2 (Back/Front), u=x, v=y
+                       
+                       if(np.faceAxis == 0) { // X neighbors
+                            lx = (np.ni == DIR_LEFT) ? 0 : CHUNK_SIZE-1;
+                            ly = u; lz = v;
+                            nx = np.ox; ny = u; nz = v;
+                       } else if(np.faceAxis == 1) { // Y neighbors
+                            lx = u; ly = (np.ni == DIR_BOTTOM) ? 0 : CHUNK_SIZE-1; lz = v;
+                            nx = u; ny = np.oy; nz = v; // np.oy is boundary
+                       } else { // Z neighbors
+                            lx = u; ly = v; lz = (np.ni == DIR_BACK) ? 0 : CHUNK_SIZE-1;
+                            nx = u; ny = v; nz = np.oz;
+                       }
+                       
+                       if(!blocks[lx][ly][lz].isActive()) {
+                             // Sky Light
+                             uint8_t nSky = nc->getSkyLight(nx, ny, nz);
+                             if(nSky > 1 && nSky - 1 > blocks[lx][ly][lz].skyLight) {
+                                 blocks[lx][ly][lz].skyLight = nSky - 1;
+                                 skyQueue.push(glm::ivec3(lx, ly, lz));
+                                 meshDirty = true;
+                             }
+                             // Block Light
+                             uint8_t nBlock = nc->getBlockLight(nx, ny, nz);
+                             if(nBlock > 1 && nBlock - 1 > blocks[lx][ly][lz].blockLight) {
+                                 blocks[lx][ly][lz].blockLight = nBlock - 1;
+                                 blockQueue.push(glm::ivec3(lx, ly, lz));
+                                 meshDirty = true;
+                             }
+                       }
+                 }
+             }
+        }
+    }
+
+    if(false) { // Disable old logic
     if(world) {
         int cx = chunkPosition.x;
         int cy = chunkPosition.y;
@@ -572,6 +730,7 @@ void Chunk::spreadLight() {
             }
         }
     }
+    } // End if(false)
 
     // 3. Propagate BFS
     int directions[6][3] = {
@@ -600,6 +759,54 @@ void Chunk::spreadLight() {
                         skyQueue.push(glm::ivec3(nx, ny, nz));
                         meshDirty = true;
                     }
+                }
+            } else {
+                // Propagate to neighbors?
+                // Now that we have cached neighbors, we can potentially push to their queues?
+                // Or just updating self and letting them pull?
+                // Standard MC lighting often pushes to neighbors.
+                // But thread safety? Calling flavor text on neighbor?
+                // Neighbors might be meshing. setSkyLight locks chunkMutex.
+                // So calling neighbor->setSkyLight() IS thread safe (Chunk mutex).
+                
+                int ni = -1;
+                int nnx=nx, nny=ny, nnz=nz;
+                if(nz >= CHUNK_SIZE) { ni = DIR_FRONT; nnz -= CHUNK_SIZE; }
+                else if(nz < 0) { ni = DIR_BACK; nnz += CHUNK_SIZE; }
+                else if(nx < 0) { ni = DIR_LEFT; nnx += CHUNK_SIZE; }
+                else if(nx >= CHUNK_SIZE) { ni = DIR_RIGHT; nnx -= CHUNK_SIZE; }
+                else if(ny >= CHUNK_SIZE) { ni = DIR_TOP; nny -= CHUNK_SIZE; }
+                else if(ny < 0) { ni = DIR_BOTTOM; nny += CHUNK_SIZE; }
+                
+                if(ni != -1 && neighbors[ni]) {
+                     Chunk* nc = neighbors[ni];
+                     // Lock neighbor to read/write light
+                     // Note: Deadlock risk if A locks B while B locks A?
+                     // spreadLight is usually called from World::Update or Worker.
+                     // If two threads process adjacent chunks and try to spread to each other...
+                     // A holds A.mutex, Tries B.mutex.
+                     // B holds B.mutex, Tries A.mutex.
+                     // DEADLOCK.
+                     
+                     // Solution: Do NOT propagate to neighbors here directly if it locks.
+                     // Or use std::try_lock?
+                     // Or just mark neighbor as dirty or queue an update for it?
+                     
+                     // Current architecture relies on pulling from neighbors (Seed step).
+                     // But BFS needs to push. 
+                     
+                     // For now, let's Stick to LOCAL chunk spreading.
+                     // Cross-chunk propagation is handled by World::setBlock Triggering neighbor updates.
+                     // AND implementation of "Pass 2" in main which calls spreadLight on everyone.
+                     
+                     // However, real propagation across boundaries requires loop.
+                     // If we just stop at boundary, light stops.
+                     // But we have the Pull-System in Step 2 of spreadLight. 
+                     // The neighbor will see OUR high light and pull it in during ITS spreadLight.
+                     // So as long as we iterate spreadLight multiple times or in order...
+                     
+                     // So we don't need to push to neighbors here?
+                     // Ideally yes.
                 }
             }
         }

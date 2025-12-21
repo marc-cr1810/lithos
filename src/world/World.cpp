@@ -87,25 +87,31 @@ void World::addChunk(int x, int y, int z)
         chunks[key] = std::move(newChunk);
         Chunk* c = chunks[key].get();
         
-        lock.unlock(); // Unlock before QueueMeshUpdate to avoid potential lock inversion with queueMutex?
-        // QueueMeshUpdate locks queueMutex.
-        // Worker: locks queueMutex (pop), then generateGeometry -> getBlock -> getChunk -> Locks worldMutex.
-        // If we hold worldMutex and wait for queueMutex...
-        // Main: addChunk (holds World) -> QueueMeshUpdate (wants Queue).
-        // Worker: WorkerLoop (holds Queue) -> generateGeometry -> getChunk (wants World).
-        // DEADLOCK POTENTIAL!
-        // So we MUST unlock worldMutex before calling QueueMeshUpdate or any other external lock.
+        // Link Neighbors (Under World Lock)
+        // Order: Front(Z+), Back(Z-), Left(X-), Right(X+), Top(Y+), Bottom(Y-)
+        int dx[] = {0, 0, -1, 1, 0, 0};
+        int dy[] = {0, 0, 0, 0, 1, -1};
+        int dz[] = {1, -1, 0, 0, 0, 0};
+        int dirs[] = {Chunk::DIR_FRONT, Chunk::DIR_BACK, Chunk::DIR_LEFT, Chunk::DIR_RIGHT, Chunk::DIR_TOP, Chunk::DIR_BOTTOM};
+        int opps[] = {Chunk::DIR_BACK, Chunk::DIR_FRONT, Chunk::DIR_RIGHT, Chunk::DIR_LEFT, Chunk::DIR_BOTTOM, Chunk::DIR_TOP}; // Opposites
+        
+        for(int i=0; i<6; ++i) {
+             auto it = chunks.find(std::make_tuple(x + dx[i], y + dy[i], z + dz[i]));
+             if(it != chunks.end()) {
+                 Chunk* n = it->second.get();
+                 c->neighbors[dirs[i]] = n;
+                 n->neighbors[opps[i]] = c;
+             }
+        }
+        
+        lock.unlock(); // Safe to unlock now
         
         // Queue initial mesh generation
         QueueMeshUpdate(c);
         
         // Mark neighbors as dirty
-        int dx[] = {-1, 1, 0, 0, 0, 0};
-        int dy[] = {0, 0, -1, 1, 0, 0};
-        int dz[] = {0, 0, 0, 0, -1, 1};
-        
         for(int i=0; i<6; ++i) {
-            Chunk* n = getChunk(x + dx[i], y + dy[i], z + dz[i]);
+            Chunk* n = c->neighbors[dirs[i]];
             if(n) QueueMeshUpdate(n);
         }
     }
