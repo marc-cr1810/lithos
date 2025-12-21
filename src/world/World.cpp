@@ -9,6 +9,46 @@
 #include <glm/gtc/matrix_access.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+// Helper to extract frustum planes
+// Each plane is vec4 (a, b, c, d) where ax+by+cz+d=0
+std::array<glm::vec4, 6> extractPlanes(const glm::mat4& m) {
+    std::array<glm::vec4, 6> planes;
+    // Left
+    planes[0] = glm::row(m, 3) + glm::row(m, 0);
+    // Right
+    planes[1] = glm::row(m, 3) - glm::row(m, 0);
+    // Bottom
+    planes[2] = glm::row(m, 3) + glm::row(m, 1);
+    // Top
+    planes[3] = glm::row(m, 3) - glm::row(m, 1);
+    // Near
+    planes[4] = glm::row(m, 3) + glm::row(m, 2);
+    // Far
+    planes[5] = glm::row(m, 3) - glm::row(m, 2);
+
+    for(int i=0; i<6; ++i) {
+        float len = glm::length(glm::vec3(planes[i]));
+        planes[i] /= len;
+    }
+    return planes;
+}
+
+// Helper to check AABB vs Frustum
+bool isAABBInFrustum(const glm::vec3& min, const glm::vec3& max, const std::array<glm::vec4, 6>& planes) {
+    for(const auto& plane : planes) {
+        // p-vertex (direction of normal)
+        glm::vec3 p;
+        p.x = plane.x > 0 ? max.x : min.x;
+        p.y = plane.y > 0 ? max.y : min.y;
+        p.z = plane.z > 0 ? max.z : min.z;
+        
+        // If p-vertex is on negative side of plane, box is outside
+        if (glm::dot(glm::vec3(plane), p) + plane.w < 0)
+            return false;
+    }
+    return true;
+}
+
 World::World() : shutdown(false) {
     workerThread = std::thread(&World::WorkerLoop, this);
     
@@ -194,9 +234,11 @@ void World::GenerationWorkerLoop() {
     }
 }
 
-void World::loadChunks(const glm::vec3& playerPos, int renderDistance) {
+void World::loadChunks(const glm::vec3& playerPos, int renderDistance, const glm::mat4& viewProjection) {
     int cx = (int)floor(playerPos.x / CHUNK_SIZE);
     int cz = (int)floor(playerPos.z / CHUNK_SIZE);
+    
+    auto planes = extractPlanes(viewProjection);
     
     // Simple radius check
     // Spiraling or distance sort would be better but simple loops for now
@@ -204,6 +246,10 @@ void World::loadChunks(const glm::vec3& playerPos, int renderDistance) {
         for(int z = cz - renderDistance; z <= cz + renderDistance; ++z) {
              int distSq = (x-cx)*(x-cx) + (z-cz)*(z-cz);
              if(distSq > renderDistance * renderDistance) continue;
+             
+             // Check visibility (Columns)
+             // We check a large box for the column (y=0 to 16?)
+             // Just specific chunks for now
              
              // Generate columns 0 to 4 (limited height for now)
              for(int y=0; y<5; ++y) {
@@ -219,7 +265,17 @@ void World::loadChunks(const glm::vec3& playerPos, int renderDistance) {
                      std::lock_guard<std::mutex> lock(genMutex);
                      if(generatingChunks.find(key) == generatingChunks.end()) {
                          generatingChunks.insert(key);
-                         genQueue.push_back(key);
+                         
+                         // Priority Check
+                         glm::vec3 min = glm::vec3(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE);
+                         glm::vec3 max = min + glm::vec3(CHUNK_SIZE);
+                         
+                         if(isAABBInFrustum(min, max, planes)) {
+                             // Priority!
+                             genQueue.push_front(key);
+                         } else {
+                             genQueue.push_back(key);
+                         }
                          genCondition.notify_one();
                      }
                  }
@@ -437,45 +493,7 @@ void World::setBlock(int x, int y, int z, BlockType type)
     }
 }
 
-// Helper to extract frustum planes
-// Each plane is vec4 (a, b, c, d) where ax+by+cz+d=0
-std::array<glm::vec4, 6> extractPlanes(const glm::mat4& m) {
-    std::array<glm::vec4, 6> planes;
-    // Left
-    planes[0] = glm::row(m, 3) + glm::row(m, 0);
-    // Right
-    planes[1] = glm::row(m, 3) - glm::row(m, 0);
-    // Bottom
-    planes[2] = glm::row(m, 3) + glm::row(m, 1);
-    // Top
-    planes[3] = glm::row(m, 3) - glm::row(m, 1);
-    // Near
-    planes[4] = glm::row(m, 3) + glm::row(m, 2);
-    // Far
-    planes[5] = glm::row(m, 3) - glm::row(m, 2);
 
-    for(int i=0; i<6; ++i) {
-        float len = glm::length(glm::vec3(planes[i]));
-        planes[i] /= len;
-    }
-    return planes;
-}
-
-// Helper to check AABB vs Frustum
-bool isAABBInFrustum(const glm::vec3& min, const glm::vec3& max, const std::array<glm::vec4, 6>& planes) {
-    for(const auto& plane : planes) {
-        // p-vertex (direction of normal)
-        glm::vec3 p;
-        p.x = plane.x > 0 ? max.x : min.x;
-        p.y = plane.y > 0 ? max.y : min.y;
-        p.z = plane.z > 0 ? max.z : min.z;
-        
-        // If p-vertex is on negative side of plane, box is outside
-        if (glm::dot(glm::vec3(plane), p) + plane.w < 0)
-            return false;
-    }
-    return true;
-}
 
 int World::render(Shader& shader, const glm::mat4& viewProjection)
 {

@@ -89,7 +89,7 @@ private:
     void GenerationWorkerLoop();
 
 public:
-    void loadChunks(const glm::vec3& playerPos, int renderDistance);
+    void loadChunks(const glm::vec3& playerPos, int renderDistance, const glm::mat4& viewProjection);
     size_t getChunkCount() const;
     void renderDebugBorders(Shader& shader, const glm::mat4& viewProjection);
 };

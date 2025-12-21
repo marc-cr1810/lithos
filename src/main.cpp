@@ -177,7 +177,10 @@ int main()
     WorldGenerator generator;
     
     // Initial Load
-    world.loadChunks(player.Position, dbg_renderDistance);
+    // Dummy matrix or calculate initial
+    glm::mat4 initProj = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
+    glm::mat4 initView = camera.GetViewMatrix();
+    world.loadChunks(player.Position, dbg_renderDistance, initProj * initView);
     
     // Wait for initial chunks to spawn to avoid falling into void?
     // For now, let's just let it load asynchronously.
@@ -299,7 +302,9 @@ BlockType selectedBlock = STONE;
         if(lodTimer > 0.5f) {
 
             lodTimer = 0.0f;
-            world.loadChunks(player.Position, dbg_renderDistance);
+            glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
+            glm::mat4 view = camera.GetViewMatrix();
+            world.loadChunks(player.Position, dbg_renderDistance, projection * view);
         }
 
         // Calculate Sun Brightness
@@ -379,7 +384,9 @@ BlockType selectedBlock = STONE;
                  ImGui::Checkbox("Fly Mode (Noclip)", &player.FlyMode);
                  ImGui::Checkbox("Wireframe", &dbg_wireframe);
                  if(ImGui::SliderInt("Render Dist", &dbg_renderDistance, 2, 32)) {
-                     world.loadChunks(player.Position, dbg_renderDistance);
+                     glm::mat4 proj = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
+                     glm::mat4 view = camera.GetViewMatrix();
+                     world.loadChunks(player.Position, dbg_renderDistance, proj * view);
                  }
                  ImGui::SliderFloat("Gravity", &player.Gravity, 0.0f, 50.0f);
                  
