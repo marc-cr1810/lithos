@@ -8,6 +8,7 @@
 #include <thread>
 #include <mutex>
 #include <queue>
+#include <unordered_set>
 #include <condition_variable>
 #include <GL/glew.h>
 #include <glm/glm.hpp>
@@ -53,7 +54,7 @@ public:
 
     // Threading
     void Update(); // Main Thread
-    void QueueMeshUpdate(Chunk* c);
+    void QueueMeshUpdate(Chunk* c, bool priority = false);
     
 
 
@@ -76,6 +77,18 @@ private:
     std::vector<std::pair<Chunk*, std::vector<float>>> uploadQueue;
     
     void WorkerLoop();
+
+    // Generation Thread Pool
+    std::mutex genMutex;
+    std::condition_variable genCondition;
+    std::vector<std::thread> genThreads;
+    std::deque<std::tuple<int, int, int>> genQueue;
+    std::unordered_set<std::tuple<int, int, int>, key_hash> generatingChunks;
+    
+    void GenerationWorkerLoop();
+
+public:
+    void loadChunks(const glm::vec3& playerPos, int renderDistance);
 };
 
 #endif

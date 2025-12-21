@@ -452,6 +452,7 @@ bool Chunk::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist, glm::i
 }
 
 void Chunk::calculateSunlight() {
+    std::lock_guard<std::mutex> lock(chunkMutex);
     // 1. Reset Sky Light
     for(int x=0; x<CHUNK_SIZE; ++x)
         for(int y=0; y<CHUNK_SIZE; ++y)
@@ -568,6 +569,7 @@ void Chunk::calculateSunlight() {
 }
 
 void Chunk::calculateBlockLight() {
+    std::lock_guard<std::mutex> lock(chunkMutex);
     // 1. Reset and Seed Block Light
     for(int x=0; x<CHUNK_SIZE; ++x) {
         for(int y=0; y<CHUNK_SIZE; ++y) {

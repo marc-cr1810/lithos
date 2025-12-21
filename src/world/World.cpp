@@ -1,5 +1,6 @@
 
 #include "World.h"
+#include "WorldGenerator.h"
 #include <cmath>
 #include <limits>
 #include <iostream>
@@ -9,6 +10,13 @@
 
 World::World() : shutdown(false) {
     workerThread = std::thread(&World::WorkerLoop, this);
+    
+    // Start Generation Threads (e.g., 2-4 threads)
+    int numGenThreads = std::thread::hardware_concurrency() / 2;
+    if(numGenThreads < 1) numGenThreads = 1;
+    for(int i=0; i<numGenThreads; ++i) {
+        genThreads.emplace_back(&World::GenerationWorkerLoop, this);
+    }
 }
 
 World::~World() {
@@ -19,6 +27,12 @@ World::~World() {
     condition.notify_one();
     if(workerThread.joinable()) {
         workerThread.join();
+    }
+    
+    // Join Gen Threads
+    genCondition.notify_all();
+    for(auto& t : genThreads) {
+        if(t.joinable()) t.join();
     }
 }
 
@@ -65,15 +79,153 @@ void World::Update() {
     }
 }
 
-void World::QueueMeshUpdate(Chunk* c) {
+void World::QueueMeshUpdate(Chunk* c, bool priority) {
     if(c) {
         std::lock_guard<std::mutex> lock(queueMutex);
-        meshQueue.push_back(c);
+        if(priority) meshQueue.push_front(c);
+        else meshQueue.push_back(c);
         condition.notify_one();
     }
 }
 
 
+
+
+
+void World::GenerationWorkerLoop() {
+    WorldGenerator generator;
+    while(true) {
+        std::tuple<int, int, int> coord;
+        {
+            std::unique_lock<std::mutex> lock(genMutex);
+            genCondition.wait(lock, [this]{ return !genQueue.empty() || shutdown; });
+            
+            if(shutdown && genQueue.empty()) break;
+            
+            if(!genQueue.empty()) {
+                coord = genQueue.front();
+                genQueue.pop_front();
+            } else continue;
+        }
+        
+        int x = std::get<0>(coord);
+        int y = std::get<1>(coord);
+        int z = std::get<2>(coord);
+
+        // check if already exists (might have been added by another thread)
+        {
+            std::lock_guard<std::mutex> lock(worldMutex);
+            if(chunks.find(coord) != chunks.end()) {
+                 // Remove from generating set
+                 std::lock_guard<std::mutex> gLock(genMutex);
+                 generatingChunks.erase(coord);
+                 continue;
+            }
+        }
+
+        // 1. Create Chunk
+        auto newChunk = std::make_unique<Chunk>();
+        newChunk->chunkPosition = glm::ivec3(x, y, z);
+        newChunk->setWorld(this);
+        
+        // 2. Generate Blocks
+        generator.GenerateChunk(*newChunk);
+        
+        // 3. Add to World (This links neighbors)
+        {
+            std::lock_guard<std::mutex> lock(worldMutex);
+            chunks[coord] = std::move(newChunk);
+            Chunk* c = chunks[coord].get();
+            
+            // Link Neighbors (Copied from addChunk because we need to link NOW to calculate light)
+             int dx[] = {0, 0, -1, 1, 0, 0};
+             int dy[] = {0, 0, 0, 0, 1, -1};
+             int dz[] = {1, -1, 0, 0, 0, 0};
+             int dirs[] = {Chunk::DIR_FRONT, Chunk::DIR_BACK, Chunk::DIR_LEFT, Chunk::DIR_RIGHT, Chunk::DIR_TOP, Chunk::DIR_BOTTOM};
+             int opps[] = {Chunk::DIR_BACK, Chunk::DIR_FRONT, Chunk::DIR_RIGHT, Chunk::DIR_LEFT, Chunk::DIR_BOTTOM, Chunk::DIR_TOP};
+
+             for(int i=0; i<6; ++i) {
+                  auto it = chunks.find(std::make_tuple(x + dx[i], y + dy[i], z + dz[i]));
+                  if(it != chunks.end()) {
+                      Chunk* n = it->second.get();
+                      c->neighbors[dirs[i]] = n;
+                      n->neighbors[opps[i]] = c;
+                  }
+             }
+        }
+        
+        Chunk* c = getChunk(x, y, z); // Safe retrieval
+        if(c) {
+             // 4. Calculate Light
+             c->calculateSunlight();
+             c->calculateBlockLight();
+             
+             // 5. Spread Light (Might need neighboring chunks)
+             c->spreadLight();
+             
+             // 6. Queue Mesh (Low Priority for Generation)
+             QueueMeshUpdate(c, false);
+             
+             // Also queue neighbors for mesh update if they exist
+             for(int i=0; i<6; ++i) {
+                 if(c->neighbors[i]) {
+                     Chunk* n = c->neighbors[i];
+                     if(!n->meshDirty) { // Optimization: Only if not already dirty? 
+                         // Actually, we must run spreadLight because we might have blocked their light or provided new light
+                         // But we should check if they are fully generated? 
+                         // Assuming neighbors in graph are valid.
+                         n->spreadLight(); 
+                         QueueMeshUpdate(n, false);
+                     } else {
+                         // Even if dirty, light might need update?
+                         n->spreadLight();
+                         QueueMeshUpdate(n, false);
+                     }
+                 }
+             }
+        }
+
+        // Remove from generating set
+        {
+            std::lock_guard<std::mutex> lock(genMutex);
+            generatingChunks.erase(coord);
+        }
+    }
+}
+
+void World::loadChunks(const glm::vec3& playerPos, int renderDistance) {
+    int cx = (int)floor(playerPos.x / CHUNK_SIZE);
+    int cz = (int)floor(playerPos.z / CHUNK_SIZE);
+    
+    // Simple radius check
+    // Spiraling or distance sort would be better but simple loops for now
+    for(int x = cx - renderDistance; x <= cx + renderDistance; ++x) {
+        for(int z = cz - renderDistance; z <= cz + renderDistance; ++z) {
+             int distSq = (x-cx)*(x-cx) + (z-cz)*(z-cz);
+             if(distSq > renderDistance * renderDistance) continue;
+             
+             // Generate columns 0 to 4 (limited height for now)
+             for(int y=0; y<5; ++y) {
+                 auto key = std::make_tuple(x, y, z);
+                 
+                 bool exists = false;
+                 {
+                     std::lock_guard<std::mutex> lock(worldMutex);
+                     if(chunks.find(key) != chunks.end()) exists = true;
+                 }
+                 
+                 if(!exists) {
+                     std::lock_guard<std::mutex> lock(genMutex);
+                     if(generatingChunks.find(key) == generatingChunks.end()) {
+                         generatingChunks.insert(key);
+                         genQueue.push_back(key);
+                         genCondition.notify_one();
+                     }
+                 }
+             }
+        }
+    }
+}
 
 void World::addChunk(int x, int y, int z)
 {
@@ -107,7 +259,7 @@ void World::addChunk(int x, int y, int z)
         lock.unlock(); // Safe to unlock now
         
         // Queue initial mesh generation
-        QueueMeshUpdate(c);
+        QueueMeshUpdate(c, false);
         
         // Mark neighbors as dirty
         for(int i=0; i<6; ++i) {
@@ -218,7 +370,7 @@ void World::setBlock(int x, int y, int z, BlockType type)
         c->calculateBlockLight();
         c->spreadLight();
 
-        QueueMeshUpdate(c); // Update Parent SuperChunk
+        QueueMeshUpdate(c, true); // Update Parent SuperChunk (High Priority)
 
         // Update neighbor chunks (Propagate Light)
         int nDx[] = {-1, 1, 0, 0, 0, 0};
@@ -231,7 +383,7 @@ void World::setBlock(int x, int y, int z, BlockType type)
                  n->calculateSunlight();
                  n->calculateBlockLight();
                  n->spreadLight();
-                 QueueMeshUpdate(n);
+                 QueueMeshUpdate(n, true);
             }
         }
         
@@ -259,6 +411,7 @@ void World::setBlock(int x, int y, int z, BlockType type)
                 lower->calculateSunlight();
                 lower->calculateBlockLight();
                 lower->spreadLight();
+                QueueMeshUpdate(lower, true);
              }
         } else {
             // Block placed - might shadow lower chunk
@@ -267,6 +420,7 @@ void World::setBlock(int x, int y, int z, BlockType type)
                 lower->calculateSunlight();
                 lower->calculateBlockLight();
                 lower->spreadLight();
+                QueueMeshUpdate(lower, true);
                 
                 // Also update neighbors of this lower chunk, as light might have spread to them
                 int nDx[] = {-1, 1, 0, 0};

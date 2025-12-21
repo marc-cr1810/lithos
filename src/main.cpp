@@ -108,75 +108,19 @@ int main()
     World world;
     WorldGenerator generator;
     
-    int worldSize = 4; // 8x8 chunks
-    int worldHeight = 4; // 0..3 chunks vertically (64 blocks high)
+    int renderDistance = 4;
+    // Initial Load
+    world.loadChunks(player.Position, renderDistance);
     
+    // Wait for initial chunks to spawn to avoid falling into void?
+    // For now, let's just let it load asynchronously.
+    
+    /*
     std::vector<Chunk*> allChunks;
     for(int x = -worldSize; x < worldSize; ++x)
-    {
-        for(int z = -worldSize; z < worldSize; ++z)
-        {
-            for(int y = 0; y < worldHeight; ++y)
-            {
-                world.addChunk(x, y, z);
-                Chunk* c = world.getChunk(x, y, z);
-                if(c) allChunks.push_back(c);
-            }
-        }
-    }
-    
-    // Parallel Generation
-    int threadCount = std::thread::hardware_concurrency();
-    if(threadCount == 0) threadCount = 4;
-    std::vector<std::thread> threads;
-    std::atomic<int> chunkIdx(0);
-    int totalChunks = allChunks.size();
-    
-    for(int i=0; i<threadCount; ++i) {
-        threads.emplace_back([&](){
-            while(true) {
-                 int idx = chunkIdx.fetch_add(1);
-                 if(idx >= totalChunks) break;
-                 Chunk* c = allChunks[idx];
-                 generator.GenerateChunk(*c);
-                 c->calculateSunlight();
-                 c->calculateBlockLight();
-                 c->spreadLight();
-                 // No queue mesh update needed here, render loop handles it
-            }
-        });
-    }
-    
-    for(auto& t : threads) t.join();
-    
-
-
-    // Global Lighting Pass 1: seeding sunlight
-    for(int x = -worldSize; x < worldSize; ++x) {
-        for(int z = -worldSize; z < worldSize; ++z) {
-            for(int y = worldHeight - 1; y >= 0; --y) {
-                 Chunk* c = world.getChunk(x, y, z);
-                 if(c) {
-                     c->calculateSunlight();
-                     c->calculateBlockLight();
-                 }
-            }
-        }
-    }
-
-    // Global Lighting Pass 2: Spread Light
-    for(int x = -worldSize; x < worldSize; ++x) {
-        for(int z = -worldSize; z < worldSize; ++z) {
-            for(int y = 0; y < worldHeight; ++y) {
-                 Chunk* c = world.getChunk(x, y, z);
-                 if(c) {
-                     c->spreadLight();
-                     // Queue for mesh rebuild
-                     world.QueueMeshUpdate(c);
-                 }
-            }
-        }
-    }
+    ...
+    // Removed old manual generation code
+    */
 
     // Safe Spawn Calculation
     int spawnX = 8;
@@ -185,12 +129,26 @@ int main()
 
     // Probe the ACTUAL world data to find ground
     bool foundGround = false;
-    for(int y = worldHeight * CHUNK_SIZE - 1; y >= 0; --y) {
-         if(world.getBlock(spawnX, y, spawnZ).isActive()) {
-             spawnY = (float)y + 2.5f;
-             foundGround = true;
-             break;
-         }
+
+    // Simple wait for chunk 0,0,0
+    int retry = 0;
+    while(!foundGround && retry < 100) {
+        Chunk* c = world.getChunk(0, 0, 0);
+        if(c) {
+             for(int y = CHUNK_SIZE - 1; y >= 0; --y) {
+                 if(c->getBlock(spawnX, y, spawnZ).isActive()) {
+                     spawnY = (float)y + 2.5f;
+                     foundGround = true;
+                     break;
+                 }
+             }
+        }
+        if(!foundGround) {  
+            // If we have dynamic loading, we might not have the chunk yet?
+            // Just force wait or fallback
+             std::this_thread::sleep_for(std::chrono::milliseconds(10));
+             retry++;
+        }
     }
     // Debug Title
     // std::string title = "Minceraft - SpawnY: " + std::to_string(spawnY) + (foundGround ? " (Found)" : " (Default)");
@@ -266,6 +224,7 @@ BlockType selectedBlock = STONE;
         if(lodTimer > 0.5f) {
 
             lodTimer = 0.0f;
+            world.loadChunks(player.Position, renderDistance);
         }
 
         // Calculate Sun Brightness
