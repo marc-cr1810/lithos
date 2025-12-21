@@ -43,7 +43,8 @@ public:
     Block getBlock(int x, int y, int z) const;
     void setBlock(int x, int y, int z, BlockType type);
 
-    void render(Shader& shader, const glm::mat4& viewProjection);
+    // Returns number of chunks rendered
+    int render(Shader& shader, const glm::mat4& viewProjection);
     
     // Raycast against all chunks (or optimization)
     // Returns true and fills info if hit

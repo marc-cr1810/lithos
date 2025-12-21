@@ -63,6 +63,9 @@ bool dbg_chunkBorders = false;
 bool dbg_useHeatmap = false;
 bool dbg_useFog = false;
 float dbg_fogDist = 50.0f;
+bool dbg_freezeCulling = false;
+glm::mat4 dbg_frozenProjView(1.0f);
+int dbg_renderedChunks = 0;
 
 // Helper
 const char* GetBlockName(int type) {
@@ -333,7 +336,7 @@ BlockType selectedBlock = STONE;
                 
                 ImGui::Separator();
                 ImGui::Text("Sun Strength: %.2f", sunStrength);
-                ImGui::Text("Chunks: %zu", world.getChunkCount());
+                ImGui::Text("Chunks: %d / %zu", dbg_renderedChunks, world.getChunkCount());
             }
 
             if (ImGui::CollapsingHeader("Controls", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -379,6 +382,9 @@ BlockType selectedBlock = STONE;
                      world.loadChunks(player.Position, dbg_renderDistance);
                  }
                  ImGui::SliderFloat("Gravity", &player.Gravity, 0.0f, 50.0f);
+                 
+                 ImGui::SameLine();
+                 ImGui::Checkbox("Freeze Culling", &dbg_freezeCulling);
                  
                  ImGui::Separator();
                  ImGui::Text("Visualization");
@@ -477,7 +483,16 @@ BlockType selectedBlock = STONE;
         blockTexture.bind();
         
         if(dbg_wireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        world.render(ourShader, projection * view);
+        
+        glm::mat4 cullMatrix = projection * view;
+        if(dbg_freezeCulling) {
+             cullMatrix = dbg_frozenProjView;
+        } else {
+             dbg_frozenProjView = cullMatrix;
+        }
+        
+        dbg_renderedChunks = world.render(ourShader, cullMatrix);
+        
         if(dbg_wireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         
         if(dbg_chunkBorders) {

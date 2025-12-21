@@ -477,13 +477,14 @@ bool isAABBInFrustum(const glm::vec3& min, const glm::vec3& max, const std::arra
     return true;
 }
 
-void World::render(Shader& shader, const glm::mat4& viewProjection)
+int World::render(Shader& shader, const glm::mat4& viewProjection)
 {
     std::lock_guard<std::mutex> lock(worldMutex);
     
     // Frustum Culling
     auto planes = extractPlanes(viewProjection);
     
+    int count = 0;
     for(auto& pair : chunks)
     {
         Chunk* c = pair.second.get();
@@ -498,8 +499,10 @@ void World::render(Shader& shader, const glm::mat4& viewProjection)
         
         if(isAABBInFrustum(min, max, planes)) {
             c->render(shader, viewProjection);
+            count++;
         }
     }
+    return count;
 }
 // Removed getSuperChunk/getOrCreateSuperChunk definitions
 
