@@ -10,6 +10,9 @@
 #endif
 
 #include <GLFW/glfw3.h>
+#include "imgui.h"
+#include "backends/imgui_impl_glfw.h"
+#include "backends/imgui_impl_opengl3.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -42,6 +45,10 @@ bool firstMouse = true;
 // timing
 float deltaTime = 0.0f;	// time between current frame and last frame
 float lastFrame = 0.0f;
+
+// Debug State
+bool isDebugMode = false;
+bool lastM = false;
 
 int main()
 {
@@ -89,6 +96,34 @@ int main()
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
+
+    // Setup ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;       // Enable Keyboard Controls
+    //io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;           // Enable Docking
+    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;         // Enable Multi-Viewport / Platform Windows
+    //io.ConfigViewportsNoAutoMerge = true;
+    //io.ConfigViewportsNoTaskBarIcon = true;
+
+    // Setup Dear ImGui style
+    ImGui::StyleColorsDark();
+    //ImGui::StyleColorsClassic();
+
+    // When viewports are enabled we tweak WindowRounding/WindowBg so platform windows can look identical to regular ones.
+    ImGuiStyle& style = ImGui::GetStyle();
+    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+    {
+        style.WindowRounding = 0.0f;
+        style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+    }
+
+    // Setup Platform/Renderer backends
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    const char* glsl_version = "#version 130";
+    ImGui_ImplOpenGL3_Init(glsl_version);
 
     // build and compile our shader zprogram
     // ------------------------------------
@@ -214,6 +249,12 @@ BlockType selectedBlock = STONE;
         deltaTime = std::min(deltaTime, 0.1f); // Clamp
         
         globalTime += deltaTime;
+
+        // Start the Dear ImGui frame
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
         
         // World Update (Mesh Uploads)
         world.Update();
@@ -233,6 +274,23 @@ BlockType selectedBlock = STONE;
         float sunStrength = (sin(globalTime * 0.05f) + 1.0f) * 0.5f; 
         // Clamp minimum brightness so it's not pitch black (moonlight)
         sunStrength = std::max(0.05f, sunStrength);
+
+        // Debug Window
+        if (isDebugMode) {
+            ImGui::Begin("Debug Info");
+            ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+            ImGui::Text("Pos: %.2f, %.2f, %.2f", player.Position.x, player.Position.y, player.Position.z);
+            ImGui::Text("Sun Strength: %.2f", sunStrength);
+            ImGui::Text("Chunks: %zu", world.getChunkCount());
+            
+            #ifdef MINCERAFT_DEBUG
+            ImGui::TextColored(ImVec4(1,1,0,1), "DEBUG BUILD");
+            #else
+            ImGui::TextColored(ImVec4(0,1,0,1), "RELEASE BUILD");
+            #endif
+
+            ImGui::End();
+        }
 
         // input
         // -----
@@ -383,6 +441,22 @@ BlockType selectedBlock = STONE;
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
+        // Render ImGui
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        
+        // Update and Render additional Platform Windows
+        // (Platform functions may change the current OpenGL context, so we save/restore it to make it easier to paste this code elsewhere.
+        //  For this specific demo app we could also call glfwMakeContextCurrent(window) directly)
+        ImGuiIO& io = ImGui::GetIO(); (void)io;
+        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+        {
+            GLFWwindow* backup_current_context = glfwGetCurrentContext();
+            ImGui::UpdatePlatformWindows();
+            ImGui::RenderPlatformWindowsDefault();
+            glfwMakeContextCurrent(backup_current_context);
+        }
+
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
@@ -394,18 +468,38 @@ BlockType selectedBlock = STONE;
 
     // glfw: terminate, clearing all previously allocated GLFW resources.
     // ------------------------------------------------------------------
-    
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+
     glfwTerminate();
     return 0;
 }
 
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
 // ---------------------------------------------------------------------------------------------------------
+
 void processInput(GLFWwindow *window, const World& world)
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
-
+    
+    // Toggle Debug Mode
+    bool currentM = glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS;
+    if (currentM && !lastM) {
+        isDebugMode = !isDebugMode;
+        if (isDebugMode) {
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        } else {
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+            firstMouse = true; // Reset mouse look to avoid jumps
+        }
+    }
+    lastM = currentM;
+    
+    // If in debug mode, return early or skip player controls (except movement maybe?)
+    // Let's keep movement but disable mouse look.
+    
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
         player.ProcessKeyboard(P_FORWARD, deltaTime, world);
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
@@ -418,23 +512,25 @@ void processInput(GLFWwindow *window, const World& world)
         player.ProcessJump();
 
     // Mouse Polling
-    double xpos, ypos;
-    glfwGetCursorPos(window, &xpos, &ypos);
+    if (!isDebugMode) {
+        double xpos, ypos;
+        glfwGetCursorPos(window, &xpos, &ypos);
 
-    if (firstMouse)
-    {
+        if (firstMouse)
+        {
+            lastX = (float)xpos;
+            lastY = (float)ypos;
+            firstMouse = false;
+        }
+
+        float xoffset = (float)xpos - lastX;
+        float yoffset = lastY - (float)ypos; // reversed since y-coordinates go from bottom to top
+
         lastX = (float)xpos;
         lastY = (float)ypos;
-        firstMouse = false;
+
+        player.ProcessMouseMovement(xoffset, yoffset);
     }
-
-    float xoffset = (float)xpos - lastX;
-    float yoffset = lastY - (float)ypos; // reversed since y-coordinates go from bottom to top
-
-    lastX = (float)xpos;
-    lastY = (float)ypos;
-
-    player.ProcessMouseMovement(xoffset, yoffset);
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes

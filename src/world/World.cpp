@@ -568,3 +568,7 @@ bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist, glm::i
     }
     return false;
 }
+
+size_t World::getChunkCount() const {
+    return chunks.size();
+}

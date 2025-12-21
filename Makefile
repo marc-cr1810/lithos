@@ -1,16 +1,27 @@
-.PHONY: all configure build run clean
+.PHONY: all debug release run run_debug run_release clean
 
-all: build
+# Default to debug
+all: debug
 
-configure:
-	cmake -B build
+# Debug Build
+debug:
+	cmake -B build/debug -DCMAKE_BUILD_TYPE=Debug -Wno-dev
+	cmake --build build/debug
 
-build:
-	cmake -B build
-	cmake --build build
+# Release Build
+release:
+	cmake -B build/release -DCMAKE_BUILD_TYPE=Release -Wno-dev
+	cmake --build build/release
 
-run: build
-	./build/minceraft
+# Run Debug
+run: run_debug
+
+run_debug: debug
+	./build/debug/minceraft
+
+# Run Release
+run_release: release
+	./build/release/minceraft
 
 clean:
-	rm -rf build
+	rm -rf build build_release

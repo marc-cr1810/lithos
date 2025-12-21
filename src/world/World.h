@@ -89,6 +89,8 @@ private:
 
 public:
     void loadChunks(const glm::vec3& playerPos, int renderDistance);
+    
+    size_t getChunkCount() const;
 };
 
 #endif

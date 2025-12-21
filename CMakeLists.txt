@@ -15,6 +15,12 @@ find_package(OpenGL REQUIRED)
 find_package(glfw3 QUIET)
 if(NOT glfw3_FOUND)
     message(STATUS "GLFW3 not found, fetching...")
+    
+    # Disable GLFW docs, tests, examples to avoid Doxygen/Nuklear warnings
+    set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    
     FetchContent_Declare(
         glfw
         GIT_REPOSITORY https://github.com/glfw/glfw.git
@@ -44,6 +50,7 @@ if (NOT GLEW_FOUND)
     FetchContent_Declare(
        glew
        URL https://github.com/nigels-com/glew/releases/download/glew-2.2.0/glew-2.2.0.tgz
+       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
     
     # We need to manually populate because the CMakeLists.txt is in build/cmake
@@ -61,6 +68,19 @@ else()
     set(GLEW_TARGET GLEW::GLEW)
 endif()
 
+# ImGui
+FetchContent_Declare(
+    imgui
+    GIT_REPOSITORY https://github.com/ocornut/imgui.git
+    GIT_TAG docking
+)
+FetchContent_MakeAvailable(imgui)
+
+# Debug Macro
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_definitions(-DMINCERAFT_DEBUG)
+endif()
+
 add_executable(minceraft 
     src/main.cpp 
     src/render/Shader.cpp 
@@ -73,6 +93,20 @@ add_executable(minceraft
     src/world/TreeDecorator.cpp
     src/world/OreDecorator.cpp
     src/world/World.cpp
+    
+    # ImGui
+    ${imgui_SOURCE_DIR}/imgui.cpp
+    ${imgui_SOURCE_DIR}/imgui_demo.cpp
+    ${imgui_SOURCE_DIR}/imgui_draw.cpp
+    ${imgui_SOURCE_DIR}/imgui_tables.cpp
+    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+)
+
+target_include_directories(minceraft PRIVATE 
+    ${imgui_SOURCE_DIR} 
+    ${imgui_SOURCE_DIR}/backends
 )
 
 target_link_libraries(minceraft PRIVATE 
