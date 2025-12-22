@@ -51,7 +51,9 @@ void WorldGenerator::GenerateChunk(Chunk& chunk)
                 
                 if(gy <= height) {
                     if(gy == height) {
-                         type = GRASS;
+                         // Surface Block
+                         if(gy < 18) type = DIRT; // Underwater surface is Dirt (below level 18)
+                         else type = GRASS;       // At level 18 or above is Grass
                          // Tree logic removed, used Decorator
                     }
                     else if(gy > height - 3) type = DIRT;
@@ -79,6 +81,14 @@ void WorldGenerator::GenerateChunk(Chunk& chunk)
                 // If AIR and below sea level, fill with WATER
                 if(type == AIR && gy <= 18) {
                      chunk.setBlock(x, y, z, WATER);
+                     
+                     // Grass under water becomes Dirt
+                     // Check block below. If we are at y=0, we don't check below.
+                     if(y > 0) {
+                         if(chunk.getBlock(x, y-1, z).type == GRASS) {
+                             chunk.setBlock(x, y-1, z, DIRT);
+                         }
+                     }
                 }
             }
         }

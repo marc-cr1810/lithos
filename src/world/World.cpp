@@ -576,14 +576,14 @@ int World::render(Shader& shader, const glm::mat4& viewProjection)
     
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    // glDepthMask(GL_FALSE); // Optional: Disable depth write for transparent pass
+    glDepthMask(GL_FALSE); // Disable depth write for transparent pass so selection box shows
 
     for(Chunk* c : visibleChunks) {
         if(c) {
             c->render(shader, viewProjection, 1); // Transparent
         }
     }
-    // glDepthMask(GL_TRUE);
+    glDepthMask(GL_TRUE); // Restore depth write
     
     return count;
 }

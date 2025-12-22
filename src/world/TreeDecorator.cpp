@@ -38,6 +38,9 @@ void TreeDecorator::Decorate(Chunk& chunk, WorldGenerator& generator)
                              int treeHeight = 4 + (rand() % 4);
                              int y = localY;
                              
+                             // Convert Grass under tree to Dirt
+                             chunk.setBlock(x, y, z, DIRT);
+                             
                              // Trunk
                              for(int h=1; h<=treeHeight; ++h) chunk.setBlock(x, y+h, z, WOOD);
                              

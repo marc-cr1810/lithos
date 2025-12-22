@@ -512,34 +512,37 @@ void Chunk::calculateSunlight() {
              
              bool exposedToSky = true;
              
-             // Optimization: Use neighbors[DIR_TOP] to walk up
-             Chunk* current = this;
-             int currentY = chunkPosition.y;
-             
-             // Walk up using neighbors
-             while(current->neighbors[DIR_TOP]) {
-                 current = current->neighbors[DIR_TOP];
-                 currentY++;
-                 // Check column in upper chunk
-                 bool blocked = false;
-                 for(int ly=0; ly<CHUNK_SIZE; ++ly) {
-                     if(current->getBlock(x, ly, z).isOpaque()) {
-                         exposedToSky = false;
-                         blocked = true;
-                         break;
-                     }
-                 }
-                 if(blocked) break;
-             }
-             
-             // ...
-
-             if(false) { // Disable old logic
-                 // ...
-             }
-             
-             if(exposedToSky) {
-                  int currentLight = 15;
+              // Optimization: Use neighbors[DIR_TOP] to walk up
+              Chunk* current = this;
+              int incomingLight = 15;
+              
+              // Walk up using neighbors
+              while(current->neighbors[DIR_TOP]) {
+                  current = current->neighbors[DIR_TOP];
+                  // Check column in upper chunk (Bottom-Up)
+                  bool blocked = false;
+                  for(int ly=0; ly<CHUNK_SIZE; ++ly) {
+                      Block b = current->getBlock(x, ly, z);
+                      if(b.isOpaque()) {
+                          exposedToSky = false;
+                          blocked = true;
+                          incomingLight = 0;
+                          break;
+                      } else if(b.type == WATER) {
+                          incomingLight -= 2;
+                          if(incomingLight <= 0) {
+                              // Light fully absorbed
+                              incomingLight = 0;
+                              // Should we consider this exposed? It's exposed to darkness.
+                              // Technically yes, we continue, but with 0 light.
+                          }
+                      }
+                  }
+                  if(blocked || incomingLight <= 0) break;
+              }
+              
+              if(exposedToSky) {
+                   int currentLight = incomingLight;
                   for(int y=CHUNK_SIZE-1; y>=0; --y) {
                       if(blocks[x][y][z].isOpaque()) {
                           break;
