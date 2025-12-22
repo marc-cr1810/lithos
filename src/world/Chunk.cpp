@@ -492,31 +492,8 @@ void Chunk::calculateSunlight() {
              // Since we don't have infinite height, we assume things above the last known chunk are AIR?
              // Or we fallback to WorldGenerator/World lookup if neighbor link is missing but chunk exists
              
-             if(exposedToSky && currentY < (127/CHUNK_SIZE)) {
-                  // Fallback to World if we have holes in neighbor links (e.g. diagonal loading?)
-                  // Or just WorldGenerator check
-                  if(world) {
-                       int gx = chunkPosition.x * CHUNK_SIZE + x;
-                       int gz = chunkPosition.z * CHUNK_SIZE + z;
-                       int terrainH = WorldGenerator::GetHeight(gx, gz);
-                       if(chunkPosition.y * CHUNK_SIZE <= terrainH + 6) {
-                            // Only assume shadow if we are deep enough.
-                            // If we are high up, we are exposed (unless blocked by check above).
-                            // But wait, if we are below terrain height, we should be shadowed?
-                            // Yes, if we haven't found a blocking block yet, but we are essentially 'inside' the terrain 
-                            // (which might not be generated yet above us?)
-                            
-                            // If chunks above are not generated, we must assume something.
-                            // If we assume SKY, then when they generate as SOLID, we have to recalculate. (Harder)
-                            // If we assume DARK, then when they generate as AIR, we have to recalculate. (Easy - they trigger update)
-                            
-                            // So if neighbor is missing, we check Heightmap.
-                            // If Y < Heightmap, assume blocked.
-                            int myMaxY = chunkPosition.y * CHUNK_SIZE + CHUNK_SIZE;
-                            if(myMaxY <= terrainH) exposedToSky = false;
-                       }
-                  }
-             }
+             // Fallback logic removed to allow deep caves to stay lit if open to sky.
+             // If neighbors are missing, we assume SKY until they load and block it.
 
              if(false) { // Disable old logic
                  if(world) {

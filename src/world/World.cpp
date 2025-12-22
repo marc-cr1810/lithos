@@ -224,20 +224,22 @@ void World::GenerationWorkerLoop() {
              QueueMeshUpdate(c, false);
              
              // Also queue neighbors for mesh update if they exist
+             // Also queue neighbors for mesh update if they exist
+             int dirs_indices[] = {Chunk::DIR_FRONT, Chunk::DIR_BACK, Chunk::DIR_LEFT, Chunk::DIR_RIGHT, Chunk::DIR_TOP, Chunk::DIR_BOTTOM};
+             
              for(int i=0; i<6; ++i) {
-                 if(c->neighbors[i]) {
-                     Chunk* n = c->neighbors[i];
-                     if(!n->meshDirty) { // Optimization: Only if not already dirty? 
-                         // Actually, we must run spreadLight because we might have blocked their light or provided new light
-                         // But we should check if they are fully generated? 
-                         // Assuming neighbors in graph are valid.
-                         n->spreadLight(); 
-                         QueueMeshUpdate(n, false);
-                     } else {
-                         // Even if dirty, light might need update?
-                         n->spreadLight();
-                         QueueMeshUpdate(n, false);
+                 if(c->neighbors[dirs_indices[i]]) {
+                     Chunk* n = c->neighbors[dirs_indices[i]];
+                     
+                     // FIX: If we added a chunk ABOVE this neighbor, force it to re-calculate sunlight
+                     // because we might have just blocked the sky.
+                     if(dirs_indices[i] == Chunk::DIR_BOTTOM) {
+                         n->calculateSunlight();
+                         n->calculateBlockLight();
                      }
+                     
+                     n->spreadLight(); 
+                     QueueMeshUpdate(n, false);
                  }
              }
         }
@@ -335,9 +337,17 @@ void World::addChunk(int x, int y, int z)
         QueueMeshUpdate(c, false);
         
         // Mark neighbors as dirty
+        // Mark neighbors as dirty
         for(int i=0; i<6; ++i) {
             Chunk* n = c->neighbors[dirs[i]];
-            if(n) QueueMeshUpdate(n);
+            if(n) {
+                if(dirs[i] == Chunk::DIR_BOTTOM) {
+                    n->calculateSunlight();
+                    n->calculateBlockLight();
+                }
+                n->spreadLight();
+                QueueMeshUpdate(n);
+            }
         }
     }
 }
