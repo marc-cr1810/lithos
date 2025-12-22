@@ -66,24 +66,71 @@ void WorldGenerator::GenerateChunk(Chunk& chunk)
                 // 3D Noise Caves
                 // Parameters: Scale 0.06 (Broader), Threshold 0.25 (More frequent)
                 // Removed (gy < height - 4) restriction to expose caves
-                if(gy > 1) {
-                     float caveNoise = glm::perlin(glm::vec3((float)gx, (float)gy, (float)gz) * 0.06f);
-                     if(caveNoise > 0.25f) {
-                         type = AIR;
+                // Water Level (Sea Level @ Y=10)
+                // If AIR and below sea level, fill with WATER
+                // This must happen BEFORE Cave Generation to allow caves to stay dry (by carving OUT the solids, but not water)
+                // Actually, if we want dry caves, we carve solids into AIR.
+                // If we want caves NOT to be flooded, we must Ensure Water only fills "Open Open Sky/Ocean" air.
+                // Wait.
+                // Old logic: Terrain -> Caves(Air) -> WaterFill(Air->Water). Result: Flooded Caves.
+                // New logic: Terrain -> WaterFill(Ocean Air) -> Caves(Carve Solid). Result: Dry Caves.
+                
+                // 1. Fill Ocean Water if still AIR (Natural Terrain Air)
+                if(type == AIR && gy <= 18) {
+                    type = WATER; // Temp local type
+                    
+                    // Note: We don't setBlock yet, we are building 'type'. 
+                    // But we need to handle the "Grass Under Water" fix.
+                    // If we set type=WATER here, code below is fine.
+                }
+
+                // 2. Carve Caves
+                // Parameters: Scale 0.06 (Broader), Threshold 0.25 (More frequent)
+                
+                // Crust Protection: Don't carve the very top layers of the terrain IF IT IS UNDERWATER.
+                // This preserves the seabed integrity but allows surface caves on land.
+                bool isUnderwater = (height <= 18);
+                bool preserveCrust = false;
+                if(isUnderwater && gy > height - 3) preserveCrust = true;
+
+                if(preserveCrust) {
+                     // Keep solid crust to prevent ocean draining
+                }
+                else if(gy > 1) {
+                     // Seabed Protection: Redundant check but safe
+                     // ...
+                     if(gy == height && height < 18) {
+                         // Do nothing
+                     }
+                     else {
+                         float caveNoise = glm::perlin(glm::vec3((float)gx, (float)gy, (float)gz) * 0.06f);
+                         if(caveNoise > 0.25f) {
+                             if(type != WATER) {
+                                 // Side Wall Protection: Check adjacent blocks for water (intra-chunk)
+                                 bool nearWater = false;
+                                 if(x > 0 && chunk.getBlock(x-1, y, z).type == WATER) nearWater = true;
+                                 if(x < CHUNK_SIZE-1 && chunk.getBlock(x+1, y, z).type == WATER) nearWater = true;
+                                 if(z > 0 && chunk.getBlock(x, y, z-1).type == WATER) nearWater = true;
+                                 if(z < CHUNK_SIZE-1 && chunk.getBlock(x, y, z+1).type == WATER) nearWater = true;
+                                 // Also check Up/Down (though Up is handled by Crust/Seabed)
+                                 if(y < CHUNK_SIZE-1 && chunk.getBlock(x, y+1, z).type == WATER) nearWater = true;
+
+                                 if(!nearWater) {
+                                     // Lava Lake Level
+                                     if(gy <= 10) type = LAVA;
+                                     else type = AIR;
+                                 }
+                             }
+                         }
                      }
                 }
 
-
-
                 chunk.setBlock(x, y, z, type);
                 
-                // Water Level (Sea Level @ Y=10)
-                // If AIR and below sea level, fill with WATER
-                if(type == AIR && gy <= 18) {
-                     chunk.setBlock(x, y, z, WATER);
-                     
-                     // Grass under water becomes Dirt
-                     // Check block below. If we are at y=0, we don't check below.
+                // Post-Set Fixes (Grass->Dirt)
+                // Since we delayed setBlock, we can check logic
+                if(type == WATER && gy <= 18) {
+                     // Grass under current block
                      if(y > 0) {
                          if(chunk.getBlock(x, y-1, z).type == GRASS) {
                              chunk.setBlock(x, y-1, z, DIRT);
