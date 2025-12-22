@@ -55,7 +55,7 @@ void main()
     aoFactor = max(0.1, aoFactor); // Clamp
     
     float lightVal = max(sunLevel, blockLevel);
-    lightVal = max(0.05, lightVal); // Ambient min
+    lightVal = max(0.2, lightVal); // Ambient min
 
     // Apply AO to the final light multiplier or the color?
     // AO represents blocked ambient light.

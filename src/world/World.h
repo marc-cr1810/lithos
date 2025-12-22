@@ -26,7 +26,14 @@ struct key_hash
 {
     std::size_t operator()(const std::tuple<int, int, int>& k) const
     {
-        return std::get<0>(k) ^ std::get<1>(k) ^ std::get<2>(k);
+        std::size_t seed = 0;
+        auto hash_combine = [&seed](int v) {
+            seed ^= std::hash<int>{}(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        };
+        hash_combine(std::get<0>(k));
+        hash_combine(std::get<1>(k));
+        hash_combine(std::get<2>(k));
+        return seed;
     }
 };
 
