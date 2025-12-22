@@ -467,10 +467,35 @@ BlockType selectedBlock = STONE;
 
         processInput(window, world);
 
-        // render
+        // Render
         // ------
-        // Adjust clear color based on sunStrength?
-        glClearColor(0.2f * sunStrength, 0.3f * sunStrength, 0.3f * sunStrength, 1.0f);
+        
+        // Water Tint Logic
+        bool inWater = false;
+        Block camBlock = world.getBlock((int)floor(camera.Position.x), (int)floor(camera.Position.y), (int)floor(camera.Position.z));
+        if(camBlock.type == WATER || camBlock.type == LAVA) inWater = true;
+        
+        glm::vec3 skyColor = glm::vec3(0.2f, 0.3f, 0.3f) * sunStrength;
+        glm::vec3 fogCol = glm::vec3(0.5f, 0.6f, 0.7f) * sunStrength;
+        float fDist = dbg_fogDist;
+        bool uFog = dbg_useFog;
+        
+        if(inWater) {
+            // Underwater Blue
+            if(camBlock.type == WATER) {
+                skyColor = glm::vec3(0.1f, 0.1f, 0.4f) * sunStrength;
+                fogCol = glm::vec3(0.05f, 0.05f, 0.3f) * sunStrength; 
+            } else {
+                // Lava Red
+                skyColor = glm::vec3(0.6f, 0.1f, 0.0f);
+                fogCol = glm::vec3(0.5f, 0.0f, 0.0f);
+            }
+            
+            fDist = 15.0f; // Very close fog
+            uFog = true;   // Force fog on
+        }
+
+        glClearColor(skyColor.x, skyColor.y, skyColor.z, 1.0f);
         glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT); 
 
         // activate shader
@@ -478,8 +503,9 @@ BlockType selectedBlock = STONE;
         ourShader.setFloat("sunStrength", sunStrength);
         ourShader.setVec3("viewPos", camera.Position);
         ourShader.setBool("useHeatmap", dbg_useHeatmap);
-        ourShader.setBool("useFog", dbg_useFog);
-        ourShader.setFloat("fogDist", dbg_fogDist);
+        ourShader.setBool("useFog", uFog);
+        ourShader.setFloat("fogDist", fDist);
+        ourShader.setVec3("fogColor", fogCol);
 
         // pass projection matrix to shader (note: in this case it could change every frame)
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);

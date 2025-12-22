@@ -481,7 +481,8 @@ bool Chunk::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist, glm::i
         // Check bounds
         if(x >= 0 && x < CHUNK_SIZE && y >= 0 && y < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE)
         {
-            if(blocks[x][y][z].isActive())
+            // Use isSolid() to ignore Water/Lava for raycasting
+            if(blocks[x][y][z].isSolid())
             {
                 outputPos = glm::ivec3(x, y, z);
                 outputPrePos = glm::ivec3((int)floor(lastPos.x), (int)floor(lastPos.y), (int)floor(lastPos.z));
@@ -538,19 +539,28 @@ void Chunk::calculateSunlight() {
              }
              
              if(exposedToSky) {
-                 for(int y=CHUNK_SIZE-1; y>=0; --y) {
-                     if(blocks[x][y][z].isOpaque()) {
-                         break;
-                     } else {
-                         // Sunlight passes through non-opaque blocks (Air, Water)
-                         // But if it is water, we still set skyLight to 15? Yes.
-                         // But we also need to allow propagation into solids? No, solids are opaque.
-                         // What about Light spreading?
-                         // If we set skylight=15, we need to ensure spreadLight propagates it.
-                         // Currently spreadLight probably uses isActive to stop spread.
-                         blocks[x][y][z].skyLight = 15;
-                     }
-                 }
+                  int currentLight = 15;
+                  for(int y=CHUNK_SIZE-1; y>=0; --y) {
+                      if(blocks[x][y][z].isOpaque()) {
+                          break;
+                      } else {
+                          // Attenuate light in water
+                          if(blocks[x][y][z].type == WATER) {
+                              currentLight -= 2;
+                              if(currentLight < 0) currentLight = 0;
+                          }
+                          blocks[x][y][z].skyLight = currentLight;
+                          
+                          // Queue for spreading if not full brightness?
+                          // Actually, if we attenuate, we might want to queue it to spread the darkness/light?
+                          // The spreadLight function handles outward spread. 
+                          // The column is the source.
+                          // Note: skyQueue is not accessible here. This line is commented out to maintain syntactical correctness.
+                          // if(currentLight > 0) {
+                          //     skyQueue.push(glm::ivec3(x, y, z));
+                          // }
+                      }
+                  }
                  
                  // If top block was Water, the column below it should also be lit?
                  // The loop goes Y-Down.
@@ -765,8 +775,9 @@ void Chunk::spreadLight() {
 
             if(nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
                 if(!blocks[nx][ny][nz].isOpaque()) {
-                    if(blocks[nx][ny][nz].skyLight < curLight - 1) {
-                        blocks[nx][ny][nz].skyLight = curLight - 1;
+                    int decay = (blocks[nx][ny][nz].type == WATER) ? 3 : 1;
+                    if(blocks[nx][ny][nz].skyLight < curLight - decay) {
+                        blocks[nx][ny][nz].skyLight = curLight - decay;
                         skyQueue.push(glm::ivec3(nx, ny, nz));
                         meshDirty = true;
                     }
@@ -792,8 +803,9 @@ void Chunk::spreadLight() {
 
             if(nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
                 if(!blocks[nx][ny][nz].isOpaque()) {
-                    if(blocks[nx][ny][nz].blockLight < curLight - 1) {
-                        blocks[nx][ny][nz].blockLight = curLight - 1;
+                    int decay = (blocks[nx][ny][nz].type == WATER) ? 3 : 1;
+                    if(blocks[nx][ny][nz].blockLight < curLight - decay) {
+                        blocks[nx][ny][nz].blockLight = curLight - decay;
                         blockQueue.push(glm::ivec3(nx, ny, nz));
                         meshDirty = true;
                     }

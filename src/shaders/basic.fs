@@ -19,6 +19,7 @@ uniform bool useHeatmap;
 // Phase 4: Fog
 uniform bool useFog;
 uniform float fogDist;
+uniform vec3 fogColor;
 
 void main()
 {
@@ -72,9 +73,6 @@ void main()
         float distance = length(viewPos - FragPos);
         float fogFactor = exp(-pow((distance / fogDist), 2.0)); // Exponential squared fog
         fogFactor = clamp(fogFactor, 0.0, 1.0);
-        
-        // Fog Color (Sky Color approx)
-        vec3 fogColor = vec3(0.5, 0.6, 0.7) * sunStrength; 
         
         finalColor = mix(vec4(fogColor, 1.0), finalColor, fogFactor);
     }
