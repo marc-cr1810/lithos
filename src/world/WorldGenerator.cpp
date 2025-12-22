@@ -23,9 +23,9 @@ int WorldGenerator::GetHeight(int x, int z)
     // Noise & Heightmap
     // Scale factor 0.02 gives smoother, broader hills (less extreme)
     float n = glm::perlin(glm::vec2((float)x, (float)z) * 0.02f); 
-    // Map -1..1 to height. Base 22, Variation +/- 12 -> range 10 to 34 blocks
-    // This matches the previous logic exactly
-    return (int)(22 + n * 12); 
+    // Map -1..1 to height. Base 64, Variation +/- 12 -> range 52 to 76 blocks
+    // Raised from 22 to allow deeper underground
+    return (int)(64 + n * 12); 
 }
 
 void WorldGenerator::GenerateChunk(Chunk& chunk)
@@ -52,8 +52,8 @@ void WorldGenerator::GenerateChunk(Chunk& chunk)
                 if(gy <= height) {
                     if(gy == height) {
                          // Surface Block
-                         if(gy < 18) type = DIRT; // Underwater surface is Dirt (below level 18)
-                         else type = GRASS;       // At level 18 or above is Grass
+                         if(gy < 60) type = DIRT; // Underwater surface is Dirt (below level 60)
+                         else type = GRASS;       // At level 60 or above is Grass
                          // Tree logic removed, used Decorator
                     }
                     else if(gy > height - 3) type = DIRT;
@@ -66,7 +66,7 @@ void WorldGenerator::GenerateChunk(Chunk& chunk)
                 // 3D Noise Caves
                 // Parameters: Scale 0.06 (Broader), Threshold 0.25 (More frequent)
                 // Removed (gy < height - 4) restriction to expose caves
-                // Water Level (Sea Level @ Y=10)
+                // Water Level (Sea Level @ Y=60)
                 // If AIR and below sea level, fill with WATER
                 // This must happen BEFORE Cave Generation to allow caves to stay dry (by carving OUT the solids, but not water)
                 // Actually, if we want dry caves, we carve solids into AIR.
@@ -76,7 +76,7 @@ void WorldGenerator::GenerateChunk(Chunk& chunk)
                 // New logic: Terrain -> WaterFill(Ocean Air) -> Caves(Carve Solid). Result: Dry Caves.
                 
                 // 1. Fill Ocean Water if still AIR (Natural Terrain Air)
-                if(type == AIR && gy <= 18) {
+                if(type == AIR && gy <= 60) {
                     type = WATER; // Temp local type
                     
                     // Note: We don't setBlock yet, we are building 'type'. 
@@ -89,7 +89,7 @@ void WorldGenerator::GenerateChunk(Chunk& chunk)
                 
                 // Crust Protection: Don't carve the very top layers of the terrain IF IT IS UNDERWATER.
                 // This preserves the seabed integrity but allows surface caves on land.
-                bool isUnderwater = (height <= 18);
+                bool isUnderwater = (height <= 60);
                 bool preserveCrust = false;
                 if(isUnderwater && gy > height - 3) preserveCrust = true;
 
@@ -99,7 +99,7 @@ void WorldGenerator::GenerateChunk(Chunk& chunk)
                 else if(gy > 1) {
                      // Seabed Protection: Redundant check but safe
                      // ...
-                     if(gy == height && height < 18) {
+                     if(gy == height && height < 60) {
                          // Do nothing
                      }
                      else {
@@ -129,7 +129,7 @@ void WorldGenerator::GenerateChunk(Chunk& chunk)
                 
                 // Post-Set Fixes (Grass->Dirt)
                 // Since we delayed setBlock, we can check logic
-                if(type == WATER && gy <= 18) {
+                if(type == WATER && gy <= 60) {
                      // Grass under current block
                      if(y > 0) {
                          if(chunk.getBlock(x, y-1, z).type == GRASS) {

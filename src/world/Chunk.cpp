@@ -515,30 +515,40 @@ void Chunk::calculateSunlight() {
               // Optimization: Use neighbors[DIR_TOP] to walk up
               Chunk* current = this;
               int incomingLight = 15;
-              
+              bool topNeighborMissing = false;
+
               // Walk up using neighbors
-              while(current->neighbors[DIR_TOP]) {
-                  current = current->neighbors[DIR_TOP];
-                  // Check column in upper chunk (Bottom-Up)
-                  bool blocked = false;
-                  for(int ly=0; ly<CHUNK_SIZE; ++ly) {
-                      Block b = current->getBlock(x, ly, z);
-                      if(b.isOpaque()) {
-                          exposedToSky = false;
-                          blocked = true;
-                          incomingLight = 0;
-                          break;
-                      } else if(b.type == WATER) {
-                          incomingLight -= 2;
-                          if(incomingLight <= 0) {
-                              // Light fully absorbed
+              while(current) {
+                   if(current->neighbors[DIR_TOP]) {
+                      current = current->neighbors[DIR_TOP];
+                      // Check column in upper chunk (Bottom-Up)
+                      bool blocked = false;
+                      for(int ly=0; ly<CHUNK_SIZE; ++ly) {
+                          Block b = current->getBlock(x, ly, z);
+                          if(b.isOpaque()) {
+                              exposedToSky = false;
+                              blocked = true;
                               incomingLight = 0;
-                              // Should we consider this exposed? It's exposed to darkness.
-                              // Technically yes, we continue, but with 0 light.
+                              break;
+                          } else if(b.type == WATER) {
+                              incomingLight -= 2;
+                              if(incomingLight <= 0) {
+                                  incomingLight = 0;
+                              }
                           }
                       }
-                  }
-                  if(blocked || incomingLight <= 0) break;
+                      if(blocked || incomingLight <= 0) break;
+                   } else {
+                       // We reached the top loaded chunk.
+                       // If we are below the world surface, we shouldn't assume sky.
+                       // The world surface is roughly Y=64 (Chunk 4).
+                       // If current chunk Y < 4, and we have no neighbor above, we are likely underground waiting for load.
+                       if(current->chunkPosition.y < 4) {
+                           exposedToSky = false;
+                           incomingLight = 0;
+                       }
+                       break;
+                   }
               }
               
               if(exposedToSky) {

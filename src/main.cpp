@@ -197,32 +197,72 @@ int main()
     */
 
     // Safe Spawn Calculation
+    // Pre-Spawn Generation Loop
+    // Ensure the spawn chunks are generated so we can find the ground.
     int spawnX = 8;
     int spawnZ = 8;
-    float spawnY = 40.0f; // Default fallback
+    float spawnY = 85.0f; // Default safe air drop
 
-    // Probe the ACTUAL world data to find ground
+    // Camera/Player are initialized with default.
+    // Set Player Y high to prioritize surface chunks during loadChunks
+    player.Position.y = 100.0f; 
+
+    // We need to drive the world generation for a few frames.
+    
     bool foundGround = false;
-
-    // Simple wait for chunk 0,0,0
     int retry = 0;
-    while(!foundGround && retry < 100) {
-        Chunk* c = world.getChunk(0, 0, 0);
-        if(c) {
-             for(int y = CHUNK_SIZE - 1; y >= 0; --y) {
-                 if(c->getBlock(spawnX, y, spawnZ).isActive()) {
+    const int MAX_RETRIES = 500; // 5 seconds approx
+
+    std::cout << "Generating Spawn Area..." << std::endl;
+
+    while(!foundGround && retry < MAX_RETRIES) {
+        // Drive World Generation
+        // Use a small render distance for spawn
+        // We need a dummy viewProjection
+        glm::mat4 view = camera.GetViewMatrix();
+        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
+        world.loadChunks(player.Position, 4, projection * view); 
+        world.Update();
+
+        // Check columns from top down
+        
+        // Critical: Wait for the expected surface chunk (Chunk Y=4 -> 64-80) to be loaded.
+        // If it's missing, we are definitely not ready.
+        int cx = (spawnX >= 0) ? (spawnX / CHUNK_SIZE) : ((spawnX + 1) / CHUNK_SIZE - 1);
+        int cz = (spawnZ >= 0) ? (spawnZ / CHUNK_SIZE) : ((spawnZ + 1) / CHUNK_SIZE - 1);
+        
+        if(world.getChunk(cx, 4, cz) == nullptr) {
+            // Surface chunk missing, keep loading
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            retry++;
+            continue;
+        }
+
+        // World Height is 256
+        for(int y = 255; y > 0; --y) {
+             int cy = y / CHUNK_SIZE;
+             
+             if(world.getChunk(cx, cy, cz) != nullptr) {
+                 Block b = world.getBlock(spawnX, y, spawnZ);
+                 if(b.isActive()) {
                      spawnY = (float)y + 2.5f;
                      foundGround = true;
+                     std::cout << "Spawn Ground Found at Y=" << y << std::endl;
                      break;
                  }
+             } else {
+                 // Ignore missing high chunks
              }
         }
-        if(!foundGround) {  
-            // If we have dynamic loading, we might not have the chunk yet?
-            // Just force wait or fallback
-             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-             retry++;
+        
+        if(!foundGround) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            retry++;
         }
+    }
+    
+    if(!foundGround) {
+        std::cout << "Spawn Ground NOT Found (Timeout). Using Air Drop." << std::endl;
     }
     // Debug Title
     // std::string title = "Minceraft - SpawnY: " + std::to_string(spawnY) + (foundGround ? " (Found)" : " (Default)");
