@@ -14,7 +14,9 @@ enum BlockType {
     IRON_ORE = 7,
     GLOWSTONE = 8,
     WATER = 9,
-    LAVA = 10
+    LAVA = 10,
+    SAND = 11,
+    GRAVEL = 12
 };
 
 struct Block {

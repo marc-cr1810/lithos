@@ -33,6 +33,8 @@ private:
     void GenerateGlowstone(int slotX, int slotY);
     void GenerateWater(int slotX, int slotY);
     void GenerateLava(int slotX, int slotY);
+    void GenerateSand(int slotX, int slotY);
+    void GenerateGravel(int slotX, int slotY);
     
     void SetPixel(int x, int y, unsigned char r, unsigned char g, unsigned char b);
 };

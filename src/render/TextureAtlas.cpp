@@ -46,6 +46,12 @@ void TextureAtlas::Generate()
     
     // Lava (2, 2) - Orange/Red Noise
     GenerateLava(2, 2);
+
+    // Sand (3, 2) - Beige Noise
+    GenerateSand(3, 2);
+    
+    // Gravel (0, 3) - Grey Noise
+    GenerateGravel(0, 3);
 }
 
 void TextureAtlas::SetPixel(int x, int y, unsigned char r, unsigned char g, unsigned char b)
@@ -288,6 +294,56 @@ void TextureAtlas::GenerateLava(int slotX, int slotY)
             }
             
             SetPixel(startX + x, startY + y, r, g, b);
+        }
+    }
+}
+
+void TextureAtlas::GenerateSand(int slotX, int slotY)
+{
+    int startX = slotX * slotSize;
+    int startY = slotY * slotSize;
+    
+    for(int y=0; y<slotSize; ++y) {
+        for(int x=0; x<slotSize; ++x) {
+            // Sand: Beige/Yellowish granular noise
+            // Base: 240, 235, 160 (More Yellow)
+            int noise = rand() % 30 - 15;
+            
+            int r = 240 + noise;
+            int g = 235 + noise;
+            int b = 160 + noise;
+            
+            // Random speckles (darker grains)
+            if(rand() % 10 == 0) {
+                r -= 30; g -= 30; b -= 30;
+            }
+            
+            // Clamp
+            if(r > 255) r = 255; if(r < 0) r = 0;
+            if(g > 255) g = 255; if(g < 0) g = 0;
+            if(b > 255) b = 255; if(b < 0) b = 0;
+
+            SetPixel(startX + x, startY + y, (unsigned char)r, (unsigned char)g, (unsigned char)b);
+        }
+    }
+}
+
+void TextureAtlas::GenerateGravel(int slotX, int slotY)
+{
+    int startX = slotX * slotSize;
+    int startY = slotY * slotSize;
+    
+    for(int y=0; y<slotSize; ++y) {
+        for(int x=0; x<slotSize; ++x) {
+            // Gravel: Grey, high frequency noise
+            int noise = rand() % 50 + 100; // 100-150
+            
+            // Contrast spots
+            if(rand() % 5 == 0) noise -= 30; // Dark pebble
+            if(rand() % 20 == 0) noise += 40; // Light pebble
+            
+            unsigned char val = (unsigned char)noise;
+            SetPixel(startX + x, startY + y, val, val, val);
         }
     }
 }

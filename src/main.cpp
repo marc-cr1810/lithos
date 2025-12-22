@@ -81,6 +81,8 @@ const char* GetBlockName(int type) {
         case GLOWSTONE: return "Glowstone";
         case WATER: return "Water";
         case LAVA: return "Lava";
+        case SAND: return "Sand";
+        case GRAVEL: return "Gravel";
         default: return "Unknown";
     }
 }

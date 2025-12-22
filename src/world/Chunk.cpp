@@ -340,6 +340,8 @@ void Chunk::addFace(std::vector<float>& vertices, int x, int y, int z, int faceD
     else if (blockType == COAL_ORE || blockType == IRON_ORE || blockType == GLOWSTONE) { r = 1.0f; g = 1.0f; b = 1.0f; }
     else if (blockType == WATER) { r = 0.2f; g = 0.4f; b = 1.0f; alpha = 0.6f; }
     else if (blockType == LAVA) { r = 1.0f; g = 0.4f; b = 0.0f; }
+    else if (blockType == SAND) { r = 1.0f; g = 1.0f; b = 1.0f; }
+    else if (blockType == GRAVEL) { r = 1.0f; g = 1.0f; b = 1.0f; }
     else { r = 1.0f; g = 0.0f; b = 1.0f; }
 
     float l1 = 1.0f, l2 = 1.0f;
@@ -378,6 +380,8 @@ void Chunk::addFace(std::vector<float>& vertices, int x, int y, int z, int faceD
     else if(blockType == GLOWSTONE) { uMin = 0.00f; vMin = 0.50f; }
     else if(blockType == WATER) { uMin = 0.25f; vMin = 0.50f; } // Assuming texture pack has water here
     else if(blockType == LAVA) { uMin = 0.50f; vMin = 0.50f; } // Assuming texture pack has lava here
+    else if(blockType == SAND) { uMin = 0.75f; vMin = 0.50f; } // Generated Sand Texture
+    else if(blockType == GRAVEL) { uMin = 0.00f; vMin = 0.75f; } // Generated Gravel Texture
 
     float fx = (float)x, fy = (float)y, fz = (float)z;
     float fw = (float)width, fh = (float)height;

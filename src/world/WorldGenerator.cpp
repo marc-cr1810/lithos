@@ -43,6 +43,18 @@ void WorldGenerator::GenerateChunk(Chunk& chunk)
             // Get Height from single source of truth
             int height = GetHeight(gx, gz);
             
+            // Calculate Beach Noise for this column
+            float beachNoise = glm::perlin(glm::vec3((float)gx * 0.05f, 0.0f, (float)gz * 0.05f)); 
+            // Threshold for being a beach: Positive noise means potential beach
+            bool isBeach = (beachNoise > 0.1f);
+            
+            // Limit height for beaches (e.g., only up to Y=64, varying with noise)
+            int beachHeightLimit = 60 + (int)(beachNoise * 4.0f); // 60 to 64
+            
+            // Determine Beach Type locally
+            // Noise > 0.4 is Gravel, otherwise Sand
+            BlockType beachBlock = (beachNoise > 0.4f) ? GRAVEL : SAND;
+
             for(int y=0; y<CHUNK_SIZE; ++y)
             {
                 int gy = pos.y * CHUNK_SIZE + y;
@@ -52,11 +64,33 @@ void WorldGenerator::GenerateChunk(Chunk& chunk)
                 if(gy <= height) {
                     if(gy == height) {
                          // Surface Block
-                         if(gy < 60) type = DIRT; // Underwater surface is Dirt (below level 60)
-                         else type = GRASS;       // At level 60 or above is Grass
-                         // Tree logic removed, used Decorator
+                         if(gy < 60) {
+                             // Underwater
+                             // Sandy/Gravel patches underwater
+                             if(beachNoise > 0.0f) type = beachBlock; 
+                             else type = DIRT; // Muddy deeps
+                         } else {
+                             // Above water
+                             if(gy <= beachHeightLimit) type = beachBlock; // Natural Beach
+                             else type = GRASS; 
+                         }
                     }
-                    else if(gy > height - 3) type = DIRT;
+                    else if(gy > height - 4) {
+                        // Subsurface (Top 3 layers below surface)
+                        // If surface is Sand/Gravel, subsurface follows suit
+                        bool surfaceIsBeach = false;
+                        if(gy < 60) {
+                             if(beachNoise > 0.0f) surfaceIsBeach = true;
+                        } else {
+                             if(height <= beachHeightLimit) surfaceIsBeach = true;
+                        }
+
+                        if(surfaceIsBeach) {
+                             // sandstone? for now just same material
+                             type = beachBlock;
+                        }
+                        else type = DIRT;
+                    }
                     else type = STONE;
                 }
                 
