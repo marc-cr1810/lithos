@@ -25,6 +25,9 @@ void TreeDecorator::Decorate(Chunk& chunk, WorldGenerator& generator)
                 // Padding 2 for leaves.
                 if(x > 1 && x < 14 && z > 1 && z < 14 && localY < CHUNK_SIZE - 6) 
                 {
+                    // Water Level Check: Don't grow trees in water (Y < 18)
+                    if(height < 18) continue;
+
                     // Check if block below is Grass
                     // Actually, we are running AFTER terrain generation, so the block at 'localY' should be GRASS.
                     Block b = chunk.getBlock(x, localY, z);

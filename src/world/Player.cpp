@@ -108,9 +108,18 @@ void Player::ProcessJump(bool jump, const World& world)
              Velocity.y = JumpForce;
              IsGrounded = false;
         } else if(inWater) {
-             Velocity.y += 15.0f * 0.016f; // Swim up force. Assume/Hack dt=0.016? 
-             // Better: Set target velocity or add impulse
-             if(Velocity.y < 3.0f) Velocity.y += 0.5f;
+             // Check if head is above water (Surface Jump)
+             Block headBlock = world.getBlock((int)floor(Position.x), (int)floor(Position.y + 1.5f), (int)floor(Position.z));
+             bool headInWater = (headBlock.type == WATER);
+             
+             if (!headInWater) {
+                 // Head is out, feet are in. Apply strong impulse to exit water.
+                 Velocity.y = 8.0f; // Jump out! (Stronger impulse)
+             } else {
+                 // Fully underwater - Swim up
+                 // Velocity.y += 0.5f;
+                 if(Velocity.y < 2.0f) Velocity.y += 0.8f; 
+             }
         }
     }
 }
@@ -144,7 +153,7 @@ void Player::Update(float deltaTime, const World& world)
     
     // Air Resistance (Drag)
     float drag = 2.0f;
-    if(inWater) drag = 5.0f; // High drag in water
+    if(inWater) drag = 3.0f; // Lower drag in water to prevent "stuck in sludge" feel
     
     Velocity.x -= Velocity.x * drag * deltaTime;
     Velocity.z -= Velocity.z * drag * deltaTime;
