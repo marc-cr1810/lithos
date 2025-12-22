@@ -38,7 +38,14 @@ void TextureAtlas::Generate()
     GenerateOre(3, 1, 210, 180, 140);
     
     // Glowstone (0, 2)
+    // Glowstone (0, 2)
     GenerateGlowstone(0, 2);
+    
+    // Water (1, 2) - Blue Noise
+    GenerateWater(1, 2);
+    
+    // Lava (2, 2) - Orange/Red Noise
+    GenerateLava(2, 2);
 }
 
 void TextureAtlas::SetPixel(int x, int y, unsigned char r, unsigned char g, unsigned char b)
@@ -232,6 +239,52 @@ void TextureAtlas::GenerateGlowstone(int slotX, int slotY)
             // Randomly very bright pixel (center of crystal)
             if(rand() % 20 == 0) {
                  r = 255; g = 255; b = 200;
+            }
+            
+            SetPixel(startX + x, startY + y, r, g, b);
+        }
+    }
+}
+
+void TextureAtlas::GenerateWater(int slotX, int slotY)
+{
+    int startX = slotX * slotSize;
+    int startY = slotY * slotSize;
+    
+    for(int y=0; y<slotSize; ++y) {
+        for(int x=0; x<slotSize; ++x) {
+            // Water: Blue noise
+            int noise = rand() % 40 + 100;
+            
+            // Wavy pattern?
+            if((x + y) % 4 == 0) noise += 20;
+
+            unsigned char r = 40; 
+            unsigned char g = 80; 
+            unsigned char b = (unsigned char)noise + 50;
+            
+            SetPixel(startX + x, startY + y, r, g, b);
+        }
+    }
+}
+
+void TextureAtlas::GenerateLava(int slotX, int slotY)
+{
+    int startX = slotX * slotSize;
+    int startY = slotY * slotSize;
+    
+    for(int y=0; y<slotSize; ++y) {
+        for(int x=0; x<slotSize; ++x) {
+            // Lava: Bright Orange/Red with dark clumps
+            int noise = rand() % 60 + 150;
+            
+            unsigned char r = (unsigned char)noise; 
+            unsigned char g = (unsigned char)(noise * 0.5f); 
+            unsigned char b = 0;
+            
+            // Dark spots (crust)
+            if(rand() % 10 == 0) {
+                 r = 80; g = 20; b = 0;
             }
             
             SetPixel(startX + x, startY + y, r, g, b);

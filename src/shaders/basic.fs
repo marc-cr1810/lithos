@@ -1,7 +1,7 @@
 #version 330 core
 out vec4 FragColor;
 
-in vec3 ourColor;
+in vec4 ourColor;
 in vec2 TexCoord;
 in vec3 Lighting;
 in vec2 TexOrigin;
@@ -61,9 +61,12 @@ void main()
     // AO represents blocked ambient light.
     // It should darken everything.
     
-    vec3 lightVec = vec3(lightVal * aoFactor);
+    // Combine texture color with vertex color (tint)
+    // Note: We multiply RGB and also Alpha
+    vec4 result = texColor * ourColor; 
     
-    vec4 finalColor = texColor * vec4(ourColor, 1.0) * vec4(lightVec, 1.0);
+    // Apply lighting
+    vec4 finalColor = vec4(result.rgb * lightVal * aoFactor, result.a);
     
     if(useFog) {
         float distance = length(viewPos - FragPos);

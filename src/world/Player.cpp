@@ -25,7 +25,8 @@ void Player::updateCameraVectors()
     Up    = glm::normalize(glm::cross(Right, Front));
 }
 
-void Player::ProcessKeyboard(Player_Movement direction, float deltaTime, const World& world)
+// Process keyboard input
+void Player::ProcessKeyboard(int direction, float deltaTime, const World& world)
 {
     float velocity = MovementSpeed * deltaTime;
     glm::vec3 flatFront = glm::normalize(glm::vec3(Front.x, 0.0f, Front.z));
@@ -75,7 +76,7 @@ void Player::ProcessKeyboard(Player_Movement direction, float deltaTime, const W
     }
 }
 
-void Player::ProcessMouseMovement(float xoffset, float yoffset, GLboolean constrainPitch)
+void Player::ProcessMouseMovement(float xoffset, float yoffset, bool constrainPitch)
 {
     xoffset *= MouseSensitivity;
     yoffset *= MouseSensitivity;
@@ -95,12 +96,22 @@ void Player::ProcessMouseMovement(float xoffset, float yoffset, GLboolean constr
     updateCameraVectors();
 }
 
-void Player::ProcessJump()
+void Player::ProcessJump(bool jump, const World& world)
 {
-    if (IsGrounded)
+    // Check if in water
+    Block b = world.getBlock((int)floor(Position.x), (int)floor(Position.y), (int)floor(Position.z));
+    bool inWater = (b.type == WATER);
+    
+    if (jump)
     {
-        Velocity.y = JumpForce;
-        IsGrounded = false;
+        if (IsGrounded) {
+             Velocity.y = JumpForce;
+             IsGrounded = false;
+        } else if(inWater) {
+             Velocity.y += 15.0f * 0.016f; // Swim up force. Assume/Hack dt=0.016? 
+             // Better: Set target velocity or add impulse
+             if(Velocity.y < 3.0f) Velocity.y += 0.5f;
+        }
     }
 }
 
@@ -113,17 +124,35 @@ void Player::Update(float deltaTime, const World& world)
         return;
     }
 
+    // Water Physics
+    bool inWater = false;
+    Block b = world.getBlock((int)floor(Position.x), (int)floor(Position.y), (int)floor(Position.z));
+    if(b.type == WATER) {
+        inWater = true;
+    }
+    else {
+        // Check eye level too?
+        Block b2 = world.getBlock((int)floor(Position.x), (int)floor(Position.y + 1.5f), (int)floor(Position.z));
+        if(b2.type == WATER) inWater = true;
+    }
+
     // Apply Gravity
-    Velocity.y -= Gravity * deltaTime;
+    float effGravity = Gravity;
+    if(inWater) effGravity *= 0.2f; // Buoyancy
+    
+    Velocity.y -= effGravity * deltaTime;
     
     // Air Resistance (Drag)
-    // Reduce velocity by a factor over time to prevent infinite acceleration
-    // Damping factor of ~2.0 per second
-    // v -= v * damping * dt
-    Velocity.y -= Velocity.y * 2.0f * deltaTime;  
+    float drag = 2.0f;
+    if(inWater) drag = 5.0f; // High drag in water
+    
+    Velocity.x -= Velocity.x * drag * deltaTime;
+    Velocity.z -= Velocity.z * drag * deltaTime;
+    Velocity.y -= Velocity.y * drag * deltaTime;  
     
     // Terminal Velocity (Safety Clamp)
     if (Velocity.y < -78.4f) Velocity.y = -78.4f;
+    if(inWater && Velocity.y < -5.0f) Velocity.y = -5.0f; // Slower terminal velocity in water
 
     // Check Ceiling Collision
     if (Velocity.y > 0.0f) {
@@ -161,7 +190,7 @@ void Player::Update(float deltaTime, const World& world)
         {
             for(int z = minBlockZ; z <= maxBlockZ; ++z)
             {
-                if (world.getBlock(x, blockY, z).isActive())
+                if (world.getBlock(x, blockY, z).isSolid())
                 {
                     hitGround = true;
                     x = maxBlockX + 1; 
@@ -212,7 +241,7 @@ bool Player::CheckCollision(glm::vec3 pos, const World& world)
         {
             for(int z = minBlockZ; z <= maxBlockZ; ++z)
             {
-                if(world.getBlock(x, y, z).isActive())
+                if(world.getBlock(x, y, z).isSolid())
                     return true;
             }
         }

@@ -26,10 +26,10 @@ public:
     std::mutex chunkMutex;
 
     // Generates vertex data on CPU (Thread-Safe if mutex passed or blocks read-only)
-    std::vector<float> generateGeometry(); 
+    std::vector<float> generateGeometry(int& outOpaqueCount); 
     
     // Uploads data to GPU (Main Thread Only)
-    void uploadMesh(const std::vector<float>& data);
+    void uploadMesh(const std::vector<float>& data, int opaqueCount);
     
     // Helper for Sync update (Generate + Upload)
     void updateMesh();
@@ -49,7 +49,7 @@ public:
     void calculateSunlight(); // Step 1: Seed Skylight
     void calculateBlockLight();
     void spreadLight(); // Step 2: Spread light
-    void render(Shader& shader, const glm::mat4& viewProjection);
+    void render(Shader& shader, const glm::mat4& viewProjection, int pass); // 0=Opaque, 1=Transparent
     void initGL();
 
     Block getBlock(int x, int y, int z) const;
@@ -72,6 +72,7 @@ private:
     World* world;
     unsigned int VAO, VBO, EBO;
     int vertexCount;
+    int vertexCountTransparent;
 
     void addFace(std::vector<float>& vertices, int x, int y, int z, int faceDir, int blockType, int width, int height, int aoBL, int aoBR, int aoTR, int aoTL); 
     int vertexAO(bool side1, bool side2, bool corner);

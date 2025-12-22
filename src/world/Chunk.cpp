@@ -5,7 +5,7 @@
 #include <queue>
 #include <tuple>
 
-Chunk::Chunk() : meshDirty(true), vertexCount(0), chunkPosition(0,0,0), world(nullptr), VAO(0), VBO(0), EBO(0)
+Chunk::Chunk() : meshDirty(true), vertexCount(0), vertexCountTransparent(0), chunkPosition(0,0,0), world(nullptr), VAO(0), VBO(0), EBO(0)
 {
     // GL initialization deferred to Main Thread via initGL()
     // Initialize with air
@@ -34,15 +34,23 @@ void Chunk::initGL() {
     }
 }
 
-void Chunk::render(Shader& shader, const glm::mat4& viewProjection)
+void Chunk::render(Shader& shader, const glm::mat4& viewProjection, int pass)
 {
-    if(vertexCount == 0) return;
     if(VAO == 0) initGL();
+    // Pass 0: Opaque
+    // Pass 1: Transparent
     
+    if(pass == 0 && vertexCount == 0) return;
+    if(pass == 1 && vertexCountTransparent == 0) return;
+
     shader.setMat4("model", glm::translate(glm::mat4(1.0f), glm::vec3(chunkPosition.x * CHUNK_SIZE, chunkPosition.y * CHUNK_SIZE, chunkPosition.z * CHUNK_SIZE)));
     
     glBindVertexArray(VAO);
-    glDrawArrays(GL_TRIANGLES, 0, vertexCount);
+    if(pass == 0) {
+        glDrawArrays(GL_TRIANGLES, 0, vertexCount);
+    } else {
+        glDrawArrays(GL_TRIANGLES, vertexCount, vertexCountTransparent);
+    }
     glBindVertexArray(0);
 }
 
@@ -97,14 +105,16 @@ void Chunk::setBlockLight(int x, int y, int z, uint8_t val)
     meshDirty = true;
 }
 
-std::vector<float> Chunk::generateGeometry()
+std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
 {
     // Thread safety: Lock while reading blocks
     std::lock_guard<std::mutex> lock(chunkMutex);
     
-    std::vector<float> vertices;
+    std::vector<float> opaqueVertices;
+    std::vector<float> transparentVertices;
     // Pre-allocate decent amount
-    vertices.reserve(4096);
+    opaqueVertices.reserve(4096);
+    transparentVertices.reserve(1024);
 
     // Greedy Meshing
     struct MaskInfo {
@@ -159,10 +169,16 @@ std::vector<float> Chunk::generateGeometry()
                             uint8_t skyVal = 0; uint8_t blockVal = 0;
 
                             if(nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
-                                if(blocks[nx][ny][nz].isActive()) occluded = true;
+                                Block nb = blocks[nx][ny][nz];
+                                if(nb.isActive()) {
+                                    if(b.type == WATER || b.type == LAVA) {
+                                         if(nb.type == b.type || nb.isOpaque()) occluded = true;
+                                    } else {
+                                        if(nb.isOpaque()) occluded = true;
+                                    }
+                                }
                                 else { skyVal = blocks[nx][ny][nz].skyLight; blockVal = blocks[nx][ny][nz].blockLight; }
                             } else {
-                                // Use cached neighbors
                                 int ni = -1;
                                 int nnx=nx, nny=ny, nnz=nz;
                                 
@@ -175,15 +191,26 @@ std::vector<float> Chunk::generateGeometry()
                                 
                                 if(ni != -1 && neighbors[ni]) {
                                      Block nb = neighbors[ni]->getBlock(nnx, nny, nnz);
-                                     if(nb.isActive()) occluded = true;
+                                     if(nb.isActive()) {
+                                         if(b.type == WATER || b.type == LAVA) {
+                                             if(nb.type == b.type || nb.isOpaque()) occluded = true;
+                                         } else {
+                                             if(nb.isOpaque()) occluded = true;
+                                         }
+                                     }
                                      else { skyVal = neighbors[ni]->getSkyLight(nnx, nny, nnz); blockVal = neighbors[ni]->getBlockLight(nnx, nny, nnz); }
                                 } else if(world) {
-                                    // Fallback (Should rarely happen if neighbors are linked correctly)
                                     int gx = chunkPosition.x * CHUNK_SIZE + nx;
                                     int gy = chunkPosition.y * CHUNK_SIZE + ny;
                                     int gz = chunkPosition.z * CHUNK_SIZE + nz;
                                     Block nb = world->getBlock(gx, gy, gz);
-                                    if(nb.isActive()) occluded = true;
+                                    if(nb.isActive()) {
+                                         if(b.type == WATER || b.type == LAVA) {
+                                             if(nb.type == b.type || nb.isOpaque()) occluded = true;
+                                         } else {
+                                             if(nb.isOpaque()) occluded = true;
+                                         }
+                                    }
                                     else { skyVal = world->getSkyLight(gx, gy, gz); blockVal = world->getBlockLight(gx, gy, gz); }
                                 }
                             }
@@ -196,7 +223,6 @@ std::vector<float> Chunk::generateGeometry()
                                         if(nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) 
                                             return blocks[nx][ny][nz].isOpaque();
                                             
-                                        // Use Cached Neighbors
                                         int ni = -1;
                                         int nnx=nx, nny=ny, nnz=nz;
                                         if(nz >= CHUNK_SIZE) { ni = DIR_FRONT; nnz -= CHUNK_SIZE; }
@@ -230,8 +256,8 @@ std::vector<float> Chunk::generateGeometry()
                                 mask[u][v] = { (BlockType)b.type, skyVal, blockVal, {aos[0], aos[1], aos[2], aos[3]} };
                             }
                         }
-                        }
                     }
+                }
                 
                 // Greedy Mesh
                 for(int v=0; v<CHUNK_SIZE; ++v) {
@@ -246,7 +272,12 @@ std::vector<float> Chunk::generateGeometry()
                                 if(canExtend) h++;
                             }
                             int lx, ly, lz; getPos(u, v, d, lx, ly, lz);
-                            addFace(vertices, lx, ly, lz, faceDir, current.type, w, h, current.ao[0], current.ao[1], current.ao[2], current.ao[3]);
+                            
+                            // Check if transparent
+                            bool isTrans = (current.type == WATER || current.type == LAVA);
+                            
+                            addFace(isTrans ? transparentVertices : opaqueVertices, lx, ly, lz, faceDir, current.type, w, h, current.ao[0], current.ao[1], current.ao[2], current.ao[3]);
+                            
                             for(int j=0; j<h; ++j) for(int i=0; i<w; ++i) mask[u+i][v+j] = {AIR, 0, 0, {0,0,0,0}};
                             u += w - 1; 
                         }
@@ -254,9 +285,14 @@ std::vector<float> Chunk::generateGeometry()
                 }
         } // End d loop
     } // End faceDir loop
-    return vertices;
+    
+    // Stitch Vectors
+    outOpaqueCount = opaqueVertices.size() / 14;
+    opaqueVertices.insert(opaqueVertices.end(), transparentVertices.begin(), transparentVertices.end());
+    
+    return opaqueVertices;
 }
-void Chunk::uploadMesh(const std::vector<float>& data)
+void Chunk::uploadMesh(const std::vector<float>& data, int opaqueCount)
 {
     if(VAO == 0) initGL();
 
@@ -266,39 +302,44 @@ void Chunk::uploadMesh(const std::vector<float>& data)
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(float), data.data(), GL_STATIC_DRAW);
     
-    vertexCount = data.size() / 13; // 13 floats per vert
+    vertexCount = opaqueCount;
+    vertexCountTransparent = (data.size() / 14) - opaqueCount;
     
     // Attribs
-    float stride = 13 * sizeof(float);
+    float stride = 14 * sizeof(float);
     
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0); // Pos
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float))); // Color
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float))); // Color (Vec4)
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(6 * sizeof(float))); // UV
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(7 * sizeof(float))); // UV
     glEnableVertexAttribArray(2);
-    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride, (void*)(8 * sizeof(float))); // Light(Sky,Block,AO)
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride, (void*)(9 * sizeof(float))); // Light(Sky,Block,AO)
     glEnableVertexAttribArray(3);
-    glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, stride, (void*)(11 * sizeof(float))); // TexOrigin
+    glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, stride, (void*)(12 * sizeof(float))); // TexOrigin
     glEnableVertexAttribArray(4);
 }
 
 void Chunk::updateMesh()
 {
-    std::vector<float> newVertices = generateGeometry();
-    uploadMesh(newVertices);
+    int opaqueCount = 0;
+    std::vector<float> newVertices = generateGeometry(opaqueCount);
+    uploadMesh(newVertices, opaqueCount);
     meshDirty = false;
 }
 
 void Chunk::addFace(std::vector<float>& vertices, int x, int y, int z, int faceDir, int blockType, int width, int height, int aoBL, int aoBR, int aoTR, int aoTL)
 {
     float r, g, b;
+    float alpha = 1.0f;
     if (blockType == GRASS) { r = 0.0f; g = 1.0f; b = 0.0f; } 
     else if (blockType == DIRT) { r = 0.6f; g = 0.4f; b = 0.2f; }
     else if (blockType == STONE) { r = 1.0f; g = 1.0f; b = 1.0f; } 
     else if (blockType == WOOD) { r = 1.0f; g = 1.0f; b = 1.0f; } 
     else if (blockType == LEAVES) { r = 0.2f; g = 0.8f; b = 0.2f; } 
     else if (blockType == COAL_ORE || blockType == IRON_ORE || blockType == GLOWSTONE) { r = 1.0f; g = 1.0f; b = 1.0f; }
+    else if (blockType == WATER) { r = 0.2f; g = 0.4f; b = 1.0f; alpha = 0.6f; }
+    else if (blockType == LAVA) { r = 1.0f; g = 0.4f; b = 0.0f; }
     else { r = 1.0f; g = 0.0f; b = 1.0f; }
 
     float l1 = 1.0f, l2 = 1.0f;
@@ -335,13 +376,15 @@ void Chunk::addFace(std::vector<float>& vertices, int x, int y, int z, int faceD
     else if(blockType == COAL_ORE) { uMin = 0.75f; vMin = 0.00f; }
     else if(blockType == IRON_ORE) { uMin = 0.75f; vMin = 0.25f; }
     else if(blockType == GLOWSTONE) { uMin = 0.00f; vMin = 0.50f; }
+    else if(blockType == WATER) { uMin = 0.25f; vMin = 0.50f; } // Assuming texture pack has water here
+    else if(blockType == LAVA) { uMin = 0.50f; vMin = 0.50f; } // Assuming texture pack has lava here
 
     float fx = (float)x, fy = (float)y, fz = (float)z;
     float fw = (float)width, fh = (float)height;
 
     auto pushVert = [&](float vx, float vy, float vz, float u, float v, float ao) {
         vertices.push_back(vx); vertices.push_back(vy); vertices.push_back(vz);
-        vertices.push_back(r); vertices.push_back(g); vertices.push_back(b);
+        vertices.push_back(r); vertices.push_back(g); vertices.push_back(b); vertices.push_back(alpha);
         vertices.push_back(u); vertices.push_back(v); 
         vertices.push_back(l1); vertices.push_back(l2); vertices.push_back(ao);
         vertices.push_back(uMin); vertices.push_back(vMin); 
@@ -479,7 +522,7 @@ void Chunk::calculateSunlight() {
                  // Check column in upper chunk
                  bool blocked = false;
                  for(int ly=0; ly<CHUNK_SIZE; ++ly) {
-                     if(current->getBlock(x, ly, z).isActive()) {
+                     if(current->getBlock(x, ly, z).isOpaque()) {
                          exposedToSky = false;
                          blocked = true;
                          break;
@@ -488,58 +531,40 @@ void Chunk::calculateSunlight() {
                  if(blocked) break;
              }
              
-             // If we ran out of neighbors but didn't hit world height limit?
-             // Since we don't have infinite height, we assume things above the last known chunk are AIR?
-             // Or we fallback to WorldGenerator/World lookup if neighbor link is missing but chunk exists
-             
-             // Fallback logic removed to allow deep caves to stay lit if open to sky.
-             // If neighbors are missing, we assume SKY until they load and block it.
+             // ...
 
              if(false) { // Disable old logic
-                 if(world) {
-                 int startCyIndex = chunkPosition.y + 1;
-                 int endCyIndex = 127 / CHUNK_SIZE; // Max world height index
-                 
-                 for(int cy_idx = startCyIndex; cy_idx <= endCyIndex; ++cy_idx) {
-                     int cx = chunkPosition.x;
-                     int cz = chunkPosition.z;
-                     
-                     Chunk* c = world->getChunk(cx, cy_idx, cz);
-                     if(c) {
-                         // Check all blocks in this chunk column
-                         bool blocked = false;
-                         for(int ly=0; ly<CHUNK_SIZE; ++ly) {
-                             if(c->getBlock(x, ly, z).isActive()) {
-                                 exposedToSky = false;
-                                 blocked = true;
-                                 break;
-                             }
-                         }
-                         if(blocked) break;
-                     } else {
-                         // Fallback using Heightmap
-                         int chunkBaseY = cy_idx * CHUNK_SIZE;
-                         int terrainH = WorldGenerator::GetHeight(gx, gz);
-                         
-                         // If the bottom of this chunk is below the potential terrain/tree height
-                         if(chunkBaseY <= terrainH + 6) {
-                             // Assuming solid if missing and below height
-                             exposedToSky = false;
-                             break;
-                         }
-                     }
-                 }
+                 // ...
              }
-             } // End if(false)
              
              if(exposedToSky) {
                  for(int y=CHUNK_SIZE-1; y>=0; --y) {
-                     if(blocks[x][y][z].isActive()) {
+                     if(blocks[x][y][z].isOpaque()) {
                          break;
                      } else {
+                         // Sunlight passes through non-opaque blocks (Air, Water)
+                         // But if it is water, we still set skyLight to 15? Yes.
+                         // But we also need to allow propagation into solids? No, solids are opaque.
+                         // What about Light spreading?
+                         // If we set skylight=15, we need to ensure spreadLight propagates it.
+                         // Currently spreadLight probably uses isActive to stop spread.
                          blocks[x][y][z].skyLight = 15;
                      }
                  }
+                 
+                 // If top block was Water, the column below it should also be lit?
+                 // The loop goes Y-Down.
+                 // Loop continues until isOpaque().
+                 // So if top is Water, it is NOT opaque.
+                 // blocks[x][y][z].skyLight = 15;
+                 // Loop continues.
+                 // Next block (below water) is Water. Not Opaque. skyLight = 15.
+                 // Next block is Stone. Opaque. Break.
+                 // Stone gets 0 (default).
+                 // So the water column will be fully lit (15).
+                 // However, should water attenuate light? (Darker deeper down).
+                 // Minecraft does decrease light by 3 per water block.
+                 // For now, full light is fine to fix "Pitch Black".
              }
         }
     }
@@ -559,6 +584,13 @@ void Chunk::calculateBlockLight() {
                         blocks[x][y][z].blockLight = emission;
                     }
                 }
+                
+                // Allow light to pass through water?
+                // Emission is handled above. 
+                // Light propagation logic relies on spreadLight.
+                // We just need to ensure blockLight isn't reset if it shouldn't be?
+                // No, we calculate from scratch.
+                // If water emits light? No. Lava emits light.
             }
         }
     }
@@ -631,7 +663,7 @@ void Chunk::spreadLight() {
                             nx = u; ny = v; nz = np.oz;
                        }
                        
-                       if(!blocks[lx][ly][lz].isActive()) {
+                       if(!blocks[lx][ly][lz].isOpaque()) {
                              // Sky Light
                              uint8_t nSky = nc->getSkyLight(nx, ny, nz);
                              if(nSky > 1 && nSky - 1 > blocks[lx][ly][lz].skyLight) {
@@ -732,7 +764,7 @@ void Chunk::spreadLight() {
             int nz = pos.z + directions[i][2];
 
             if(nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
-                if(!blocks[nx][ny][nz].isActive()) {
+                if(!blocks[nx][ny][nz].isOpaque()) {
                     if(blocks[nx][ny][nz].skyLight < curLight - 1) {
                         blocks[nx][ny][nz].skyLight = curLight - 1;
                         skyQueue.push(glm::ivec3(nx, ny, nz));
@@ -740,53 +772,7 @@ void Chunk::spreadLight() {
                     }
                 }
             } else {
-                // Propagate to neighbors?
-                // Now that we have cached neighbors, we can potentially push to their queues?
-                // Or just updating self and letting them pull?
-                // Standard MC lighting often pushes to neighbors.
-                // But thread safety? Calling flavor text on neighbor?
-                // Neighbors might be meshing. setSkyLight locks chunkMutex.
-                // So calling neighbor->setSkyLight() IS thread safe (Chunk mutex).
-                
-                int ni = -1;
-                int nnx=nx, nny=ny, nnz=nz;
-                if(nz >= CHUNK_SIZE) { ni = DIR_FRONT; nnz -= CHUNK_SIZE; }
-                else if(nz < 0) { ni = DIR_BACK; nnz += CHUNK_SIZE; }
-                else if(nx < 0) { ni = DIR_LEFT; nnx += CHUNK_SIZE; }
-                else if(nx >= CHUNK_SIZE) { ni = DIR_RIGHT; nnx -= CHUNK_SIZE; }
-                else if(ny >= CHUNK_SIZE) { ni = DIR_TOP; nny -= CHUNK_SIZE; }
-                else if(ny < 0) { ni = DIR_BOTTOM; nny += CHUNK_SIZE; }
-                
-                if(ni != -1 && neighbors[ni]) {
-                     Chunk* nc = neighbors[ni];
-                     // Lock neighbor to read/write light
-                     // Note: Deadlock risk if A locks B while B locks A?
-                     // spreadLight is usually called from World::Update or Worker.
-                     // If two threads process adjacent chunks and try to spread to each other...
-                     // A holds A.mutex, Tries B.mutex.
-                     // B holds B.mutex, Tries A.mutex.
-                     // DEADLOCK.
-                     
-                     // Solution: Do NOT propagate to neighbors here directly if it locks.
-                     // Or use std::try_lock?
-                     // Or just mark neighbor as dirty or queue an update for it?
-                     
-                     // Current architecture relies on pulling from neighbors (Seed step).
-                     // But BFS needs to push. 
-                     
-                     // For now, let's Stick to LOCAL chunk spreading.
-                     // Cross-chunk propagation is handled by World::setBlock Triggering neighbor updates.
-                     // AND implementation of "Pass 2" in main which calls spreadLight on everyone.
-                     
-                     // However, real propagation across boundaries requires loop.
-                     // If we just stop at boundary, light stops.
-                     // But we have the Pull-System in Step 2 of spreadLight. 
-                     // The neighbor will see OUR high light and pull it in during ITS spreadLight.
-                     // So as long as we iterate spreadLight multiple times or in order...
-                     
-                     // So we don't need to push to neighbors here?
-                     // Ideally yes.
-                }
+                // ... neighbor prop logic ...
             }
         }
     }
@@ -805,7 +791,7 @@ void Chunk::spreadLight() {
             int nz = pos.z + directions[i][2];
 
             if(nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
-                if(!blocks[nx][ny][nz].isActive()) {
+                if(!blocks[nx][ny][nz].isOpaque()) {
                     if(blocks[nx][ny][nz].blockLight < curLight - 1) {
                         blocks[nx][ny][nz].blockLight = curLight - 1;
                         blockQueue.push(glm::ivec3(nx, ny, nz));

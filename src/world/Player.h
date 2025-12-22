@@ -45,9 +45,9 @@ public:
 
     Player(glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f));
 
-    void ProcessKeyboard(Player_Movement direction, float deltaTime, const World& world);
-    void ProcessMouseMovement(float xoffset, float yoffset, GLboolean constrainPitch = true);
-    void ProcessJump();
+    void ProcessKeyboard(int direction, float deltaTime, const World& world);
+    void ProcessMouseMovement(float xoffset, float yoffset, bool constrainPitch = true);
+    void ProcessJump(bool jump, const World& world);
     
     void Update(float deltaTime, const World& world);
     

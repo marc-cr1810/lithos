@@ -12,7 +12,9 @@ enum BlockType {
     LEAVES = 5,
     COAL_ORE = 6,
     IRON_ORE = 7,
-    GLOWSTONE = 8
+    GLOWSTONE = 8,
+    WATER = 9,
+    LAVA = 10
 };
 
 struct Block {
@@ -25,11 +27,16 @@ struct Block {
     }
 
     bool isOpaque() const {
-        return type != AIR && type != LEAVES && type != GLOWSTONE;
+        return type != AIR && type != LEAVES && type != GLOWSTONE && type != WATER && type != LAVA;
+    }
+
+    bool isSolid() const {
+        return type != AIR && type != WATER && type != LAVA;
     }
     
     uint8_t getEmission() const {
         if(type == GLOWSTONE) return 15;
+        if(type == LAVA) return 13;
         return 0;
     }
 };

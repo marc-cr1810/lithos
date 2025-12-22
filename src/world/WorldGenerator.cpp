@@ -71,7 +71,15 @@ void WorldGenerator::GenerateChunk(Chunk& chunk)
                      }
                 }
 
+
+
                 chunk.setBlock(x, y, z, type);
+                
+                // Water Level (Sea Level @ Y=10)
+                // If AIR and below sea level, fill with WATER
+                if(type == AIR && gy <= 18) {
+                     chunk.setBlock(x, y, z, WATER);
+                }
             }
         }
     }

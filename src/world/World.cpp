@@ -103,19 +103,20 @@ void World::WorkerLoop() {
         
         if(c) {
             // Collecting geometry
-            std::vector<float> data = c->generateGeometry();
+            int opaqueCount = 0;
+            std::vector<float> data = c->generateGeometry(opaqueCount);
             
             // Queue for upload
             {
                 std::lock_guard<std::mutex> lock(uploadMutex);
-                uploadQueue.push_back({c, std::move(data)});
+                uploadQueue.emplace_back(c, std::move(data), opaqueCount);
             }
         }
     }
 }
 
 void World::Update() {
-    std::vector<std::pair<Chunk*, std::vector<float>>> toUpload;
+    std::vector<std::tuple<Chunk*, std::vector<float>, int>> toUpload;
     {
         std::lock_guard<std::mutex> lock(uploadMutex);
         if(!uploadQueue.empty()) {
@@ -124,8 +125,8 @@ void World::Update() {
         }
     }
     
-    for(auto& pair : toUpload) {
-        if(pair.first) pair.first->uploadMesh(pair.second);
+    for(auto& t : toUpload) {
+        if(std::get<0>(t)) std::get<0>(t)->uploadMesh(std::get<1>(t), std::get<2>(t));
     }
 }
 
@@ -555,12 +556,35 @@ int World::render(Shader& shader, const glm::mat4& viewProjection)
     
     // Render outside lock
     int count = 0;
+    
+    // Pass 1: Opaque
     for(Chunk* c : visibleChunks) {
         if(c) {
-            c->render(shader, viewProjection);
+            c->render(shader, viewProjection, 0); // Opaque
             count++;
         }
     }
+    
+    // Pass 2: Transparent
+    // We should probably disable Face Culling for water?
+    // Actually, water usually has backfacesCULLED if we only want surface.
+    // If we want to see underside of water surface, we need double-sided.
+    // Standard MC is single-sided (cull back).
+    // But we might want to disable Depth Write for transparency?
+    // For now, keep Depth Write ON to ensure surface looks solid enough.
+    // Or arguably OFF to blend particles? Liquid usually ON.
+    
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    // glDepthMask(GL_FALSE); // Optional: Disable depth write for transparent pass
+
+    for(Chunk* c : visibleChunks) {
+        if(c) {
+            c->render(shader, viewProjection, 1); // Transparent
+        }
+    }
+    // glDepthMask(GL_TRUE);
+    
     return count;
 }
 // Removed getSuperChunk/getOrCreateSuperChunk definitions

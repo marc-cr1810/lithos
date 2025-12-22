@@ -83,7 +83,7 @@ private:
     std::unordered_set<Chunk*> meshSet; // For deduplication
     
     std::mutex uploadMutex;
-    std::vector<std::pair<Chunk*, std::vector<float>>> uploadQueue;
+    std::vector<std::tuple<Chunk*, std::vector<float>, int>> uploadQueue;
     
     void WorkerLoop();
 

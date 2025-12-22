@@ -76,10 +76,12 @@ const char* GetBlockName(int type) {
         case 3: return "STONE";
         case 4: return "WOOD";
         case 5: return "LEAVES";
-        case 6: return "COAL_ORE";
-        case 7: return "IRON_ORE";
-        case 8: return "GLOWSTONE";
-        default: return "UNKNOWN";
+        case COAL_ORE: return "Coal Ore";
+        case IRON_ORE: return "Iron Ore";
+        case GLOWSTONE: return "Glowstone";
+        case WATER: return "Water";
+        case LAVA: return "Lava";
+        default: return "Unknown";
     }
 }
 
@@ -128,6 +130,8 @@ int main()
     // -----------------------------
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glCullFace(GL_BACK);
 
     // Setup ImGui context
@@ -406,7 +410,7 @@ BlockType selectedBlock = STONE;
             if (ImGui::CollapsingHeader("Creative Menu", ImGuiTreeNodeFlags_DefaultOpen)) {
                 // Grid of blocks
                 int buttonsPerRow = 4;
-                for(int i=1; i<=8; ++i) { // 1 to 8 are valid blocks
+                for(int i=1; i<=10; ++i) { // 1 to 10 are valid blocks
                     if(i > 1 && (i-1) % buttonsPerRow != 0) ImGui::SameLine();
                     
                     std::string label = GetBlockName(i);
@@ -690,7 +694,7 @@ void processInput(GLFWwindow *window, const World& world)
             player.ProcessKeyboard(P_DOWN, deltaTime, world);
     } else {
         if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-            player.ProcessJump();
+            player.ProcessJump(true, world);
     }
 
     // Mouse Polling
