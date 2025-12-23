@@ -34,6 +34,8 @@ void main()
     vec4 texColor = texture(texture1, finalUV);
     if(!useTexture)
         texColor = vec4(1.0, 1.0, 1.0, 1.0); // Use white if no texture
+
+    if(texColor.a < 0.1) discard;
         
     if(useHeatmap) {
         // Red = Dark, Green = Light

@@ -99,8 +99,8 @@ void Player::ProcessMouseMovement(float xoffset, float yoffset, bool constrainPi
 void Player::ProcessJump(bool jump, const World& world)
 {
     // Check if in water
-    Block b = world.getBlock((int)floor(Position.x), (int)floor(Position.y), (int)floor(Position.z));
-    bool inWater = (b.type == WATER || b.type == LAVA);
+    ChunkBlock b = world.getBlock((int)floor(Position.x), (int)floor(Position.y), (int)floor(Position.z));
+    bool inWater = (b.getType() == WATER || b.getType() == LAVA);
     
     if (jump)
     {
@@ -109,8 +109,8 @@ void Player::ProcessJump(bool jump, const World& world)
              IsGrounded = false;
         } else if(inWater) {
              // Check if head is above water (Surface Jump)
-             Block headBlock = world.getBlock((int)floor(Position.x), (int)floor(Position.y + 1.5f), (int)floor(Position.z));
-             bool headInWater = (headBlock.type == WATER || headBlock.type == LAVA);
+             ChunkBlock headBlock = world.getBlock((int)floor(Position.x), (int)floor(Position.y + 1.5f), (int)floor(Position.z));
+             bool headInWater = (headBlock.getType() == WATER || headBlock.getType() == LAVA);
              
              if (!headInWater) {
                  // Head is out, feet are in. Apply strong impulse to exit water.
@@ -135,14 +135,14 @@ void Player::Update(float deltaTime, const World& world)
 
     // Water Physics
     bool inWater = false;
-    Block b = world.getBlock((int)floor(Position.x), (int)floor(Position.y), (int)floor(Position.z));
-    if(b.type == WATER || b.type == LAVA) {
+    ChunkBlock b = world.getBlock((int)floor(Position.x), (int)floor(Position.y), (int)floor(Position.z));
+    if(b.getType() == WATER || b.getType() == LAVA) {
         inWater = true;
     }
     else {
         // Check eye level too?
-        Block b2 = world.getBlock((int)floor(Position.x), (int)floor(Position.y + 1.5f), (int)floor(Position.z));
-        if(b2.type == WATER || b2.type == LAVA) inWater = true;
+        ChunkBlock b2 = world.getBlock((int)floor(Position.x), (int)floor(Position.y + 1.5f), (int)floor(Position.z));
+        if(b2.getType() == WATER || b2.getType() == LAVA) inWater = true;
     }
 
     // Apply Gravity

@@ -142,12 +142,12 @@ void WorldGenerator::GenerateChunk(Chunk& chunk)
                              if(type != WATER) {
                                  // Side Wall Protection: Check adjacent blocks for water (intra-chunk)
                                  bool nearWater = false;
-                                 if(x > 0 && chunk.getBlock(x-1, y, z).type == WATER) nearWater = true;
-                                 if(x < CHUNK_SIZE-1 && chunk.getBlock(x+1, y, z).type == WATER) nearWater = true;
-                                 if(z > 0 && chunk.getBlock(x, y, z-1).type == WATER) nearWater = true;
-                                 if(z < CHUNK_SIZE-1 && chunk.getBlock(x, y, z+1).type == WATER) nearWater = true;
+                                 if(x > 0 && chunk.getBlock(x-1, y, z).getType() == WATER) nearWater = true;
+                                 if(x < CHUNK_SIZE-1 && chunk.getBlock(x+1, y, z).getType() == WATER) nearWater = true;
+                                 if(z > 0 && chunk.getBlock(x, y, z-1).getType() == WATER) nearWater = true;
+                                 if(z < CHUNK_SIZE-1 && chunk.getBlock(x, y, z+1).getType() == WATER) nearWater = true;
                                  // Also check Up/Down (though Up is handled by Crust/Seabed)
-                                 if(y < CHUNK_SIZE-1 && chunk.getBlock(x, y+1, z).type == WATER) nearWater = true;
+                                 if(y < CHUNK_SIZE-1 && chunk.getBlock(x, y+1, z).getType() == WATER) nearWater = true;
 
                                  if(!nearWater) {
                                      // Lava Lake Level
@@ -166,7 +166,7 @@ void WorldGenerator::GenerateChunk(Chunk& chunk)
                 if(type == WATER && gy <= 60) {
                      // Grass under current block
                      if(y > 0) {
-                         if(chunk.getBlock(x, y-1, z).type == GRASS) {
+                         if(chunk.getBlock(x, y-1, z).getType() == GRASS) {
                              chunk.setBlock(x, y-1, z, DIRT);
                          }
                      }

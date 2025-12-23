@@ -1,7 +1,7 @@
-
 #include "World.h"
 #include "WorldGenerator.h"
 #include <cmath>
+#include "../ecs/Systems.h"
 #include <limits>
 #include <iostream>
 #include <array>
@@ -115,6 +115,15 @@ void World::WorkerLoop() {
     }
 }
 
+void World::Tick() {
+    currentTick++;
+    updateBlocks();
+    
+    // ECS Update (Fixed Time Step: 1/20 = 0.05s)
+    PhysicsSystem::Update(registry, 0.05f);
+    CollisionSystem::Update(registry, *this, 0.05f);
+}
+
 void World::Update() {
     std::vector<std::tuple<Chunk*, std::vector<float>, int>> toUpload;
     {
@@ -127,6 +136,34 @@ void World::Update() {
     
     for(auto& t : toUpload) {
         if(std::get<0>(t)) std::get<0>(t)->uploadMesh(std::get<1>(t), std::get<2>(t));
+    }
+}
+
+void World::scheduleBlockUpdate(int x, int y, int z, int delay) {
+    std::lock_guard<std::mutex> lock(updateQueueMutex);
+    updateQueue.push({x, y, z, currentTick + delay});
+}
+
+void World::updateBlocks() {
+    // Process queue
+    // We only process updates due for this tick or earlier
+    std::lock_guard<std::mutex> lock(updateQueueMutex);
+    
+    while(!updateQueue.empty()) {
+        if(updateQueue.top().tick > currentTick) break;
+        
+        BlockUpdate u = updateQueue.top();
+        updateQueue.pop();
+        
+        // Unlock while updating to allow scheduling new updates
+        updateQueueMutex.unlock();
+        
+        ChunkBlock b = getBlock(u.x, u.y, u.z);
+        if(b.isActive()) {
+            b.block->update(*this, u.x, u.y, u.z);
+        }
+        
+        updateQueueMutex.lock();
     }
 }
 
@@ -378,14 +415,17 @@ int floorDiv(int a, int b) {
     return (a >= 0) ? (a / b) : ((a - b + 1) / b);
 }
 
-Block World::getBlock(int x, int y, int z) const
+ChunkBlock World::getBlock(int x, int y, int z) const
 {
     int cx = floorDiv(x, CHUNK_SIZE);
     int cy = floorDiv(y, CHUNK_SIZE);
     int cz = floorDiv(z, CHUNK_SIZE);
     
     const Chunk* c = getChunk(cx, cy, cz);
-    if(!c) return Block{AIR};
+    if(!c) {
+        // Return Air with full sunlight (simulate open world)
+        return ChunkBlock{BlockRegistry::getInstance().getBlock(AIR), 15, 0};
+    }
     
     int lx = x - cx * CHUNK_SIZE;
     int ly = y - cy * CHUNK_SIZE;
@@ -517,6 +557,28 @@ void World::setBlock(int x, int y, int z, BlockType type)
                 }
             }
         }
+        
+        // Block Update Logic
+        ChunkBlock b = getBlock(x, y, z);
+        if(b.isActive()) {
+            b.block->onPlace(*this, x, y, z);
+        }
+        
+        // Notify neighbors
+        int nOff[6][3] = {
+            {0,1,0}, {0,-1,0}, {1,0,0}, {-1,0,0}, {0,0,1}, {0,0,-1}
+        };
+        for(int i=0; i<6; ++i) {
+            int nx = x + nOff[i][0];
+            int ny = y + nOff[i][1];
+            int nz = x + nOff[i][2]; // BUG HERE: z + nOff[i][2]
+            int nzCorrect = z + nOff[i][2]; 
+            
+            ChunkBlock nb = getBlock(nx, ny, nzCorrect);
+            if(nb.isActive()) {
+                nb.block->onNeighborChange(*this, nx, ny, nzCorrect, x, y, z);
+            }
+        }
     }
 }
 
@@ -584,6 +646,9 @@ int World::render(Shader& shader, const glm::mat4& viewProjection)
         }
     }
     glDepthMask(GL_TRUE); // Restore depth write
+    
+    // Render Entities
+    RenderSystem::Render(registry, shader, viewProjection);
     
     return count;
 }

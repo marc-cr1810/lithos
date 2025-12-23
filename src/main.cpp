@@ -246,7 +246,7 @@ int main()
              int cy = y / CHUNK_SIZE;
              
              if(world.getChunk(cx, cy, cz) != nullptr) {
-                 Block b = world.getBlock(spawnX, y, spawnZ);
+                 ChunkBlock b = world.getBlock(spawnX, y, spawnZ);
                  if(b.isActive()) {
                      spawnY = (float)y + 2.5f;
                      foundGround = true;
@@ -319,6 +319,11 @@ BlockType selectedBlock = STONE;
     // Global Time
     float globalTime = 0.0f;
     
+    // Fixed Time Step
+    float tickAccumulator = 0.0f;
+    const float TICK_RATE = 20.0f;
+    const float TICK_INTERVAL = 1.0f / TICK_RATE;
+    
     // render loop
     // -----------
     while (!glfwWindowShouldClose(window))
@@ -340,6 +345,12 @@ BlockType selectedBlock = STONE;
         ImGui::NewFrame();
 
         
+        tickAccumulator += deltaTime;
+        while(tickAccumulator >= TICK_INTERVAL) {
+            world.Tick();
+            tickAccumulator -= TICK_INTERVAL;
+        }
+
         // World Update (Mesh Uploads)
         world.Update();
         
@@ -389,6 +400,7 @@ BlockType selectedBlock = STONE;
                 ImGui::Separator();
                 ImGui::Text("Sun Strength: %.2f", sunStrength);
                 ImGui::Text("Chunks: %d / %zu", dbg_renderedChunks, world.getChunkCount());
+                ImGui::Text("Tick: %lld", world.currentTick);
             }
 
             if (ImGui::CollapsingHeader("Controls", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -473,7 +485,8 @@ BlockType selectedBlock = STONE;
             
             if (ImGui::CollapsingHeader("Raycast", ImGuiTreeNodeFlags_DefaultOpen)) {
                 if(hit) {
-                    ImGui::Text("Hit Block: %s (%d)", GetBlockName(world.getBlock(hitPos.x, hitPos.y, hitPos.z).type), world.getBlock(hitPos.x, hitPos.y, hitPos.z).type);
+                    ChunkBlock cb = world.getBlock(hitPos.x, hitPos.y, hitPos.z);
+                    ImGui::Text("Hit Block: %s (%d)", GetBlockName(cb.getType()), cb.getType());
                     ImGui::Text("Hit Pos: %d, %d, %d", hitPos.x, hitPos.y, hitPos.z);
                     ImGui::Text("Pre Pos: %d, %d, %d", prePos.x, prePos.y, prePos.z);
                     
@@ -515,8 +528,8 @@ BlockType selectedBlock = STONE;
         
         // Water Tint Logic
         bool inWater = false;
-        Block camBlock = world.getBlock((int)floor(camera.Position.x), (int)floor(camera.Position.y), (int)floor(camera.Position.z));
-        if(camBlock.type == WATER || camBlock.type == LAVA) inWater = true;
+        ChunkBlock camBlock = world.getBlock((int)floor(camera.Position.x), (int)floor(camera.Position.y), (int)floor(camera.Position.z));
+        if(camBlock.getType() == WATER || camBlock.getType() == LAVA) inWater = true;
         
         glm::vec3 skyColor = glm::vec3(0.2f, 0.3f, 0.3f) * sunStrength;
         glm::vec3 fogCol = glm::vec3(0.5f, 0.6f, 0.7f) * sunStrength;
@@ -525,7 +538,7 @@ BlockType selectedBlock = STONE;
         
         if(inWater) {
             // Underwater Blue
-            if(camBlock.type == WATER) {
+            if(camBlock.getType() == WATER) {
                 skyColor = glm::vec3(0.1f, 0.1f, 0.4f) * sunStrength;
                 fogCol = glm::vec3(0.05f, 0.05f, 0.3f) * sunStrength; 
             } else {

@@ -14,8 +14,8 @@ void OreDecorator::Decorate(Chunk& chunk, WorldGenerator& generator)
         int y = rand() % CHUNK_SIZE;
         int z = rand() % CHUNK_SIZE;
         
-        Block b = chunk.getBlock(x, y, z);
-        if(b.type == STONE) {
+        ChunkBlock b = chunk.getBlock(x, y, z);
+        if(b.getType() == STONE) {
             GenerateOre(chunk, x, y, z, COAL_ORE);
         }
     }
@@ -37,8 +37,8 @@ void OreDecorator::Decorate(Chunk& chunk, WorldGenerator& generator)
         // So actually everything is "deep" if chunk Y is negative or small.
         // Let's just spawn it in Stone for now.
         
-        Block b = chunk.getBlock(x, y, z);
-        if(b.type == STONE) {
+        ChunkBlock b = chunk.getBlock(x, y, z);
+        if(b.getType() == STONE) {
             GenerateOre(chunk, x, y, z, IRON_ORE);
         }
     }
@@ -60,7 +60,7 @@ void OreDecorator::GenerateOre(Chunk& chunk, int startX, int startY, int startZ,
         int nz = startZ + dz;
         
         if(nx>=0 && nx<CHUNK_SIZE && ny>=0 && ny<CHUNK_SIZE && nz>=0 && nz<CHUNK_SIZE) {
-             if(chunk.getBlock(nx, ny, nz).type == STONE) {
+             if(chunk.getBlock(nx, ny, nz).getType() == STONE) {
                  chunk.setBlock(nx, ny, nz, oreType);
              }
         }

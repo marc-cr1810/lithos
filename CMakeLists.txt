@@ -43,6 +43,14 @@ if(NOT glm_FOUND)
     FetchContent_MakeAvailable(glm)
 endif()
 
+# EnTT
+FetchContent_Declare(
+    entt
+    GIT_REPOSITORY https://github.com/skypjack/entt.git
+    GIT_TAG v3.13.0
+)
+FetchContent_MakeAvailable(entt)
+
 # GLEW
 find_package(GLEW QUIET)
 if (NOT GLEW_FOUND)
@@ -93,6 +101,9 @@ add_executable(minceraft
     src/world/TreeDecorator.cpp
     src/world/OreDecorator.cpp
     src/world/World.cpp
+    src/world/World.cpp
+    src/world/BlockRegistry.cpp
+    src/ecs/Systems.cpp
     
     # ImGui
     ${imgui_SOURCE_DIR}/imgui.cpp
@@ -113,6 +124,7 @@ target_link_libraries(minceraft PRIVATE
     OpenGL::GL
     glfw
     ${GLEW_TARGET}
+    EnTT::EnTT
 )
 
 target_compile_definitions(minceraft PRIVATE USE_GLEW GLEW_NO_GLU)

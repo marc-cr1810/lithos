@@ -28,10 +28,11 @@ void TreeDecorator::Decorate(Chunk& chunk, WorldGenerator& generator)
                     // Water Level Check: Don't grow trees in water (Y < 60)
                     if(height < 60) continue;
 
-                    // Check if block below is Grass
-                    // Actually, we are running AFTER terrain generation, so the block at 'localY' should be GRASS.
-                    Block b = chunk.getBlock(x, localY, z);
-                    if(b.type == GRASS)
+
+                        // Check if block below is Grass
+                        // Actually, we are running AFTER terrain generation, so the block at 'localY' should be GRASS.
+                        ChunkBlock b = chunk.getBlock(x, localY, z);
+                        if(b.getType() == GRASS)
                     {
                          if((rand() % 100) < 2) { // 2% chance
                              // Variable Height: 4 to 7
@@ -60,7 +61,7 @@ void TreeDecorator::Decorate(Chunk& chunk, WorldGenerator& generator)
                                          // Corner check for roundness
                                          if(abs(lx-x) == radius && abs(lz-z) == radius && (rand()%2)==0) continue;
                                          
-                                         if(chunk.getBlock(lx, ly, lz).type == AIR)
+                                         if(chunk.getBlock(lx, ly, lz).getType() == AIR)
                                              chunk.setBlock(lx, ly, lz, LEAVES);
                                      }
                                  }

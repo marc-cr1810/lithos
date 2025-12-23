@@ -9,10 +9,11 @@ Chunk::Chunk() : meshDirty(true), vertexCount(0), vertexCountTransparent(0), chu
 {
     // GL initialization deferred to Main Thread via initGL()
     // Initialize with air
+    Block* air = BlockRegistry::getInstance().getBlock(AIR);
     for(int x=0; x<CHUNK_SIZE; ++x)
         for(int y=0; y<CHUNK_SIZE; ++y)
             for(int z=0; z<CHUNK_SIZE; ++z)
-                blocks[x][y][z].type = AIR;
+                blocks[x][y][z] = { air, 0, 0 };
     
     for(int i=0; i<6; ++i) neighbors[i] = nullptr;
 }
@@ -54,10 +55,10 @@ void Chunk::render(Shader& shader, const glm::mat4& viewProjection, int pass)
     glBindVertexArray(0);
 }
 
-Block Chunk::getBlock(int x, int y, int z) const
+ChunkBlock Chunk::getBlock(int x, int y, int z) const
 {
     if(x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_SIZE || z < 0 || z >= CHUNK_SIZE)
-        return {AIR};
+        return { BlockRegistry::getInstance().getBlock(AIR), 0, 0 };
     return blocks[x][y][z];
 }
 
@@ -66,7 +67,7 @@ void Chunk::setBlock(int x, int y, int z, BlockType type)
     std::lock_guard<std::mutex> lock(chunkMutex);
     if(x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_SIZE || z < 0 || z >= CHUNK_SIZE)
         return;
-    blocks[x][y][z].type = type;
+    blocks[x][y][z].block = BlockRegistry::getInstance().getBlock(type);
     meshDirty = true;
 }
 
@@ -118,13 +119,13 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
 
     // Greedy Meshing
     struct MaskInfo {
-        BlockType type;
+        Block* block;
         uint8_t sky;
-        uint8_t block;
+        uint8_t blockVal;
         uint8_t ao[4]; // BL, BR, TR, TL
         
         bool operator==(const MaskInfo& other) const {
-            return type == other.type && sky == other.sky && block == other.block &&
+            return block == other.block && sky == other.sky && blockVal == other.blockVal &&
                    ao[0] == other.ao[0] && ao[1] == other.ao[1] && 
                    ao[2] == other.ao[2] && ao[3] == other.ao[3];
         }
@@ -145,7 +146,7 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
             else if(faceDir==2) nX=-1; else if(faceDir==3) nX=1;
             else if(faceDir==4) nY=1; else if(faceDir==5) nY=-1;
 
-        auto getAt = [&](int u, int v, int d) -> Block {
+        auto getAt = [&](int u, int v, int d) -> ChunkBlock {
                 int p[3]; p[axis] = d; p[uAxis] = u; p[vAxis] = v;
                 return blocks[p[0]][p[1]][p[2]];
         };
@@ -154,13 +155,14 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
                 ox = p[0]; oy = p[1]; oz = p[2];
         };
 
+        Block* airBlock = BlockRegistry::getInstance().getBlock(AIR);
         for(int d = 0; d < CHUNK_SIZE; ++d) {
                 MaskInfo mask[CHUNK_SIZE][CHUNK_SIZE];
-                for(int u=0;u<CHUNK_SIZE;++u) for(int v=0;v<CHUNK_SIZE;++v) mask[u][v] = {AIR, 0, 0, {0,0,0,0}};
+                for(int u=0;u<CHUNK_SIZE;++u) for(int v=0;v<CHUNK_SIZE;++v) mask[u][v] = { airBlock, 0, 0, {0,0,0,0} };
 
                 for(int v=0; v<CHUNK_SIZE; ++v) {
                     for(int u=0; u<CHUNK_SIZE; ++u) {
-                        Block b = getAt(u, v, d);
+                        ChunkBlock b = getAt(u, v, d);
                         if(b.isActive()) {
                             int lx, ly, lz; getPos(u, v, d, lx, ly, lz);
                             int nx = lx + nX; int ny = ly + nY; int nz = lz + nZ;
@@ -169,10 +171,13 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
                             uint8_t skyVal = 0; uint8_t blockVal = 0;
 
                             if(nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
-                                Block nb = blocks[nx][ny][nz];
+                                ChunkBlock nb = blocks[nx][ny][nz];
                                 if(nb.isActive()) {
-                                    if(b.type == WATER || b.type == LAVA) {
-                                         if(nb.type == b.type || nb.isOpaque()) occluded = true;
+                                    if(!b.isOpaque()) { // Logic change: if current is transparent, and neighbor is SAME type or opaque, occlude?
+                                        // Original logic: if(b.type == WATER || b.type == LAVA) { if(nb.type == b.type || nb.isOpaque()) ... }
+                                        // Replicating:
+                                        if(nb.block == b.block || nb.isOpaque()) occluded = true; 
+                                        // Note: Comparing block pointers works for Water==Water check.
                                     } else {
                                         if(nb.isOpaque()) occluded = true;
                                     }
@@ -190,10 +195,10 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
                                 else if(ny < 0) { ni = DIR_BOTTOM; nny += CHUNK_SIZE; }
                                 
                                 if(ni != -1 && neighbors[ni]) {
-                                     Block nb = neighbors[ni]->getBlock(nnx, nny, nnz);
+                                     ChunkBlock nb = neighbors[ni]->getBlock(nnx, nny, nnz);
                                      if(nb.isActive()) {
-                                         if(b.type == WATER || b.type == LAVA) {
-                                             if(nb.type == b.type || nb.isOpaque()) occluded = true;
+                                         if(!b.isOpaque()) {
+                                             if(nb.block == b.block || nb.isOpaque()) occluded = true;
                                          } else {
                                              if(nb.isOpaque()) occluded = true;
                                          }
@@ -203,10 +208,16 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
                                     int gx = chunkPosition.x * CHUNK_SIZE + nx;
                                     int gy = chunkPosition.y * CHUNK_SIZE + ny;
                                     int gz = chunkPosition.z * CHUNK_SIZE + nz;
-                                    Block nb = world->getBlock(gx, gy, gz);
+                                    // World returns Block? Or ChunkBlock?
+                                    // Wait, World::getBlock probably still returns Block (the old struct)?
+                                    // I haven't updated World.h yet!
+                                    // I MUST update World.h to return ChunkBlock as well.
+                                    // Assuming I will do that, code here should use ChunkBlock.
+                                    // For now, let's assume World::getBlock returns ChunkBlock.
+                                    ChunkBlock nb = world->getBlock(gx, gy, gz);
                                     if(nb.isActive()) {
-                                         if(b.type == WATER || b.type == LAVA) {
-                                             if(nb.type == b.type || nb.isOpaque()) occluded = true;
+                                         if(!b.isOpaque()) {
+                                             if(nb.block == b.block || nb.isOpaque()) occluded = true;
                                          } else {
                                              if(nb.isOpaque()) occluded = true;
                                          }
@@ -221,6 +232,8 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
                                         int lx, ly, lz; getPos(u, v, d, lx, ly, lz);
                                         int nx=lx+nX; int ny=ly+nY; int nz=lz+nZ;
                                         if(nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) 
+                                            // Need to check isOpaque()
+                                            // Can access blocks directly
                                             return blocks[nx][ny][nz].isOpaque();
                                             
                                         int ni = -1;
@@ -232,8 +245,6 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
                                         else if(ny >= CHUNK_SIZE) { ni = DIR_TOP; nny -= CHUNK_SIZE; }
                                         else if(ny < 0) { ni = DIR_BOTTOM; nny += CHUNK_SIZE; }
                                         
-                                        // Check if the adjusted coordinates are valid within the neighbor
-                                        // If we have a diagonal case (e.g. x-1, y-1), nnx might be valid but nny is still -1.
                                         bool isDiagonal = (nnx < 0 || nnx >= CHUNK_SIZE || nny < 0 || nny >= CHUNK_SIZE || nnz < 0 || nnz >= CHUNK_SIZE);
 
                                         if(!isDiagonal && ni != -1 && neighbors[ni]) {
@@ -257,7 +268,7 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
                                 aos[1] = sampleAO(u+1, v, u, v-1, u+1, v-1); 
                                 aos[2] = sampleAO(u+1, v, u, v+1, u+1, v+1); 
                                 aos[3] = sampleAO(u-1, v, u, v+1, u-1, v+1); 
-                                mask[u][v] = { (BlockType)b.type, skyVal, blockVal, {aos[0], aos[1], aos[2], aos[3]} };
+                                mask[u][v] = { b.block, skyVal, blockVal, {aos[0], aos[1], aos[2], aos[3]} };
                             }
                         }
                     }
@@ -266,7 +277,7 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
                 // Greedy Mesh
                 for(int v=0; v<CHUNK_SIZE; ++v) {
                     for(int u=0; u<CHUNK_SIZE; ++u) {
-                        if(mask[u][v].type != AIR) {
+                        if(mask[u][v].block->isActive()) {
                             MaskInfo current = mask[u][v];
                             int w = 1, h = 1;
                             while(u + w < CHUNK_SIZE && mask[u+w][v] == current) w++;
@@ -278,11 +289,11 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
                             int lx, ly, lz; getPos(u, v, d, lx, ly, lz);
                             
                             // Check if transparent
-                            bool isTrans = (current.type == WATER || current.type == LAVA);
+                            bool isTrans = (current.block->getRenderLayer() == Block::RenderLayer::TRANSPARENT);
                             
-                            addFace(isTrans ? transparentVertices : opaqueVertices, lx, ly, lz, faceDir, current.type, w, h, current.ao[0], current.ao[1], current.ao[2], current.ao[3]);
+                            addFace(isTrans ? transparentVertices : opaqueVertices, lx, ly, lz, faceDir, current.block, w, h, current.ao[0], current.ao[1], current.ao[2], current.ao[3]);
                             
-                            for(int j=0; j<h; ++j) for(int i=0; i<w; ++i) mask[u+i][v+j] = {AIR, 0, 0, {0,0,0,0}};
+                            for(int j=0; j<h; ++j) for(int i=0; i<w; ++i) mask[u+i][v+j] = { airBlock, 0, 0, {0,0,0,0} };
                             u += w - 1; 
                         }
                     }
@@ -332,21 +343,11 @@ void Chunk::updateMesh()
     meshDirty = false;
 }
 
-void Chunk::addFace(std::vector<float>& vertices, int x, int y, int z, int faceDir, int blockType, int width, int height, int aoBL, int aoBR, int aoTR, int aoTL)
+void Chunk::addFace(std::vector<float>& vertices, int x, int y, int z, int faceDir, const Block* block, int width, int height, int aoBL, int aoBR, int aoTR, int aoTL)
 {
     float r, g, b;
-    float alpha = 1.0f;
-    if (blockType == GRASS) { r = 0.0f; g = 1.0f; b = 0.0f; } 
-    else if (blockType == DIRT) { r = 0.6f; g = 0.4f; b = 0.2f; }
-    else if (blockType == STONE) { r = 1.0f; g = 1.0f; b = 1.0f; } 
-    else if (blockType == WOOD) { r = 1.0f; g = 1.0f; b = 1.0f; } 
-    else if (blockType == LEAVES) { r = 0.2f; g = 0.8f; b = 0.2f; } 
-    else if (blockType == COAL_ORE || blockType == IRON_ORE || blockType == GLOWSTONE) { r = 1.0f; g = 1.0f; b = 1.0f; }
-    else if (blockType == WATER) { r = 0.2f; g = 0.4f; b = 1.0f; alpha = 0.6f; }
-    else if (blockType == LAVA) { r = 1.0f; g = 0.4f; b = 0.0f; }
-    else if (blockType == SAND) { r = 1.0f; g = 1.0f; b = 1.0f; }
-    else if (blockType == GRAVEL) { r = 1.0f; g = 1.0f; b = 1.0f; }
-    else { r = 1.0f; g = 0.0f; b = 1.0f; }
+    block->getColor(r, g, b);
+    float alpha = block->getAlpha();
 
     float l1 = 1.0f, l2 = 1.0f;
     float faceShade = 1.0f;
@@ -371,21 +372,7 @@ void Chunk::addFace(std::vector<float>& vertices, int x, int y, int z, int faceD
     }
 
     float uMin = 0.00f, vMin = 0.00f; 
-    
-    if(blockType == DIRT) { uMin = 0.25f; vMin = 0.00f; }
-    else if(blockType == GRASS) { uMin = 0.50f; vMin = 0.00f; }
-    else if(blockType == WOOD) {
-        if(faceDir == 4 || faceDir == 5) { uMin = 0.25f; vMin = 0.25f; } 
-        else { uMin = 0.00f; vMin = 0.25f; } 
-    } 
-    else if(blockType == LEAVES) { uMin = 0.50f; vMin = 0.25f; }
-    else if(blockType == COAL_ORE) { uMin = 0.75f; vMin = 0.00f; }
-    else if(blockType == IRON_ORE) { uMin = 0.75f; vMin = 0.25f; }
-    else if(blockType == GLOWSTONE) { uMin = 0.00f; vMin = 0.50f; }
-    else if(blockType == WATER) { uMin = 0.25f; vMin = 0.50f; } // Assuming texture pack has water here
-    else if(blockType == LAVA) { uMin = 0.50f; vMin = 0.50f; } // Assuming texture pack has lava here
-    else if(blockType == SAND) { uMin = 0.75f; vMin = 0.50f; } // Generated Sand Texture
-    else if(blockType == GRAVEL) { uMin = 0.00f; vMin = 0.75f; } // Generated Gravel Texture
+    block->getTextureUV(faceDir, uMin, vMin);
 
     float fx = (float)x, fy = (float)y, fz = (float)z;
     float fw = (float)width, fh = (float)height;
@@ -532,13 +519,13 @@ void Chunk::calculateSunlight() {
                       // Check column in upper chunk (Bottom-Up)
                       bool blocked = false;
                       for(int ly=0; ly<CHUNK_SIZE; ++ly) {
-                          Block b = current->getBlock(x, ly, z);
+                          ChunkBlock b = current->getBlock(x, ly, z);
                           if(b.isOpaque()) {
                               exposedToSky = false;
                               blocked = true;
                               incomingLight = 0;
                               break;
-                          } else if(b.type == WATER) {
+                          } else if(b.getType() == WATER) {
                               incomingLight -= 2;
                               if(incomingLight <= 0) {
                                   incomingLight = 0;
@@ -566,7 +553,7 @@ void Chunk::calculateSunlight() {
                           break;
                       } else {
                           // Attenuate light in water
-                          if(blocks[x][y][z].type == WATER) {
+                          if(blocks[x][y][z].getType() == WATER) {
                               currentLight -= 2;
                               if(currentLight < 0) currentLight = 0;
                           }
@@ -615,13 +602,6 @@ void Chunk::calculateBlockLight() {
                         blocks[x][y][z].blockLight = emission;
                     }
                 }
-                
-                // Allow light to pass through water?
-                // Emission is handled above. 
-                // Light propagation logic relies on spreadLight.
-                // We just need to ensure blockLight isn't reset if it shouldn't be?
-                // No, we calculate from scratch.
-                // If water emits light? No. Lava emits light.
             }
         }
     }
@@ -796,7 +776,7 @@ void Chunk::spreadLight() {
 
             if(nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
                 if(!blocks[nx][ny][nz].isOpaque()) {
-                    int decay = (blocks[nx][ny][nz].type == WATER) ? 3 : 1;
+                    int decay = (blocks[nx][ny][nz].getType() == WATER) ? 3 : 1;
                     if(blocks[nx][ny][nz].skyLight < curLight - decay) {
                         blocks[nx][ny][nz].skyLight = curLight - decay;
                         skyQueue.push(glm::ivec3(nx, ny, nz));
@@ -824,7 +804,7 @@ void Chunk::spreadLight() {
 
             if(nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
                 if(!blocks[nx][ny][nz].isOpaque()) {
-                    int decay = (blocks[nx][ny][nz].type == WATER) ? 3 : 1;
+                    int decay = (blocks[nx][ny][nz].getType() == WATER) ? 3 : 1;
                     if(blocks[nx][ny][nz].blockLight < curLight - decay) {
                         blocks[nx][ny][nz].blockLight = curLight - decay;
                         blockQueue.push(glm::ivec3(nx, ny, nz));

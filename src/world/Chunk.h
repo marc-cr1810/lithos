@@ -52,7 +52,7 @@ public:
     void render(Shader& shader, const glm::mat4& viewProjection, int pass); // 0=Opaque, 1=Transparent
     void initGL();
 
-    Block getBlock(int x, int y, int z) const;
+    ChunkBlock getBlock(int x, int y, int z) const;
     void setBlock(int x, int y, int z, BlockType type);
     uint8_t getSkyLight(int x, int y, int z) const;
     uint8_t getBlockLight(int x, int y, int z) const;
@@ -68,13 +68,13 @@ public:
 
 
 private:
-    Block blocks[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
+    ChunkBlock blocks[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
     World* world;
     unsigned int VAO, VBO, EBO;
     int vertexCount;
     int vertexCountTransparent;
 
-    void addFace(std::vector<float>& vertices, int x, int y, int z, int faceDir, int blockType, int width, int height, int aoBL, int aoBR, int aoTR, int aoTL); 
+    void addFace(std::vector<float>& vertices, int x, int y, int z, int faceDir, const Block* block, int width, int height, int aoBL, int aoBR, int aoTR, int aoTL); 
     int vertexAO(bool side1, bool side2, bool corner);
 };
 

@@ -10,8 +10,10 @@
 #include <queue>
 #include <unordered_set>
 #include <condition_variable>
+#include <condition_variable>
 #include <GL/glew.h>
 #include <glm/glm.hpp>
+#include <entt/entt.hpp>
 
 #include "Chunk.h"
 #include "Block.h"
@@ -37,6 +39,16 @@ struct key_hash
     }
 };
 
+struct BlockUpdate {
+    int x, y, z;
+    long long tick; // Execution time
+    
+    // Min-heap for priority queue (smallest time first)
+    bool operator>(const BlockUpdate& other) const {
+        return tick > other.tick;
+    }
+};
+
 class World {
 public:
     World();
@@ -47,8 +59,14 @@ public:
     const Chunk* getChunk(int chunkX, int chunkY, int chunkZ) const;
 
     // Global world coordinates
-    Block getBlock(int x, int y, int z) const;
+    ChunkBlock getBlock(int x, int y, int z) const;
     void setBlock(int x, int y, int z, BlockType type);
+    
+    // Updates
+    void scheduleBlockUpdate(int x, int y, int z, int delay);
+    void updateBlocks();
+    void Tick(); // Game Logic (20 TPS)
+    long long currentTick = 0;
 
     // Returns number of chunks rendered
     int render(Shader& shader, const glm::mat4& viewProjection);
@@ -100,6 +118,13 @@ public:
     void loadChunks(const glm::vec3& playerPos, int renderDistance, const glm::mat4& viewProjection);
     size_t getChunkCount() const;
     void renderDebugBorders(Shader& shader, const glm::mat4& viewProjection);
+
+    entt::registry registry; // Public for now to allow blocks to spawn entities
+
+private:
+
+    std::priority_queue<BlockUpdate, std::vector<BlockUpdate>, std::greater<BlockUpdate>> updateQueue;
+    std::mutex updateQueueMutex;
 };
 
 #endif
