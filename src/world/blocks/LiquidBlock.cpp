@@ -98,7 +98,8 @@ void LiquidBlock::trySpread(World& world, int x, int y, int z, int newMeta) cons
     // Replace Air or Non-Solid/Vegetation
     // Also replacing water with higher meta (stronger flow replaces weaker)?
     // For now: only replace air/different blocks
-    if(!b.isActive() || (!b.isSolid() && b.block->getId() != this->id)) {
+    // FIX: Do NOT replace other liquids (Water vs Lava)
+    if(!b.isActive() || (!b.isSolid() && b.block->getId() != this->id && b.block->getId() != WATER && b.block->getId() != LAVA)) {
         world.setBlock(x, y, z, (BlockType)this->id);
         world.setMetadata(x, y, z, newMeta);
         

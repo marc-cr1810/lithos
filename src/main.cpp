@@ -648,7 +648,10 @@ BlockType selectedBlock = STONE;
             int placeY = prePos.y;
             int placeZ = prePos.z;
 
-            if (world.getBlock(placeX, placeY, placeZ).isActive() == false)
+            ChunkBlock targetBlock = world.getBlock(placeX, placeY, placeZ);
+            bool canPlace = !targetBlock.isActive() || targetBlock.getType() == WATER || targetBlock.getType() == LAVA;
+
+            if (canPlace)
             {
                 // Check if we stuck the player (PRE-CHECK)
                 // We do this BEFORE setBlock to avoid "Ghost Light" bugs where reverting (setBlock to AIR)
