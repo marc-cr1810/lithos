@@ -31,8 +31,9 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void processInput(GLFWwindow *window, const World& world); 
 
 // settings
-const unsigned int SCR_WIDTH = 1280;
-const unsigned int SCR_HEIGHT = 720;
+// settings
+unsigned int SCR_WIDTH = 1280;
+unsigned int SCR_HEIGHT = 720;
 
 // camera &// camera
 Camera camera(glm::vec3(0.0f, 20.0f, 3.0f));
@@ -277,10 +278,10 @@ int main()
 
     // Crosshair Setup
     float crosshairVertices[] = {
-        -0.03f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
-         0.03f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
-         0.0f, -0.04f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
-         0.0f,  0.04f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f
+        -0.025f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+         0.025f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+         0.0f, -0.025f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+         0.0f,  0.025f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f
     };
     unsigned int crosshairVAO, crosshairVBO;
     glGenVertexArrays(1, &crosshairVAO);
@@ -675,8 +676,10 @@ BlockType selectedBlock = STONE;
         if(glfwGetKey(window, GLFW_KEY_7) == GLFW_PRESS) selectedBlock = IRON_ORE;
         if(glfwGetKey(window, GLFW_KEY_8) == GLFW_PRESS) selectedBlock = GLOWSTONE;
 
-        // Draw Crosshair (Identity Matrix)
-        ourShader.setMat4("model", glm::mat4(1.0f));
+        // Draw Crosshair
+        float aspect = (float)SCR_WIDTH / (float)SCR_HEIGHT;
+        glm::mat4 crosshairModel = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f/aspect, 1.0f, 1.0f));
+        ourShader.setMat4("model", crosshairModel);
         ourShader.setMat4("view", glm::mat4(1.0f));
         ourShader.setMat4("projection", glm::mat4(1.0f));
         ourShader.setBool("useTexture", false);
@@ -792,6 +795,8 @@ void processInput(GLFWwindow *window, const World& world)
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
     glViewport(0, 0, width, height);
+    SCR_WIDTH = width;
+    SCR_HEIGHT = height;
 }
 
 
