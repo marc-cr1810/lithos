@@ -52,18 +52,32 @@ void LiquidBlock::update(World& world, int x, int y, int z) const {
 
     // Spread Down
     ChunkBlock below = world.getBlock(x, y - 1, z);
+    
+    // Check if we can flow down into the block below
+    // 1. It is Air/Reconfirm
+    // 2. It is Non-Solid and Different ID (e.g. washing away grass)
+    // 3. SPECIAL: It is SAME ID (Water on Water).
+    //    - If water below is "supported" by a solid block, we treat 'below' as a floor -> Blocked -> Spread sides.
+    //    - If water below is NOT supported (Air/Water below it), we treat 'below' as a column -> Flow down (Merge) -> Don't spread sides.
+    
     bool canFlowDown = !below.isActive() || (!below.isSolid() && below.block->getId() != this->id);
+    
+    if(!canFlowDown && below.isActive() && below.block->getId() == this->id) {
+        // Below is same liquid. Check support.
+        ChunkBlock below2 = world.getBlock(x, y - 2, z);
+        if(below2.isActive() && below2.isSolid()) {
+            // Supported -> effectively blocked -> don't flow down (allow spread)
+            canFlowDown = false;
+        } else {
+            // Not supported (Air or Water below) -> flow down (merge)
+            canFlowDown = true;
+        }
+    }
     
     if(canFlowDown) {
         // Reset strength when falling
         trySpread(world, x, y - 1, z, 0); 
-        return; // Don't spread sides if falling (unless supported? varying logic)
-        // MC Logic: If falling, it doesn't spread sides from the falling stream itself, 
-        // BUT the block *above* it is the one doing the logic.
-        // Wait, "THIS" block is the one updating.
-        // If I flowed down, do I also flow sides?
-        // Usually: Prefer down. If down is possible, don't flow sides.
-        // If down is blocked (or existing water), flow sides.
+        return; 
     }
     
     // If block below is liquid of same type, we treat it as "blocked" for flow purposes (it's already full)

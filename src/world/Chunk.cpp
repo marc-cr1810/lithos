@@ -192,11 +192,16 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
                             if(nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
                                 ChunkBlock nb = blocks[nx][ny][nz];
                                 if(nb.isActive()) {
-                                    if(!b.isOpaque()) { // Logic change: if current is transparent, and neighbor is SAME type or opaque, occlude?
-                                        // Original logic: if(b.type == WATER || b.type == LAVA) { if(nb.type == b.type || nb.isOpaque()) ... }
-                                        // Replicating:
-                                        if(nb.block == b.block || nb.isOpaque()) occluded = true; 
-                                        // Note: Comparing block pointers works for Water==Water check.
+                                    if(!b.isOpaque()) { 
+                                        // Special Case: Liquid Top Face should NOT be occluded by Solids (unless full height? No, safer to render)
+                                        bool isLiquid = (b.block->getId() == WATER || b.block->getId() == LAVA);
+                                        if(isLiquid && faceDir == 4) {
+                                            // Only occlude if neighbor is also Liquid (same type)
+                                            // If neighbor is Stone, we still want to render Top of Water because water might be low.
+                                            if(nb.block == b.block) occluded = true;
+                                        } else {
+                                            if(nb.block == b.block || nb.isOpaque()) occluded = true; 
+                                        }
                                     } else {
                                         if(nb.isOpaque()) occluded = true;
                                     }
@@ -217,7 +222,12 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
                                      ChunkBlock nb = neighbors[ni]->getBlock(nnx, nny, nnz);
                                      if(nb.isActive()) {
                                          if(!b.isOpaque()) {
-                                             if(nb.block == b.block || nb.isOpaque()) occluded = true;
+                                             bool isLiquid = (b.block->getId() == WATER || b.block->getId() == LAVA);
+                                             if(isLiquid && faceDir == 4) {
+                                                 if(nb.block == b.block) occluded = true;
+                                             } else {
+                                                 if(nb.block == b.block || nb.isOpaque()) occluded = true;
+                                             }
                                          } else {
                                              if(nb.isOpaque()) occluded = true;
                                          }
@@ -236,7 +246,12 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
                                     ChunkBlock nb = world->getBlock(gx, gy, gz);
                                     if(nb.isActive()) {
                                          if(!b.isOpaque()) {
-                                             if(nb.block == b.block || nb.isOpaque()) occluded = true;
+                                             bool isLiquid = (b.block->getId() == WATER || b.block->getId() == LAVA);
+                                             if(isLiquid && faceDir == 4) {
+                                                 if(nb.block == b.block) occluded = true;
+                                             } else {
+                                                 if(nb.block == b.block || nb.isOpaque()) occluded = true;
+                                             }
                                          } else {
                                              if(nb.isOpaque()) occluded = true;
                                          }
@@ -319,72 +334,64 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
                             // Calculate smooth water heights
                             float hBL=1.0f, hBR=1.0f, hTR=1.0f, hTL=1.0f;
                             if(isLiquid) {
-                                auto getHeight = [&](int bx, int by, int bz) -> float {
-                                    if(by >= CHUNK_SIZE) return 1.0f; // Above chunk? Assume full?
-                                    // Actually Check World for neighbors
+                                bool isSource = (current.metadata == 0);
+                                
+                                auto getHeight = [&](int bx, int by, int bz, bool centerIsSource) -> float {
+                                    if(by >= CHUNK_SIZE) return 1.0f; 
                                     ChunkBlock bVec;
                                     if(bx>=0 && bx<CHUNK_SIZE && by>=0 && by<CHUNK_SIZE && bz>=0 && bz<CHUNK_SIZE) {
                                          bVec = blocks[bx][by][bz];
                                     } else {
-                                         // Neighbor logic simplified: use world
-                                         if(!world) return -1.0f; // treat unspread world as solid/ignore?
+                                         if(!world) return -1.0f; 
                                           int gx = chunkPosition.x * CHUNK_SIZE + bx;
                                           int gy = chunkPosition.y * CHUNK_SIZE + by;
                                           int gz = chunkPosition.z * CHUNK_SIZE + bz;
                                           bVec = world->getBlock(gx, gy, gz);
                                     }
                                     
-                                    if(!bVec.isActive()) return 0.0f; // Air -> 0.0
+                                    if(!bVec.isActive()) {
+                                        // If center is Source, Air shouldn't pull it down (looks like pyramid).
+                                        // Treat Air as -1 (Ignore) for Source blocks to keep them full.
+                                        // For Flow blocks, we WANT to slope to Air, so return 0.0.
+                                        if(centerIsSource) return -1.0f; 
+                                        return 0.0f; 
+                                    }
                                     if(bVec.block->getId() == WATER || bVec.block->getId() == LAVA) {
-                                        if(bVec.metadata >= 7) return 0.1f; // Min height
-                                        return (8.0f - bVec.metadata) / 9.0f;
+                                        if(bVec.metadata >= 8) return 0.0f; 
+                                        return (9.0f - bVec.metadata) / 9.0f;
                                     }
                                     if(bVec.isSolid()) return -1.0f; // Solid -> Ignore
-                                    return 0.0f; // Other non-solid -> 0.0?
+                                    return -1.0f; 
                                 };
                                 
-                                auto avgHeight = [&](int bx, int by, int bz) -> float {
+                                auto avgHeight = [&](int bx, int by, int bz, bool centerIsSource) -> float {
                                     float s = 0.0f;
                                     float count = 0.0f;
                                     
-                                    float hCurrent = getHeight(bx, by, bz);
+                                    float hCurrent = getHeight(bx, by, bz, centerIsSource);
                                     if(hCurrent >= 0.0f) { s += hCurrent; count += 1.0f; }
                                     
-                                    float hX = getHeight(bx-1, by, bz);
+                                    float hX = getHeight(bx-1, by, bz, centerIsSource);
                                     if(hX >= 0.0f) { s += hX; count += 1.0f; }
-                                    else if(hX < -0.5f) { // If solid, check if it pushes up? No, ignore.
-                                        // But if we have Water + Stone. Avg = Water.
-                                        // Effectively we extend the water level to the wall.
-                                        // s += hCurrent; count += 1.0f; // Duplicate current?
-                                        // Standard MC: The level at a wall is the level of the liquid.
-                                        // So ignoring it works (average stays same).
-                                        // BUT if we have Water(0.8) + Water(0.6) + Stone + Stone.
-                                        // Avg = (0.8+0.6)/2 = 0.7.
-                                        // If we added HCurrent for stones: (0.8+0.6+0.8+0.8)/4 = 0.75.
-                                        // Ignoring seems safer/cleaner.
-                                    }
-
-                                    float hZ = getHeight(bx, by, bz-1);
+                                    
+                                    float hZ = getHeight(bx, by, bz-1, centerIsSource);
                                     if(hZ >= 0.0f) { s += hZ; count += 1.0f; }
                                     
-                                    float hXZ = getHeight(bx-1, by, bz-1);
+                                    float hXZ = getHeight(bx-1, by, bz-1, centerIsSource);
                                     if(hXZ >= 0.0f) { s += hXZ; count += 1.0f; }
                                     
                                     if(count <= 0.0f) return 1.0f;
                                     return s / count;
                                 };
                                 
-                                // Coordinates are dependent on Face Axis?
-                                // getPos returns lx, ly, lz which are local coords for the block "u,v" at depth d.
-                                // We need global relative coords for avgHeight
-                                
-                                hBL = avgHeight(lx, ly, lz);
-                                hBR = avgHeight(lx+1, ly, lz);
-                                hTR = avgHeight(lx+1, ly, lz+1);
-                                hTL = avgHeight(lx, ly, lz+1);
+                                int lx, ly, lz; getPos(u, v, d, lx, ly, lz);
+                                hBL = avgHeight(lx, ly, lz, isSource);
+                                hBR = avgHeight(lx+1, ly, lz, isSource);
+                                hTR = avgHeight(lx+1, ly, lz+1, isSource);
+                                hTL = avgHeight(lx, ly, lz+1, isSource);
                                 
                                 // Special case: if block above is liquid, force full height
-                                if(getHeight(lx, ly+1, lz) > 0.5f) { hBL=hBR=hTR=hTL=1.0f; }
+                                if(getHeight(lx, ly+1, lz, isSource) > 0.5f) { hBL=hBR=hTR=hTL=1.0f; }
                             }
                             
                             addFace(isTrans ? transparentVertices : opaqueVertices, lx, ly, lz, faceDir, current.block, w, h, current.ao[0], current.ao[1], current.ao[2], current.ao[3], current.metadata, hBL, hBR, hTR, hTL);
