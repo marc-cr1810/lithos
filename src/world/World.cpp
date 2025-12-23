@@ -648,7 +648,7 @@ int World::render(Shader& shader, const glm::mat4& viewProjection)
     glDepthMask(GL_TRUE); // Restore depth write
     
     // Render Entities
-    RenderSystem::Render(registry, shader, viewProjection);
+    RenderSystem::Render(registry, *this, shader, viewProjection);
     
     return count;
 }

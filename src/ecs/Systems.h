@@ -19,7 +19,7 @@ public:
 
 class RenderSystem {
 public:
-    static void Render(entt::registry& registry, Shader& shader, const glm::mat4& viewProjection);
+    static void Render(entt::registry& registry, World& world, Shader& shader, const glm::mat4& viewProjection);
 private:
     static void initCubeMesh();
     static unsigned int cubeVAO, cubeVBO;

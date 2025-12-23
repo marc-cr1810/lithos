@@ -142,7 +142,7 @@ void RenderSystem::initCubeMesh() {
     glDisableVertexAttribArray(4); // aTexOrigin
 }
 
-void RenderSystem::Render(entt::registry& registry, Shader& shader, const glm::mat4& viewProjection) {
+void RenderSystem::Render(entt::registry& registry, World& world, Shader& shader, const glm::mat4& viewProjection) {
     initCubeMesh();
 
     auto view = registry.view<TransformComponent, BlockComponent>();
@@ -152,11 +152,10 @@ void RenderSystem::Render(entt::registry& registry, Shader& shader, const glm::m
     // Set default attributes needed by shader
     // aColor (Loc 1) = White
     glVertexAttrib4f(1, 1.0f, 1.0f, 1.0f, 1.0f);
-    // aLight (Loc 3) = Full Brightness (Sky=1, Block=0, AO=0?) 
-    // AO is .z. In shader: factor = 1 - z*0.25. If z=0 -> factor=1.
-    glVertexAttrib3f(3, 1.0f, 0.0f, 0.0f); 
     
-    view.each([&shader](auto entity, auto& transform, auto& blockComp) {
+    // aLight (Loc 3) - We will update this per entity
+    
+    view.each([&shader, &world](auto entity, auto& transform, auto& blockComp) {
         glm::mat4 model = glm::mat4(1.0f);
         model = glm::translate(model, transform.position);
         model = glm::scale(model, transform.scale);
@@ -166,15 +165,24 @@ void RenderSystem::Render(entt::registry& registry, Shader& shader, const glm::m
         // Setup Texture Origin
         Block* block = BlockRegistry::getInstance().getBlock(blockComp.type);
         float u, v;
-        // Use Side face (2) for uniform look. Sand/Gravel are correct.
         block->getTextureUV(2, u, v);
-        
-        // aTexOrigin (Loc 4)
         glVertexAttrib2f(4, u, v);
+        
+        // Sample Light
+        // Sample at the center of the entity
+        int x = std::floor(transform.position.x);
+        int y = std::floor(transform.position.y);
+        int z = std::floor(transform.position.z);
+        
+        ChunkBlock b = world.getBlock(x, y, z);
+        float sun = b.skyLight / 15.0f;
+        float blk = b.blockLight / 15.0f;
+        
+        // Use aLight uniform logic directly
+        glVertexAttrib3f(3, sun, blk, 0.0f); // AO = 0 (full brightness)
         
         glDrawArrays(GL_TRIANGLES, 0, 36);
     });
-    
     // Cleanup? Restore state?
     // Not strictly necessary if main loop resets VAOs, but good practice to enable arrays if needed.
 }
