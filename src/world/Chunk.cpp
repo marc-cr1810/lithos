@@ -68,6 +68,7 @@ void Chunk::setBlock(int x, int y, int z, BlockType type)
     if(x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_SIZE || z < 0 || z >= CHUNK_SIZE)
         return;
     blocks[x][y][z].block = BlockRegistry::getInstance().getBlock(type);
+    blocks[x][y][z].metadata = 0; // Reset metadata on block change!
     meshDirty = true;
 }
 
@@ -390,8 +391,26 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
                                 hTR = avgHeight(lx+1, ly, lz+1, isSource);
                                 hTL = avgHeight(lx, ly, lz+1, isSource);
                                 
-                                // Special case: if block above is liquid, force full height
-                                if(getHeight(lx, ly+1, lz, isSource) > 0.5f) { hBL=hBR=hTR=hTL=1.0f; }
+                                // Special case: if block above is SAME liquid, force full height
+                                // (Regardless of its metadata/height, we must connect to it)
+                                ChunkBlock aboveB = blocks[lx][ly+1][lz]; // Need safe access? ly+1 can be CHUNK_SIZE
+                                // Wait, lx,ly,lz are local.
+                                bool hasLiquidAbove = false;
+                                if(ly + 1 < CHUNK_SIZE) {
+                                     ChunkBlock ab = blocks[lx][ly+1][lz];
+                                     if(ab.isActive() && ab.block->getId() == current.block->getId()) hasLiquidAbove = true;
+                                } else {
+                                     // Check World
+                                      int gx = chunkPosition.x * CHUNK_SIZE + lx;
+                                      int gy = chunkPosition.y * CHUNK_SIZE + ly + 1;
+                                      int gz = chunkPosition.z * CHUNK_SIZE + lz;
+                                      if(world) {
+                                          ChunkBlock ab = world->getBlock(gx, gy, gz);
+                                          if(ab.isActive() && ab.block->getId() == current.block->getId()) hasLiquidAbove = true;
+                                      }
+                                }
+                                
+                                if(hasLiquidAbove) { hBL=hBR=hTR=hTL=1.0f; }
                             }
                             
                             addFace(isTrans ? transparentVertices : opaqueVertices, lx, ly, lz, faceDir, current.block, w, h, current.ao[0], current.ao[1], current.ao[2], current.ao[3], current.metadata, hBL, hBR, hTR, hTL);

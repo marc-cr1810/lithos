@@ -672,8 +672,11 @@ BlockType selectedBlock = STONE;
                 bool intersects = (maxX > placeX && minX < placeX + 1) &&
                                   (maxY > placeY && minY < placeY + 1) &&
                                   (maxZ > placeZ && minZ < placeZ + 1);
-
-                if (!intersects) {
+                
+                // Allow placement if no intersection OR if the placed block is non-solid (Water/Lava)
+                bool isPlacedBlockSolid = (selectedBlock != WATER && selectedBlock != LAVA); // Simple check, or use Registry
+                
+                if (!intersects || !isPlacedBlockSolid) {
                     world.setBlock(placeX, placeY, placeZ, selectedBlock);
                 } else {
                     // Collision detected, do not place block.
