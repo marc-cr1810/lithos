@@ -232,7 +232,11 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
                                         else if(ny >= CHUNK_SIZE) { ni = DIR_TOP; nny -= CHUNK_SIZE; }
                                         else if(ny < 0) { ni = DIR_BOTTOM; nny += CHUNK_SIZE; }
                                         
-                                        if(ni != -1 && neighbors[ni]) {
+                                        // Check if the adjusted coordinates are valid within the neighbor
+                                        // If we have a diagonal case (e.g. x-1, y-1), nnx might be valid but nny is still -1.
+                                        bool isDiagonal = (nnx < 0 || nnx >= CHUNK_SIZE || nny < 0 || nny >= CHUNK_SIZE || nnz < 0 || nnz >= CHUNK_SIZE);
+
+                                        if(!isDiagonal && ni != -1 && neighbors[ni]) {
                                             return neighbors[ni]->getBlock(nnx, nny, nnz).isOpaque();
                                         }
 
