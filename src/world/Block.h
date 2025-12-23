@@ -70,6 +70,7 @@ struct ChunkBlock {
     Block* block;
     uint8_t skyLight = 0;   // 0-15 Sun
     uint8_t blockLight = 0; // 0-15 Torches
+    uint8_t metadata = 0;   // Extra data (flow level, rotation, etc)
     
     bool isActive() const { return block->isActive(); }
     bool isOpaque() const { return block->isOpaque(); }

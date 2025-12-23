@@ -106,6 +106,23 @@ void Chunk::setBlockLight(int x, int y, int z, uint8_t val)
     meshDirty = true;
 }
 
+uint8_t Chunk::getMetadata(int x, int y, int z) const
+{
+    if(x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_SIZE || z < 0 || z >= CHUNK_SIZE)
+        return 0;
+    return blocks[x][y][z].metadata;
+}
+
+void Chunk::setMetadata(int x, int y, int z, uint8_t val)
+{
+    std::lock_guard<std::mutex> lock(chunkMutex);
+    if(x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_SIZE || z < 0 || z >= CHUNK_SIZE)
+        return;
+    blocks[x][y][z].metadata = val;
+    // metadata might affect rendering (e.g. liquid level), so mark dirty
+    meshDirty = true;
+}
+
 std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
 {
     // Thread safety: Lock while reading blocks
@@ -123,11 +140,13 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
         uint8_t sky;
         uint8_t blockVal;
         uint8_t ao[4]; // BL, BR, TR, TL
+        uint8_t metadata;
         
         bool operator==(const MaskInfo& other) const {
             return block == other.block && sky == other.sky && blockVal == other.blockVal &&
                    ao[0] == other.ao[0] && ao[1] == other.ao[1] && 
-                   ao[2] == other.ao[2] && ao[3] == other.ao[3];
+                   ao[2] == other.ao[2] && ao[3] == other.ao[3] &&
+                   metadata == other.metadata;
         }
         bool operator!=(const MaskInfo& other) const {
             return !(*this == other);
@@ -158,7 +177,7 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
         Block* airBlock = BlockRegistry::getInstance().getBlock(AIR);
         for(int d = 0; d < CHUNK_SIZE; ++d) {
                 MaskInfo mask[CHUNK_SIZE][CHUNK_SIZE];
-                for(int u=0;u<CHUNK_SIZE;++u) for(int v=0;v<CHUNK_SIZE;++v) mask[u][v] = { airBlock, 0, 0, {0,0,0,0} };
+                for(int u=0;u<CHUNK_SIZE;++u) for(int v=0;v<CHUNK_SIZE;++v) mask[u][v] = { airBlock, 0, 0, {0,0,0,0}, 0 };
 
                 for(int v=0; v<CHUNK_SIZE; ++v) {
                     for(int u=0; u<CHUNK_SIZE; ++u) {
@@ -268,7 +287,9 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
                                 aos[1] = sampleAO(u+1, v, u, v-1, u+1, v-1); 
                                 aos[2] = sampleAO(u+1, v, u, v+1, u+1, v+1); 
                                 aos[3] = sampleAO(u-1, v, u, v+1, u-1, v+1); 
-                                mask[u][v] = { b.block, skyVal, blockVal, {aos[0], aos[1], aos[2], aos[3]} };
+                                aos[2] = sampleAO(u+1, v, u, v+1, u+1, v+1); 
+                                aos[3] = sampleAO(u-1, v, u, v+1, u-1, v+1); 
+                                mask[u][v] = { b.block, skyVal, blockVal, {aos[0], aos[1], aos[2], aos[3]}, b.metadata };
                             }
                         }
                     }
@@ -279,10 +300,14 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
                     for(int u=0; u<CHUNK_SIZE; ++u) {
                         if(mask[u][v].block->isActive()) {
                             MaskInfo current = mask[u][v];
+                            // Greedy Extend
+                            // Disable greedy meshing for liquids to allow per-block smooth lighting/height
+                            bool isLiquid = (current.block->getId() == WATER || current.block->getId() == LAVA);
+                            
                             int w = 1, h = 1;
-                            while(u + w < CHUNK_SIZE && mask[u+w][v] == current) w++;
+                            while(u + w < CHUNK_SIZE && mask[u+w][v] == current && !isLiquid) w++;
                             bool canExtend = true;
-                            while(v + h < CHUNK_SIZE && canExtend) {
+                            while(v + h < CHUNK_SIZE && canExtend && !isLiquid) {
                                 for(int k=0; k<w; ++k) if(mask[u+k][v+h] != current) { canExtend = false; break; }
                                 if(canExtend) h++;
                             }
@@ -291,9 +316,80 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
                             // Check if transparent
                             bool isTrans = (current.block->getRenderLayer() == Block::RenderLayer::TRANSPARENT);
                             
-                            addFace(isTrans ? transparentVertices : opaqueVertices, lx, ly, lz, faceDir, current.block, w, h, current.ao[0], current.ao[1], current.ao[2], current.ao[3]);
+                            // Calculate smooth water heights
+                            float hBL=1.0f, hBR=1.0f, hTR=1.0f, hTL=1.0f;
+                            if(isLiquid) {
+                                auto getHeight = [&](int bx, int by, int bz) -> float {
+                                    if(by >= CHUNK_SIZE) return 1.0f; // Above chunk? Assume full?
+                                    // Actually Check World for neighbors
+                                    ChunkBlock bVec;
+                                    if(bx>=0 && bx<CHUNK_SIZE && by>=0 && by<CHUNK_SIZE && bz>=0 && bz<CHUNK_SIZE) {
+                                         bVec = blocks[bx][by][bz];
+                                    } else {
+                                         // Neighbor logic simplified: use world
+                                         if(!world) return -1.0f; // treat unspread world as solid/ignore?
+                                          int gx = chunkPosition.x * CHUNK_SIZE + bx;
+                                          int gy = chunkPosition.y * CHUNK_SIZE + by;
+                                          int gz = chunkPosition.z * CHUNK_SIZE + bz;
+                                          bVec = world->getBlock(gx, gy, gz);
+                                    }
+                                    
+                                    if(!bVec.isActive()) return 0.0f; // Air -> 0.0
+                                    if(bVec.block->getId() == WATER || bVec.block->getId() == LAVA) {
+                                        if(bVec.metadata >= 7) return 0.1f; // Min height
+                                        return (8.0f - bVec.metadata) / 9.0f;
+                                    }
+                                    if(bVec.isSolid()) return -1.0f; // Solid -> Ignore
+                                    return 0.0f; // Other non-solid -> 0.0?
+                                };
+                                
+                                auto avgHeight = [&](int bx, int by, int bz) -> float {
+                                    float s = 0.0f;
+                                    float count = 0.0f;
+                                    
+                                    float hCurrent = getHeight(bx, by, bz);
+                                    if(hCurrent >= 0.0f) { s += hCurrent; count += 1.0f; }
+                                    
+                                    float hX = getHeight(bx-1, by, bz);
+                                    if(hX >= 0.0f) { s += hX; count += 1.0f; }
+                                    else if(hX < -0.5f) { // If solid, check if it pushes up? No, ignore.
+                                        // But if we have Water + Stone. Avg = Water.
+                                        // Effectively we extend the water level to the wall.
+                                        // s += hCurrent; count += 1.0f; // Duplicate current?
+                                        // Standard MC: The level at a wall is the level of the liquid.
+                                        // So ignoring it works (average stays same).
+                                        // BUT if we have Water(0.8) + Water(0.6) + Stone + Stone.
+                                        // Avg = (0.8+0.6)/2 = 0.7.
+                                        // If we added HCurrent for stones: (0.8+0.6+0.8+0.8)/4 = 0.75.
+                                        // Ignoring seems safer/cleaner.
+                                    }
+
+                                    float hZ = getHeight(bx, by, bz-1);
+                                    if(hZ >= 0.0f) { s += hZ; count += 1.0f; }
+                                    
+                                    float hXZ = getHeight(bx-1, by, bz-1);
+                                    if(hXZ >= 0.0f) { s += hXZ; count += 1.0f; }
+                                    
+                                    if(count <= 0.0f) return 1.0f;
+                                    return s / count;
+                                };
+                                
+                                // Coordinates are dependent on Face Axis?
+                                // getPos returns lx, ly, lz which are local coords for the block "u,v" at depth d.
+                                // We need global relative coords for avgHeight
+                                
+                                hBL = avgHeight(lx, ly, lz);
+                                hBR = avgHeight(lx+1, ly, lz);
+                                hTR = avgHeight(lx+1, ly, lz+1);
+                                hTL = avgHeight(lx, ly, lz+1);
+                                
+                                // Special case: if block above is liquid, force full height
+                                if(getHeight(lx, ly+1, lz) > 0.5f) { hBL=hBR=hTR=hTL=1.0f; }
+                            }
                             
-                            for(int j=0; j<h; ++j) for(int i=0; i<w; ++i) mask[u+i][v+j] = { airBlock, 0, 0, {0,0,0,0} };
+                            addFace(isTrans ? transparentVertices : opaqueVertices, lx, ly, lz, faceDir, current.block, w, h, current.ao[0], current.ao[1], current.ao[2], current.ao[3], current.metadata, hBL, hBR, hTR, hTL);
+                            
+                            for(int j=0; j<h; ++j) for(int i=0; i<w; ++i) mask[u+i][v+j] = { airBlock, 0, 0, {0,0,0,0}, 0 };
                             u += w - 1; 
                         }
                     }
@@ -343,7 +439,7 @@ void Chunk::updateMesh()
     meshDirty = false;
 }
 
-void Chunk::addFace(std::vector<float>& vertices, int x, int y, int z, int faceDir, const Block* block, int width, int height, int aoBL, int aoBR, int aoTR, int aoTL)
+void Chunk::addFace(std::vector<float>& vertices, int x, int y, int z, int faceDir, const Block* block, int width, int height, int aoBL, int aoBR, int aoTR, int aoTL, uint8_t metadata, float hBL, float hBR, float hTR, float hTL)
 {
     float r, g, b;
     block->getColor(r, g, b);
@@ -377,6 +473,25 @@ void Chunk::addFace(std::vector<float>& vertices, int x, int y, int z, int faceD
     float fx = (float)x, fy = (float)y, fz = (float)z;
     float fw = (float)width, fh = (float)height;
 
+    // Fluid Height Logic
+    float topH = 1.0f; // Default Top
+    if(block->getId() == WATER || block->getId() == LAVA) {
+         if(metadata >= 7) topH = 0.1f;
+         else topH = (8.0f - metadata) / 9.0f;
+    }
+    
+    // Adjust height for side faces if this is a fluid?
+    // Actually, "height" argument is the greedy-meshed height (number of blocks).
+    // If NOT liquid, force h=1.0f for Top/Bottom, or h=height for Sides
+    if(block->getId() != WATER && block->getId() != LAVA) {
+        if(faceDir <= 3) { // Side Faces: height is Y-extent
+            float H = (float)height;
+            hBL = H; hBR = H; hTR = H; hTL = H;
+        } else { // Top/Bottom Faces: height is Z-extent (or X), Y-extent is 1 block
+            hBL = 1.0f; hBR = 1.0f; hTR = 1.0f; hTL = 1.0f;
+        }
+    }
+
     auto pushVert = [&](float vx, float vy, float vz, float u, float v, float ao) {
         vertices.push_back(vx); vertices.push_back(vy); vertices.push_back(vz);
         vertices.push_back(r); vertices.push_back(g); vertices.push_back(b); vertices.push_back(alpha);
@@ -384,76 +499,117 @@ void Chunk::addFace(std::vector<float>& vertices, int x, int y, int z, int faceD
         vertices.push_back(l1); vertices.push_back(l2); vertices.push_back(ao);
         vertices.push_back(uMin); vertices.push_back(vMin); 
     };
+    
+    // Corners Mapping:
+    // hBL is for corner (x, z)
+    // hBR is for corner (x+1, z)
+    // hTR is for corner (x+1, z+1)
+    // hTL is for corner (x, z+1)
+    // (Note: w and h are 1 for liquids now, as greedy meshing is disabled if levels differ)
+    
+    // Y Offsets relative to fy
+    float yBL = hBL; 
+    float yBR = hBR;
+    float yTR = hTR;
+    float yTL = hTL;
+    
+    float botY = fy;
 
-    if(faceDir == 0) { // Front Z+
-        // BL(0), BR(1), TR(2)
-        pushVert(fx, fy, fz+1, 0, 0, (float)aoBL);
-        pushVert(fx+fw, fy, fz+1, fw, 0, (float)aoBR);
-        pushVert(fx+fw, fy+fh, fz+1, fw, fh, (float)aoTR);
+    if(faceDir == 0) { // Front Z+ (at z+1)
+        // This face is at Z+1.
+        // It spans x to x+w.
+        // The corners of the quad are:
+        // (fx, fy, fz+1) -> uses hTL (for x, z+1)
+        // (fx+fw, fy, fz+1) -> uses hTR (for x+w, z+1)
+        // Note: For greedy meshing, fw and fh are the dimensions of the quad.
+        // The hBL, hBR, hTR, hTL are for the *bottom-left* block of the quad.
+        // For liquids, fw and fh will be 1.
         
-        // BL(0), TR(2), TL(3)
-        pushVert(fx, fy, fz+1, 0, 0, (float)aoBL);
-        pushVert(fx+fw, fy+fh, fz+1, fw, fh, (float)aoTR);
-        pushVert(fx, fy+fh, fz+1, 0, fh, (float)aoTL);
+        // Vertices for this face:
+        // Bottom-Left of quad: (fx, botY, fz+1)
+        // Bottom-Right of quad: (fx+fw, botY, fz+1)
+        // Top-Right of quad: (fx+fw, fy+yTR, fz+1)
+        // Top-Left of quad: (fx, fy+yTL, fz+1)
+        
+        pushVert(fx, botY, fz+1, 0, 0, (float)aoBL);
+        pushVert(fx+fw, botY, fz+1, fw, 0, (float)aoBR);
+        pushVert(fx+fw, fy+yTR, fz+1, fw, fh, (float)aoTR); 
+        
+        pushVert(fx, botY, fz+1, 0, 0, (float)aoBL);
+        pushVert(fx+fw, fy+yTR, fz+1, fw, fh, (float)aoTR);
+        pushVert(fx, fy+yTL, fz+1, 0, fh, (float)aoTL); 
     }
-    else if(faceDir == 1) { // Back Z-
-        pushVert(fx+fw, fy, fz, 0, 0, (float)aoBR);
-        pushVert(fx, fy, fz, fw, 0, (float)aoBL);
-        pushVert(fx, fy+fh, fz, fw, fh, (float)aoTL);
+    else if(faceDir == 1) { // Back Z- (at z=0)
+        // Vertices for this face:
+        // Bottom-Right of quad: (fx+fw, botY, fz)
+        // Bottom-Left of quad: (fx, botY, fz)
+        // Top-Left of quad: (fx, fy+yBL, fz)
+        // Top-Right of quad: (fx+fw, fy+yBR, fz)
         
-        pushVert(fx+fw, fy, fz, 0, 0, (float)aoBR);
-        pushVert(fx, fy+fh, fz, fw, fh, (float)aoTL);
-        pushVert(fx+fw, fy+fh, fz, 0, fh, (float)aoTR);
+        pushVert(fx+fw, botY, fz, 0, 0, (float)aoBR);
+        pushVert(fx, botY, fz, fw, 0, (float)aoBL);
+        pushVert(fx, fy+yBL, fz, fw, fh, (float)aoTL);
+        
+        pushVert(fx+fw, botY, fz, 0, 0, (float)aoBR);
+        pushVert(fx, fy+yBL, fz, fw, fh, (float)aoTL);
+        pushVert(fx+fw, fy+yBR, fz, 0, fh, (float)aoTR);
     }
-    else if(faceDir == 2) { // Left X-
-        pushVert(fx, fy, fz, 0, 0, (float)aoBL);
-        pushVert(fx, fy, fz+fw, fw, 0, (float)aoBR);
-        pushVert(fx, fy+fh, fz+fw, fw, fh, (float)aoTR);
+    else if(faceDir == 2) { // Left X- (at x=0)
+        // Vertices for this face:
+        // Bottom-Left of quad: (fx, botY, fz)
+        // Bottom-Right of quad: (fx, botY, fz+fw)
+        // Top-Right of quad: (fx, fy+yTL, fz+fw)
+        // Top-Left of quad: (fx, fy+yBL, fz)
         
-        pushVert(fx, fy, fz, 0, 0, (float)aoBL);
-        pushVert(fx, fy+fh, fz+fw, fw, fh, (float)aoTR);
-        pushVert(fx, fy+fh, fz, 0, fh, (float)aoTL);
+        pushVert(fx, botY, fz, 0, 0, (float)aoBL);
+        pushVert(fx, botY, fz+fw, fw, 0, (float)aoBR);
+        pushVert(fx, fy+yTL, fz+fw, fw, fh, (float)aoTR); 
+        
+        pushVert(fx, botY, fz, 0, 0, (float)aoBL);
+        pushVert(fx, fy+yTL, fz+fw, fw, fh, (float)aoTR);
+        pushVert(fx, fy+yBL, fz, 0, fh, (float)aoTL); 
     }
-    else if(faceDir == 3) { // Right X+
-        pushVert(fx+1, fy, fz+fw, 0, 0, (float)aoBR);
-        pushVert(fx+1, fy, fz, fw, 0, (float)aoBL);
-        pushVert(fx+1, fy+fh, fz, fw, fh, (float)aoTL);
+    else if(faceDir == 3) { // Right X+ (at x+1)
+        // Vertices for this face:
+        // Bottom-Right of quad: (fx+1, botY, fz+fw)
+        // Bottom-Left of quad: (fx+1, botY, fz)
+        // Top-Left of quad: (fx+1, fy+yBR, fz)
+        // Top-Right of quad: (fx+1, fy+yTR, fz+fw)
         
-        pushVert(fx+1, fy, fz+fw, 0, 0, (float)aoBR);
-        pushVert(fx+1, fy+fh, fz, fw, fh, (float)aoTL); 
-        pushVert(fx+1, fy+fh, fz+fw, 0, fh, (float)aoTR);
+        pushVert(fx+1, botY, fz+fw, 0, 0, (float)aoBR);
+        pushVert(fx+1, botY, fz, fw, 0, (float)aoBL);
+        pushVert(fx+1, fy+yBR, fz, fw, fh, (float)aoTL); 
+        
+        pushVert(fx+1, botY, fz+fw, 0, 0, (float)aoBR);
+        pushVert(fx+1, fy+yBR, fz, fw, fh, (float)aoTL); 
+        pushVert(fx+1, fy+yTR, fz+fw, 0, fh, (float)aoTR); 
     }
-    else if(faceDir == 4) { // Top Y+
-        // Reverting Z-swap. Restoring Logic:
-        // 1. (x, z+h)   -> (minX, maxZ) -> Top-Left -> aoTL (valAO[3])
-        // 2. (x+w, z+h) -> (maxX, maxZ) -> Top-Right -> aoTR (valAO[2])
-        // 3. (x+w, z)   -> (maxX, minZ) -> Bottom-Right -> aoBR (valAO[1])
-        // 4. (x, z)     -> (minX, minZ) -> Bottom-Left -> aoBL (valAO[0])
+    else if(faceDir == 4) { // Top Y+ (at y+1)
+        // Uses all 4 corner heights.
+        // The 'width' (fw) here is along X, 'height' (fh) is along Z.
+        // Vertices for this face:
+        // Top-Left of quad: (fx, fy+yTL, fz+fw)
+        // Top-Right of quad: (fx+fw, fy+yTR, fz+fw)
+        // Bottom-Right of quad: (fx+fw, fy+yBR, fz)
+        // Bottom-Left of quad: (fx, fy+yBL, fz)
         
-        // Quad 1: TL, TR, BR
-        pushVert(fx, fy+1, fz+fh, 0, 0, (float)aoTL); 
-        pushVert(fx+fw, fy+1, fz+fh, fw, 0, (float)aoTR);
-        pushVert(fx+fw, fy+1, fz, fw, fh, (float)aoBR);
+        pushVert(fx, fy+yTL, fz+fh, 0, 0, (float)aoTL); 
+        pushVert(fx+fw, fy+yTR, fz+fh, fw, 0, (float)aoTR);
+        pushVert(fx+fw, fy+yBR, fz, fw, fh, (float)aoBR);
         
-        // Quad 2: TL, BR, BL
-        pushVert(fx, fy+1, fz+fh, 0, 0, (float)aoTL);
-        pushVert(fx+fw, fy+1, fz, fw, fh, (float)aoBR);
-        pushVert(fx, fy+1, fz, 0, fh, (float)aoBL);
+        pushVert(fx, fy+yTL, fz+fh, 0, 0, (float)aoTL);
+        pushVert(fx+fw, fy+yBR, fz, fw, fh, (float)aoBR);
+        pushVert(fx, fy+yBL, fz, 0, fh, (float)aoBL);
     }
-    else { // Bottom Y-
-        // Reverting Z-swap
-        // 1. (x, z)     -> (minX, minZ) -> aoBL
-        // 2. (x+w, z)   -> (maxX, minZ) -> aoBR
-        // 3. (x+w, z+h) -> (maxX, maxZ) -> aoTR
-        // 4. (x, z+h)   -> (minX, maxZ) -> aoTL
+    else { // Bottom Y- (at y=0)
+        // Bottom face always uses botY (fy)
+        pushVert(fx, botY, fz, 0, 0, (float)aoBL);
+        pushVert(fx+fw, botY, fz, fw, 0, (float)aoBR);
+        pushVert(fx+fw, botY, fz+fh, fw, fh, (float)aoTR);
         
-        pushVert(fx, fy, fz, 0, 0, (float)aoBL);
-        pushVert(fx+fw, fy, fz, fw, 0, (float)aoBR);
-        pushVert(fx+fw, fy, fz+fh, fw, fh, (float)aoTR);
-        
-        pushVert(fx, fy, fz, 0, 0, (float)aoBL);
-        pushVert(fx+fw, fy, fz+fh, fw, fh, (float)aoTR);
-        pushVert(fx, fy, fz+fh, 0, fh, (float)aoTL);
+        pushVert(fx, botY, fz, 0, 0, (float)aoBL);
+        pushVert(fx+fw, botY, fz+fh, fw, fh, (float)aoTR);
+        pushVert(fx, botY, fz+fh, 0, fh, (float)aoTL);
     }
 }
 

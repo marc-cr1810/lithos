@@ -101,7 +101,7 @@ add_executable(minceraft
     src/world/TreeDecorator.cpp
     src/world/OreDecorator.cpp
     src/world/World.cpp
-    src/world/World.cpp
+    src/world/blocks/LiquidBlock.cpp
     src/world/BlockRegistry.cpp
     src/ecs/Systems.cpp
     

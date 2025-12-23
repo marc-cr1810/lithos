@@ -77,6 +77,8 @@ public:
 
     uint8_t getSkyLight(int x, int y, int z);
     uint8_t getBlockLight(int x, int y, int z);
+    uint8_t getMetadata(int x, int y, int z);
+    void setMetadata(int x, int y, int z, uint8_t val);
 
     // Threading
     void Update(); // Main Thread

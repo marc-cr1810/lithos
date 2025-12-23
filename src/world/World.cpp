@@ -475,6 +475,42 @@ uint8_t World::getBlockLight(int x, int y, int z)
     return c->getBlockLight(lx, ly, lz);
 }
 
+uint8_t World::getMetadata(int x, int y, int z)
+{
+    int cx = floorDiv(x, CHUNK_SIZE);
+    int cy = floorDiv(y, CHUNK_SIZE);
+    int cz = floorDiv(z, CHUNK_SIZE);
+
+    Chunk* c = getChunk(cx, cy, cz);
+    if(!c) return 0;
+    
+    int lx = x % CHUNK_SIZE;
+    int ly = y % CHUNK_SIZE;
+    int lz = z % CHUNK_SIZE;
+    if(lx < 0) lx += CHUNK_SIZE;
+    if(ly < 0) ly += CHUNK_SIZE;
+    if(lz < 0) lz += CHUNK_SIZE;
+    
+    return c->getMetadata(lx, ly, lz);
+}
+
+void World::setMetadata(int x, int y, int z, uint8_t val)
+{
+    int cx = floorDiv(x, CHUNK_SIZE);
+    int cy = floorDiv(y, CHUNK_SIZE);
+    int cz = floorDiv(z, CHUNK_SIZE);
+    
+    int lx = x - cx * CHUNK_SIZE;
+    int ly = y - cy * CHUNK_SIZE;
+    int lz = z - cz * CHUNK_SIZE;
+    
+    Chunk* c = getChunk(cx, cy, cz);
+    if(c) {
+        c->setMetadata(lx, ly, lz, val);
+        QueueMeshUpdate(c);
+    }
+}
+
 void World::setBlock(int x, int y, int z, BlockType type)
 {
     int cx = floorDiv(x, CHUNK_SIZE);

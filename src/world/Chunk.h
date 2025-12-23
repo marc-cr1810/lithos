@@ -56,8 +56,10 @@ public:
     void setBlock(int x, int y, int z, BlockType type);
     uint8_t getSkyLight(int x, int y, int z) const;
     uint8_t getBlockLight(int x, int y, int z) const;
+    uint8_t getMetadata(int x, int y, int z) const;
     void setSkyLight(int x, int y, int z, uint8_t val);
     void setBlockLight(int x, int y, int z, uint8_t val);
+    void setMetadata(int x, int y, int z, uint8_t val);
     
     // Returns true if a block was hit. outputPos is set to the block coordinates.
     // origin: World space origin using float
@@ -74,7 +76,7 @@ private:
     int vertexCount;
     int vertexCountTransparent;
 
-    void addFace(std::vector<float>& vertices, int x, int y, int z, int faceDir, const Block* block, int width, int height, int aoBL, int aoBR, int aoTR, int aoTL); 
+    void addFace(std::vector<float>& vertices, int x, int y, int z, int faceDir, const Block* block, int width, int height, int aoBL, int aoBR, int aoTR, int aoTL, uint8_t metadata, float hBL, float hBR, float hTR, float hTL); 
     int vertexAO(bool side1, bool side2, bool corner);
 };
 

@@ -29,6 +29,13 @@ public:
         if(id == BlockType::LAVA) return 13;
         return 0;
     }
+
+    void update(World& world, int x, int y, int z) const override;
+    void onPlace(World& world, int x, int y, int z) const override;
+    void onNeighborChange(World& world, int x, int y, int z, int nx, int ny, int nz) const override;
+
+private:
+    void trySpread(World& world, int x, int y, int z, int newMeta) const;
 };
 
 #endif
