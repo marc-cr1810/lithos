@@ -499,13 +499,21 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                       aboveVec.block->getId() == bVec.block->getId()) {
                     isVertical = true;
                   }
-
                   if (isVertical)
                     return 2.0f; // Flag: Force Full Height
 
                   if (bVec.metadata >= 8)
                     return 0.0f;
-                  return (9.0f - bVec.metadata) / 9.0f;
+
+                  // Standard Height Calculation
+                  float calculatedHeight = (9.0f - bVec.metadata) / 9.0f;
+                  // Cap at 0.88f (~14/16) for visual "surface" effect (User
+                  // Request) This affects Source (1.0 -> 0.88) and Meta 1
+                  // (0.88... -> 0.88)
+                  if (calculatedHeight > 0.88f)
+                    calculatedHeight = 0.88f;
+
+                  return calculatedHeight;
                 }
                 if (bVec.isSolid()) {
                   return -2.0f; // Flag: Solid Block
@@ -524,7 +532,9 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 // Context Logic: Check for Source/Vertical influence
                 bool hasSource = false;
                 for (int i = 0; i < 4; ++i) {
-                  if (h[i] >= 1.0f) { // Source (1.0) or Vertical (2.0)
+                  // Check for High Water (Source/High Flow) or Vertical
+                  // 0.88f is the new max height for source.
+                  if (h[i] >= 0.87f) {
                     hasSource = true;
                     break;
                   }
@@ -533,8 +543,8 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 // Apply Context Smoothing
                 for (int i = 0; i < 4; ++i) {
                   if (hasSource) {
-                    // Near Source: Ignore Solids (-2.0) and Air (0.0) -> Force
-                    // Flat Using -1.0 ignores them in average
+                    // Near Source: Ignore Solids (-2.0) and Air (0.0) ->
+                    // Force Flat Using -1.0 ignores them in average
                     if (h[i] == -2.0f || h[i] == 0.0f)
                       h[i] = -1.0f;
                   } else {
@@ -545,8 +555,8 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                   }
                 }
 
-                // Bridge Logic: A vertical column (2.0) only forces snap if it
-                // connects to another liquid
+                // Bridge Logic: A vertical column (2.0) only forces snap if
+                // it connects to another liquid
                 for (int i = 0; i < 4; ++i) {
                   if (h[i] >= 2.0f) {
                     // Check neighbors in cycle (i+1, i+3)
@@ -563,8 +573,8 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                     if (bridge1 || bridge2)
                       return 1.0f;
 
-                    // If NOT bridged (isolated vertical), we ignore it (set to
-                    // -1.0) to prevent spike
+                    // If NOT bridged (isolated vertical), we ignore it (set
+                    // to -1.0) to prevent spike
                     h[i] = -1.0f;
                   }
                 }
@@ -585,13 +595,17 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 return s / count;
               };
 
+              int lx, ly, lz;
+              getPos(u, v, d, lx, ly, lz);
+
               hBL = avgHeight(lx, ly, lz);
               hBR = avgHeight(lx + 1, ly, lz);
               hTR = avgHeight(lx + 1, ly, lz + 1);
               hTL = avgHeight(lx, ly, lz + 1);
 
-              // Special case: if block above is SAME liquid, force full height
-              // (Regardless of its metadata/height, we must connect to it)
+              // Special case: if block above is SAME liquid, force full
+              // height (Regardless of its metadata/height, we must connect to
+              // it)
               ChunkBlock aboveB =
                   blocks[lx][ly + 1]
                         [lz]; // Need safe access? ly+1 can be CHUNK_SIZE
@@ -741,8 +755,9 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
   }
 
   // Adjust height for side faces if this is a fluid?
-  // Actually, "height" argument is the greedy-meshed height (number of blocks).
-  // If NOT liquid, force h=1.0f for Top/Bottom, or h=height for Sides
+  // Actually, "height" argument is the greedy-meshed height (number of
+  // blocks). If NOT liquid, force h=1.0f for Top/Bottom, or h=height for
+  // Sides
   if (block->getId() != WATER && block->getId() != LAVA) {
     if (faceDir <= 3) { // Side Faces: height is Y-extent
       float H = (float)height;
@@ -750,7 +765,8 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
       hBR = H;
       hTR = H;
       hTL = H;
-    } else { // Top/Bottom Faces: height is Z-extent (or X), Y-extent is 1 block
+    } else { // Top/Bottom Faces: height is Z-extent (or X), Y-extent is 1
+             // block
       hBL = 1.0f;
       hBR = 1.0f;
       hTR = 1.0f;
@@ -1067,11 +1083,9 @@ void Chunk::spreadLight() {
       {DIR_LEFT, CHUNK_SIZE - 1, 0, 0, 0},
       {DIR_RIGHT, 0, 0, 0, 0},
       {DIR_BACK, 0, 0, CHUNK_SIZE - 1,
-       2}, // Back is Z- (Wait, in GreedyMesh faceDir=1 was Z- and called Back?)
-           // Let's standardise:
-           // Z- (Back) -> neighbors[DIR_BACK]
-           // Z+ (Front) -> neighbors[DIR_FRONT]
-           // X- (Left) -> neighbors[DIR_LEFT]
+       2}, // Back is Z- (Wait, in GreedyMesh faceDir=1 was Z- and called
+           // Back?) Let's standardise: Z- (Back) -> neighbors[DIR_BACK] Z+
+           // (Front) -> neighbors[DIR_FRONT] X- (Left) -> neighbors[DIR_LEFT]
            // X+ (Right) -> neighbors[DIR_RIGHT]
            // Y- (Bottom) -> neighbors[DIR_BOTTOM]
            // Y+ (Top) -> neighbors[DIR_TOP]
@@ -1091,10 +1105,9 @@ void Chunk::spreadLight() {
           int lx, ly, lz;
           int nx, ny, nz;
 
-          // Define iteration based on Face Axis (0=X-face, 1=Y-face, 2=Z-face)
-          // If Axis=0 (Left/Right), u=y, v=z
-          // If Axis=1 (Bot/Top), u=x, v=z
-          // If Axis=2 (Back/Front), u=x, v=y
+          // Define iteration based on Face Axis (0=X-face, 1=Y-face,
+          // 2=Z-face) If Axis=0 (Left/Right), u=y, v=z If Axis=1 (Bot/Top),
+          // u=x, v=z If Axis=2 (Back/Front), u=x, v=y
 
           if (np.faceAxis == 0) { // X neighbors
             lx = (np.ni == DIR_LEFT) ? 0 : CHUNK_SIZE - 1;
