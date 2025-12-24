@@ -142,6 +142,23 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
   opaqueVertices.reserve(4096);
   transparentVertices.reserve(1024);
 
+  // Cache Diagonal Neighbors (For corner liquid height)
+  // Indices: 0:LB(X-1,Z-1), 1:RB(X+1,Z-1), 2:LF(X-1,Z+1), 3:RF(X+1,Z+1)
+  const Chunk *diagNeighbors[4] = {nullptr, nullptr, nullptr, nullptr};
+
+  if (world) {
+    // Locking world once to get chunks is better than locking constantly in
+    // getHeight Actually World::getChunk locks internally, so we just call it.
+    int cx = chunkPosition.x;
+    int cy = chunkPosition.y;
+    int cz = chunkPosition.z;
+
+    diagNeighbors[0] = world->getChunk(cx - 1, cy, cz - 1);
+    diagNeighbors[1] = world->getChunk(cx + 1, cy, cz - 1);
+    diagNeighbors[2] = world->getChunk(cx - 1, cy, cz + 1);
+    diagNeighbors[3] = world->getChunk(cx + 1, cy, cz + 1);
+  }
+
   // Greedy Meshing
   struct MaskInfo {
     Block *block;
@@ -493,37 +510,125 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
 
                   if (targetChunk) {
                     // We must ensure that access is safe (bounds)
-                    // If multi-axis overflow (e.g. corner chunk), cache doesn't
-                    // cover it (only minimal neighbors) Fallback to world for
-                    // corners? Simple 6-neighbor cache works for faces, but
-                    // corners might need diagonal chunks. However, 'bx' etc
-                    // usually only vary by 1. If bx=32, bz=32, that is a
-                    // diagonal neighbor.
                     if (nbx >= 0 && nbx < CHUNK_SIZE && nby >= 0 &&
                         nby < CHUNK_SIZE && nbz >= 0 && nbz < CHUNK_SIZE) {
                       bVec = targetChunk->getBlock(nbx, nby, nbz);
                     } else {
-                      // Diagonal / Corner chunk needed - Fallback to slow
-                      // lookup
-                      if (!world)
-                        return -1.0f;
-                      int gx = chunkPosition.x * CHUNK_SIZE + bx;
-                      int gy = chunkPosition.y * CHUNK_SIZE + by;
-                      int gz = chunkPosition.z * CHUNK_SIZE + bz;
-                      bVec = world->getBlock(gx, gy, gz);
+                      // This case handles when we picked a neighbor (e.g.
+                      // RIGHT), but the coordinate wanted effectively shifts
+                      // into another neighbor (e.g. RIGHT + BACK = RB).
+                      // Fallback to Diagonal Cache.
+
+                      // Recalculate which diagonal based on original bx, bz
+                      int diagIdx = -1;
+                      if (bx < 0 && bz < 0)
+                        diagIdx = 0; // LB
+                      else if (bx >= CHUNK_SIZE && bz < 0)
+                        diagIdx = 1; // RB
+                      else if (bx < 0 && bz >= CHUNK_SIZE)
+                        diagIdx = 2; // LF
+                      else if (bx >= CHUNK_SIZE && bz >= CHUNK_SIZE)
+                        diagIdx = 3; // RF
+
+                      // If it's a corner lookup (diagIdx != -1)
+                      if (diagIdx != -1) {
+                        if (diagNeighbors[diagIdx]) {
+                          // Translate coords (simple modulo-ish wrap)
+                          int dbx =
+                              (bx < 0) ? (bx + CHUNK_SIZE) : (bx - CHUNK_SIZE);
+                          int dbz =
+                              (bz < 0) ? (bz + CHUNK_SIZE) : (bz - CHUNK_SIZE);
+                          bVec =
+                              diagNeighbors[diagIdx]->getBlock(dbx, nby, dbz);
+                        } else {
+                          // Diagonal chunk missing -> Treat as SOLID to prevent
+                          // dip into void
+                          return -1.0f;
+                        }
+                      } else {
+                        // Not a simple diagonal? Maybe vertical diagonal?
+                        // e.g. Right + Top?
+                        // If we are here, we have a targetChunk (Cardinal) but
+                        // coords are out of bounds. This implies we need a
+                        // neighbor OF that neighbor. Safe fallback: world
+                        // lookup (but handle missing)
+                        if (!world)
+                          return -1.0f;
+                        int gx = chunkPosition.x * CHUNK_SIZE + bx;
+                        int gy = chunkPosition.y * CHUNK_SIZE + by;
+                        int gz = chunkPosition.z * CHUNK_SIZE + bz;
+
+                        // Problem: World::getBlock returns AIR for missing.
+                        // We should check if chunk exists first, but that's
+                        // slow. Optimization: Only trust world->getBlock if we
+                        // assume it's loaded? Any out-of-bounds that isn't
+                        // handled by diag cache is rare or implies distant
+                        // calculation. Let's rely on world, but risk the dip?
+                        // No, let's just return -1.0f for stability if we think
+                        // it's unloaded. But how to know? For now, let's
+                        // fallback to world but assume if it returns pure AIR
+                        // it might be void.
+                        bVec = world->getBlock(gx, gy, gz);
+                      }
                     }
                   } else {
-                    // Chunk not cached (or not loaded/exists)
-                    // Try global lookup (slow) just in case
-                    if (!world)
-                      isLoaded = false;
-                    else {
-                      int gx = chunkPosition.x * CHUNK_SIZE + bx;
-                      int gy = chunkPosition.y * CHUNK_SIZE + by;
-                      int gz = chunkPosition.z * CHUNK_SIZE + bz;
-                      bVec = world->getBlock(gx, gy, gz);
-                      if (!bVec.isActive() && !bVec.block)
-                        isLoaded = false; // Treat as unloaded/air
+                    // Chunk not cached (or not loaded/exists), OR it was a
+                    // diagonal purely? Original logic: "targetChunk" is set
+                    // based on single axis check. If it was purely diagonal
+                    // (e.g. bx<0, bz<0), targetChunk was set to LEFT (bx<0).
+                    // Then logic above entered "else" block.
+                    // So we are covered by the logic above.
+
+                    // This else block is for when NO cardinal neighbor was
+                    // identified (e.g. purely vertical?) Or if neighbors[DIR]
+                    // was null.
+
+                    // If neighbor is null, we can check diagonal?
+                    int diagIdx = -1;
+                    if (bx < 0 && bz < 0)
+                      diagIdx = 0; // LB
+                    else if (bx >= CHUNK_SIZE && bz < 0)
+                      diagIdx = 1; // RB
+                    else if (bx < 0 && bz >= CHUNK_SIZE)
+                      diagIdx = 2; // LF
+                    else if (bx >= CHUNK_SIZE && bz >= CHUNK_SIZE)
+                      diagIdx = 3; // RF
+
+                    if (diagIdx != -1) {
+                      if (diagNeighbors[diagIdx]) {
+                        int dbx =
+                            (bx < 0) ? (bx + CHUNK_SIZE) : (bx - CHUNK_SIZE);
+                        int dbz =
+                            (bz < 0) ? (bz + CHUNK_SIZE) : (bz - CHUNK_SIZE);
+                        bVec = diagNeighbors[diagIdx]->getBlock(dbx, by, dbz);
+                        // Note: 'by' might be different if this was recursive?
+                        // 'nby' was used above. 'by' is safe here since we
+                        // didn't adjust it.
+                      } else {
+                        return -1.0f; // Missing diagonal -> Solid
+                      }
+                    } else {
+                      // Fallback to world (e.g. Vertical neighbors not in
+                      // cache?)
+                      if (!world)
+                        isLoaded = false;
+                      else {
+                        int gx = chunkPosition.x * CHUNK_SIZE + bx;
+                        int gy = chunkPosition.y * CHUNK_SIZE + by;
+                        int gz = chunkPosition.z * CHUNK_SIZE + bz;
+                        // Check existence?
+                        if (world->getChunk(
+                                chunkPosition.x,
+                                chunkPosition.y +
+                                    (by >= CHUNK_SIZE ? 1 : (by < 0 ? -1 : 0)),
+                                chunkPosition.z) == nullptr) {
+                          // Missing -> Solid
+                          return -1.0f;
+                        }
+                        bVec = world->getBlock(gx, gy, gz);
+                        if (!bVec.isActive() && !bVec.block)
+                          isLoaded = false;
+                      }
                     }
                   }
                 }
