@@ -437,64 +437,269 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
               bool isSource = (current.metadata == 0);
 
               auto getHeight = [&](int bx, int by, int bz) -> float {
-                if (by >= CHUNK_SIZE)
+                // Bounds Check: Vertical
+                // Optimization: Height > CHUNK_SIZE should only happen if
+                // checking neighbor above top of chunk We shouldn't really be
+                // checking that high unless neighbor logic is flawed? But for
+                // safety:
+                if (by >= CHUNK_SIZE) {
+                  // Check cached chunk above? Or just return 1.0?
+                  // Original code returned 1.0f.
+                  // Let's check neighbor chunks for correctness.
+                  // Relative to THIS chunk, by >= CHUNK_SIZE means it's in the
+                  // chunk above. But 'by' passed here is usually local
+                  // coordinate? getHeight is usually called with neighbors: bx,
+                  // by, bz. If by=32, it means chunk above, local y=0.
+
+                  // Simplified: just return 1.0f as per original (assuming full
+                  // liquid above?)
                   return 1.0f;
+                }
+
                 ChunkBlock bVec;
+                bool isLoaded = true;
+
+                // Local Access
                 if (bx >= 0 && bx < CHUNK_SIZE && by >= 0 && by < CHUNK_SIZE &&
                     bz >= 0 && bz < CHUNK_SIZE) {
                   bVec = blocks[bx][by][bz];
-                } else {
-                  if (!world)
-                    return -1.0f;
-                  int gx = chunkPosition.x * CHUNK_SIZE + bx;
-                  int gy = chunkPosition.y * CHUNK_SIZE + by;
-                  int gz = chunkPosition.z * CHUNK_SIZE + bz;
-                  bVec = world->getBlock(gx, gy, gz);
                 }
+                // Neighbor Access (Optimized)
+                else {
+                  Chunk *targetChunk = nullptr;
+                  int nbx = bx;
+                  int nby = by;
+                  int nbz = bz;
+
+                  if (bx >= CHUNK_SIZE) {
+                    targetChunk = neighbors[DIR_RIGHT];
+                    nbx -= CHUNK_SIZE;
+                  } else if (bx < 0) {
+                    targetChunk = neighbors[DIR_LEFT];
+                    nbx += CHUNK_SIZE;
+                  } else if (by >= CHUNK_SIZE) {
+                    targetChunk = neighbors[DIR_TOP];
+                    nby -= CHUNK_SIZE;
+                  } else if (by < 0) {
+                    targetChunk = neighbors[DIR_BOTTOM];
+                    nby += CHUNK_SIZE;
+                  } else if (bz >= CHUNK_SIZE) {
+                    targetChunk = neighbors[DIR_FRONT];
+                    nbz -= CHUNK_SIZE;
+                  } else if (bz < 0) {
+                    targetChunk = neighbors[DIR_BACK];
+                    nbz += CHUNK_SIZE;
+                  }
+
+                  if (targetChunk) {
+                    // We must ensure that access is safe (bounds)
+                    // If multi-axis overflow (e.g. corner chunk), cache doesn't
+                    // cover it (only minimal neighbors) Fallback to world for
+                    // corners? Simple 6-neighbor cache works for faces, but
+                    // corners might need diagonal chunks. However, 'bx' etc
+                    // usually only vary by 1. If bx=32, bz=32, that is a
+                    // diagonal neighbor.
+                    if (nbx >= 0 && nbx < CHUNK_SIZE && nby >= 0 &&
+                        nby < CHUNK_SIZE && nbz >= 0 && nbz < CHUNK_SIZE) {
+                      bVec = targetChunk->getBlock(nbx, nby, nbz);
+                    } else {
+                      // Diagonal / Corner chunk needed - Fallback to slow
+                      // lookup
+                      if (!world)
+                        return -1.0f;
+                      int gx = chunkPosition.x * CHUNK_SIZE + bx;
+                      int gy = chunkPosition.y * CHUNK_SIZE + by;
+                      int gz = chunkPosition.z * CHUNK_SIZE + bz;
+                      bVec = world->getBlock(gx, gy, gz);
+                    }
+                  } else {
+                    // Chunk not cached (or not loaded/exists)
+                    // Try global lookup (slow) just in case
+                    if (!world)
+                      isLoaded = false;
+                    else {
+                      int gx = chunkPosition.x * CHUNK_SIZE + bx;
+                      int gy = chunkPosition.y * CHUNK_SIZE + by;
+                      int gz = chunkPosition.z * CHUNK_SIZE + bz;
+                      bVec = world->getBlock(gx, gy, gz);
+                      if (!bVec.isActive() && !bVec.block)
+                        isLoaded = false; // Treat as unloaded/air
+                    }
+                  }
+                }
+
+                if (!isLoaded && !bVec.isActive())
+                  return -1.0f; // treat unloaded as solid/ignore?
 
                 if (!bVec.isActive()) {
                   // Check if block above is liquid (Vertical Flow)
+                  // Recursive check? Optimization: Don't recurse, just check
+                  // one level up.
                   ChunkBlock aboveVec = {
                       BlockRegistry::getInstance().getBlock(AIR), 0, 0, 0};
 
-                  if (bx >= 0 && bx < CHUNK_SIZE && by + 1 < CHUNK_SIZE &&
-                      bz >= 0 && bz < CHUNK_SIZE) {
-                    aboveVec = blocks[bx][by + 1][bz];
+                  // Logic for "aboveVec" access similar to bVec...
+                  // Can we reuse logic?
+                  int abx = bx;
+                  int aby = by + 1;
+                  int abz = bz;
+                  // If 'bVec' was local, check local above
+                  if (abx >= 0 && abx < CHUNK_SIZE && aby >= 0 &&
+                      aby < CHUNK_SIZE && abz >= 0 && abz < CHUNK_SIZE) {
+                    aboveVec = blocks[abx][aby][abz];
                   } else {
-                    if (world) {
-                      int gx = chunkPosition.x * CHUNK_SIZE + bx;
-                      int gy = chunkPosition.y * CHUNK_SIZE + by + 1;
-                      int gz = chunkPosition.z * CHUNK_SIZE + bz;
+                    // Neighbor
+                    Chunk *targetChunk = nullptr;
+                    int nbx = abx;
+                    int nby = aby;
+                    int nbz = abz;
+                    if (abx >= CHUNK_SIZE) {
+                      targetChunk = neighbors[DIR_RIGHT];
+                      nbx -= CHUNK_SIZE;
+                    } else if (abx < 0) {
+                      targetChunk = neighbors[DIR_LEFT];
+                      nbx += CHUNK_SIZE;
+                    } else if (aby >= CHUNK_SIZE) {
+                      targetChunk = neighbors[DIR_TOP];
+                      nby -= CHUNK_SIZE;
+                    } else if (aby < 0) {
+                      targetChunk = neighbors[DIR_BOTTOM];
+                      nby += CHUNK_SIZE;
+                    } else if (abz >= CHUNK_SIZE) {
+                      targetChunk = neighbors[DIR_FRONT];
+                      nbz -= CHUNK_SIZE;
+                    } else if (abz < 0) {
+                      targetChunk = neighbors[DIR_BACK];
+                      nbz += CHUNK_SIZE;
+                    }
+
+                    if (targetChunk && nbx >= 0 && nbx < CHUNK_SIZE &&
+                        nby >= 0 && nby < CHUNK_SIZE && nbz >= 0 &&
+                        nbz < CHUNK_SIZE) {
+                      aboveVec = targetChunk->getBlock(nbx, nby, nbz);
+                    } else if (world) {
+                      int gx = chunkPosition.x * CHUNK_SIZE + abx;
+                      int gy = chunkPosition.y * CHUNK_SIZE + aby;
+                      int gz = chunkPosition.z * CHUNK_SIZE + abz;
                       aboveVec = world->getBlock(gx, gy, gz);
                     }
                   }
+
                   if (aboveVec.isActive() &&
                       (aboveVec.block->getId() == WATER ||
                        aboveVec.block->getId() == LAVA)) {
                     return 2.0f; // Flag: Force Full Height
                   }
 
-                  return 0.0f; // Air always slopes down (base)
+                  // Check block BELOW to distinguish Shore vs Drop-off
+                  ChunkBlock belowVec = {
+                      BlockRegistry::getInstance().getBlock(AIR), 0, 0, 0};
+                  // Logic to get block below (reuse neighbor cache logic if
+                  // valid)
+                  int bbx = bx;
+                  int bby = by - 1;
+                  int bbz = bz;
+                  if (bbx >= 0 && bbx < CHUNK_SIZE && bby >= 0 &&
+                      bby < CHUNK_SIZE && bbz >= 0 && bbz < CHUNK_SIZE) {
+                    belowVec = blocks[bbx][bby][bbz];
+                  } else {
+                    // Neighbor
+                    Chunk *targetChunk = nullptr;
+                    int nbx = bbx;
+                    int nby = bby;
+                    int nbz = bbz;
+                    if (bbx >= CHUNK_SIZE) {
+                      targetChunk = neighbors[DIR_RIGHT];
+                      nbx -= CHUNK_SIZE;
+                    } else if (bbx < 0) {
+                      targetChunk = neighbors[DIR_LEFT];
+                      nbx += CHUNK_SIZE;
+                    } else if (bby >= CHUNK_SIZE) {
+                      targetChunk = neighbors[DIR_TOP];
+                      nby -= CHUNK_SIZE;
+                    } else if (bby < 0) {
+                      targetChunk = neighbors[DIR_BOTTOM];
+                      nby += CHUNK_SIZE;
+                    } else if (bbz >= CHUNK_SIZE) {
+                      targetChunk = neighbors[DIR_FRONT];
+                      nbz -= CHUNK_SIZE;
+                    } else if (bbz < 0) {
+                      targetChunk = neighbors[DIR_BACK];
+                      nbz += CHUNK_SIZE;
+                    }
+
+                    if (targetChunk && nbx >= 0 && nbx < CHUNK_SIZE &&
+                        nby >= 0 && nby < CHUNK_SIZE && nbz >= 0 &&
+                        nbz < CHUNK_SIZE) {
+                      belowVec = targetChunk->getBlock(nbx, nby, nbz);
+                    } else if (world) {
+                      int gx = chunkPosition.x * CHUNK_SIZE + bbx;
+                      int gy = chunkPosition.y * CHUNK_SIZE + bby;
+                      int gz = chunkPosition.z * CHUNK_SIZE + bbz;
+                      belowVec = world->getBlock(gx, gy, gz);
+                    }
+                  }
+
+                  if (belowVec.isActive() && belowVec.isSolid()) {
+                    return -3.0f; // Flag: Shore (Supported Air)
+                  }
+
+                  return 0.0f; // Flag: Drop-off (Air/Liquid below) -> Slope
+                               // down
                 }
                 if (bVec.block->getId() == WATER ||
                     bVec.block->getId() == LAVA) {
-                  // Check if this neighbor has liquid above it (vertical
-                  // column)
+                  // Check if this neighbor has liquid above it
                   bool isVertical = false;
+
+                  // Same "aboveVec" logic again...
+                  // Reuse logic:
                   ChunkBlock aboveVec = {
                       BlockRegistry::getInstance().getBlock(AIR), 0, 0, 0};
-
-                  if (bx >= 0 && bx < CHUNK_SIZE && by + 1 < CHUNK_SIZE &&
-                      bz >= 0 && bz < CHUNK_SIZE) {
-                    aboveVec = blocks[bx][by + 1][bz];
+                  int abx = bx;
+                  int aby = by + 1;
+                  int abz = bz;
+                  if (abx >= 0 && abx < CHUNK_SIZE && aby >= 0 &&
+                      aby < CHUNK_SIZE && abz >= 0 && abz < CHUNK_SIZE) {
+                    aboveVec = blocks[abx][aby][abz];
                   } else {
-                    if (world) {
-                      int gx = chunkPosition.x * CHUNK_SIZE + bx;
-                      int gy = chunkPosition.y * CHUNK_SIZE + by + 1;
-                      int gz = chunkPosition.z * CHUNK_SIZE + bz;
+                    // Neighbor
+                    Chunk *targetChunk = nullptr;
+                    int nbx = abx;
+                    int nby = aby;
+                    int nbz = abz;
+                    if (abx >= CHUNK_SIZE) {
+                      targetChunk = neighbors[DIR_RIGHT];
+                      nbx -= CHUNK_SIZE;
+                    } else if (abx < 0) {
+                      targetChunk = neighbors[DIR_LEFT];
+                      nbx += CHUNK_SIZE;
+                    } else if (aby >= CHUNK_SIZE) {
+                      targetChunk = neighbors[DIR_TOP];
+                      nby -= CHUNK_SIZE;
+                    } else if (aby < 0) {
+                      targetChunk = neighbors[DIR_BOTTOM];
+                      nby += CHUNK_SIZE;
+                    } else if (abz >= CHUNK_SIZE) {
+                      targetChunk = neighbors[DIR_FRONT];
+                      nbz -= CHUNK_SIZE;
+                    } else if (abz < 0) {
+                      targetChunk = neighbors[DIR_BACK];
+                      nbz += CHUNK_SIZE;
+                    }
+
+                    if (targetChunk && nbx >= 0 && nbx < CHUNK_SIZE &&
+                        nby >= 0 && nby < CHUNK_SIZE && nbz >= 0 &&
+                        nbz < CHUNK_SIZE) {
+                      aboveVec = targetChunk->getBlock(nbx, nby, nbz);
+                    } else if (world) {
+                      int gx = chunkPosition.x * CHUNK_SIZE + abx;
+                      int gy = chunkPosition.y * CHUNK_SIZE + aby;
+                      int gz = chunkPosition.z * CHUNK_SIZE + abz;
                       aboveVec = world->getBlock(gx, gy, gz);
                     }
                   }
+
                   if (aboveVec.isActive() &&
                       aboveVec.block->getId() == bVec.block->getId()) {
                     isVertical = true;
@@ -505,11 +710,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                   if (bVec.metadata >= 8)
                     return 0.0f;
 
-                  // Standard Height Calculation
                   float calculatedHeight = (9.0f - bVec.metadata) / 9.0f;
-                  // Cap at 0.88f (~14/16) for visual "surface" effect (User
-                  // Request) This affects Source (1.0 -> 0.88) and Meta 1
-                  // (0.88... -> 0.88)
                   if (calculatedHeight > 0.88f)
                     calculatedHeight = 0.88f;
 
@@ -543,14 +744,17 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 // Apply Context Smoothing
                 for (int i = 0; i < 4; ++i) {
                   if (hasSource) {
-                    // Near Source: Ignore Solids (-2.0) and Air (0.0) ->
-                    // Force Flat Using -1.0 ignores them in average
-                    if (h[i] == -2.0f || h[i] == 0.0f)
+                    // Near Source: Ignore Solids (-2.0) and Shores (-3.0) ->
+                    // Force Flat Drop-offs (0.0) are NOT ignored, allowing
+                    // slope.
+                    if (h[i] == -2.0f || h[i] == -3.0f)
                       h[i] = -1.0f;
                   } else {
-                    // Pure Flow: Treat Solids (-2.0) as Air (0.0) -> Force
-                    // Slope
-                    if (h[i] == -2.0f)
+                    // Pure Flow: Treat Solids (-2.0) and Shores (-3.0) as Air
+                    // (0.0) -> Force Slope (Actually Shores -3.0 means
+                    // supported air, so treating as 0.0 slopes it, which is
+                    // default for flow anyway)
+                    if (h[i] == -2.0f || h[i] == -3.0f)
                       h[i] = 0.0f;
                   }
                 }
@@ -562,7 +766,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                     // Check neighbors in cycle (i+1, i+3)
                     // If either is liquid (>= 0.0), we bridge.
                     // Note: >= 0.0 includes vertical (2.0) and normal flow
-                    // (0.0-1.0)
+                    // (0.0-1.0) and Drop-off (0.0)
                     int n1 = (i + 1) % 4;
                     int n2 = (i + 3) % 4;
 
