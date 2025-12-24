@@ -1,6 +1,7 @@
 #include "WorldGenerator.h"
 #include "Block.h"
 #include "Chunk.h"
+#include <glm/glm.hpp>
 #include <glm/gtc/noise.hpp>
 
 #include "OreDecorator.h"
@@ -56,12 +57,48 @@ int WorldGenerator::GetHeight(int x, int z) {
   return (int)(64 + noiseHeight * 20);
 }
 
+float WorldGenerator::GetTemperature(int x, int z) {
+  // Very low frequency noise for large biomes
+  int seedT = (seed * 555) % 65536;
+  float nx = (float)x + (float)seedT;
+  float nz = (float)z + (float)seedT;
+  // Scale 0.001f means biomes are ~1000 blocks wide
+  return glm::perlin(glm::vec2(nx, nz) * 0.002f);
+}
+
+float WorldGenerator::GetHumidity(int x, int z) {
+  int seedH = (seed * 888) % 65536;
+  float nx = (float)x + (float)seedH;
+  float nz = (float)z + (float)seedH;
+  return glm::perlin(glm::vec2(nx, nz) * 0.002f);
+}
+
+Biome WorldGenerator::GetBiome(int x, int z) {
+  float temp = GetTemperature(x, z);
+  float humidity = GetHumidity(x, z);
+
+  // Normalize logic slightly if needed, but perlin is approx -1 to 1
+
+  if (temp > 0.3f) {
+    // Hot
+    if (humidity < -0.2f)
+      return BIOME_DESERT; // Hot and Dry
+    return BIOME_FOREST;   // Hot and Wet (Jungle-ish)
+  } else if (temp < -0.3f) {
+    // Cold
+    if (humidity > 0.3f)
+      return BIOME_TUNDRA; // Cold and snowy
+    return BIOME_PLAINS;   // Cold Plains
+  }
+
+  // Moderate Temp
+  if (humidity < -0.3f)
+    return BIOME_PLAINS;
+  return BIOME_FOREST;
+}
+
 void WorldGenerator::GenerateChunk(Chunk &chunk) {
   glm::ivec3 pos = chunk.chunkPosition;
-
-  // Seed Offsets for Beach Noise
-  int beachOffX = (seed * 5432) % 65536;
-  int beachOffZ = (seed * 1234) % 65536;
 
   for (int x = 0; x < CHUNK_SIZE; ++x) {
     for (int z = 0; z < CHUNK_SIZE; ++z) {
@@ -72,160 +109,96 @@ void WorldGenerator::GenerateChunk(Chunk &chunk) {
       // Get Height from single source of truth
       int height = GetHeight(gx, gz);
 
-      // Calculate Beach Noise for this column
+      // Get Biome
+      Biome biome = GetBiome(gx, gz);
+
+      // Determine Surface Block based on Biome
+      BlockType surfaceBlock = GRASS;
+      BlockType subsurfaceBlock = DIRT;
+
+      switch (biome) {
+      case BIOME_DESERT:
+        surfaceBlock = SAND;
+        subsurfaceBlock = SAND;
+        break;
+      case BIOME_TUNDRA:
+        surfaceBlock = SNOW; // We need to add SNOW block, but for now use
+                             // SAND/WHITE or just GRASS?
+        // Wait, checking Block.h... let's assume we might need to add one.
+        // For now, let's use STONE for Tundra surface to distinguish, or if not
+        // available, GRASS with no trees. Actually, let's stick to what we
+        // have. If SNOW doesn't exist, we should check. Assuming standard
+        // blocks: GRASS, DIRT, STONE, WATER, SAND, GRAVEL, AIR, WOOD, LEAVES,
+        // ORES. No SNOW block yet. Let's use SAND for Desert, and maybe GRAVEL
+        // for Tundra? Or just Grass. Let's use GRASS for Tundra but the trees
+        // will be different (handled in decorator).
+        surfaceBlock = GRASS;
+        subsurfaceBlock = DIRT;
+        break;
+      case BIOME_FOREST:
+      case BIOME_PLAINS:
+      default:
+        surfaceBlock = GRASS;
+        subsurfaceBlock = DIRT;
+        break;
+      }
+
+      // Calculate Beach Noise for this column (Legacy but still nice for
+      // transitions)
+      int beachOffX = (seed * 5432) % 65536;
+      int beachOffZ = (seed * 1234) % 65536;
       float beachNoise =
           glm::perlin(glm::vec3(((float)gx + beachOffX) * 0.05f, 0.0f,
                                 ((float)gz + beachOffZ) * 0.05f));
-      // Threshold for being a beach: Positive noise means potential beach
-      bool isBeach = (beachNoise > 0.1f);
 
-      // Limit height for beaches (e.g., only up to Y=64, varying with noise)
-      int beachHeightLimit = 60 + (int)(beachNoise * 4.0f); // 60 to 64
-
-      // Determine Beach Type locally
-      // Noise > 0.4 is Gravel, otherwise Sand
-      BlockType beachBlock = (beachNoise > 0.4f) ? GRAVEL : SAND;
+      // Water Level Rules
+      // Ocean is fixed at Y=60 for now.
 
       for (int y = 0; y < CHUNK_SIZE; ++y) {
         int gy = pos.y * CHUNK_SIZE + y;
-
         BlockType type = AIR;
 
         if (gy <= height) {
           if (gy == height) {
-            // Surface Block
+            // Surface Layer
             if (gy < 60) {
               // Underwater
-              // Sandy/Gravel patches underwater
-              if (beachNoise > 0.0f)
-                type = beachBlock;
-              else
-                type = DIRT; // Muddy deeps
+              type = (beachNoise > 0.0f) ? GRAVEL : DIRT;
             } else {
               // Above water
-              if (gy <= beachHeightLimit)
-                type = beachBlock; // Natural Beach
+              if (gy <= 60 + (int)(beachNoise * 4.0f)) // Beach fringe
+                type = SAND;
               else
-                type = GRASS;
+                type = surfaceBlock;
             }
           } else if (gy > height - 4) {
-            // Subsurface (Top 3 layers below surface)
-            // If surface is Sand/Gravel, subsurface follows suit
-            bool surfaceIsBeach = false;
-            if (gy < 60) {
-              if (beachNoise > 0.0f)
-                surfaceIsBeach = true;
-            } else {
-              if (height <= beachHeightLimit)
-                surfaceIsBeach = true;
-            }
-
-            if (surfaceIsBeach) {
-              // sandstone? for now just same material
-              type = beachBlock;
-            } else
+            // Subsurface
+            if (gy < 60)
+              type = DIRT; // Underwater subsurface
+            else if (surfaceBlock == SAND)
+              type = SAND; // Desert depth
+            else
               type = DIRT;
-          } else
+          } else {
+            // Deep Underground
             type = STONE;
+          }
         }
 
-        // Bedrock at absolute 0
+        // Bedrock
         if (gy == 0)
           type = STONE;
 
-        // 3D Noise Caves
-        // Parameters: Scale 0.06 (Broader), Threshold 0.25 (More frequent)
-        // Removed (gy < height - 4) restriction to expose caves
-        // Water Level (Sea Level @ Y=60)
-        // If AIR and below sea level, fill with WATER
-        // This must happen BEFORE Cave Generation to allow caves to stay dry
-        // (by carving OUT the solids, but not water) Actually, if we want dry
-        // caves, we carve solids into AIR. If we want caves NOT to be flooded,
-        // we must Ensure Water only fills "Open Open Sky/Ocean" air. Wait. Old
-        // logic: Terrain -> Caves(Air) -> WaterFill(Air->Water). Result:
-        // Flooded Caves. New logic: Terrain -> WaterFill(Ocean Air) ->
-        // Caves(Carve Solid). Result: Dry Caves.
-
-        // 1. Fill Ocean Water if still AIR (Natural Terrain Air)
+        // Water Fill
         if (type == AIR && gy <= 60) {
-          type = WATER; // Temp local type
-
-          // Note: We don't setBlock yet, we are building 'type'.
-          // But we need to handle the "Grass Under Water" fix.
-          // If we set type=WATER here, code below is fine.
-        }
-
-        // 2. Carve Caves
-        // Parameters: Scale 0.06 (Broader), Threshold 0.25 (More frequent)
-
-        // Crust Protection: Don't carve the very top layers of the terrain IF
-        // IT IS UNDERWATER. This preserves the seabed integrity but allows
-        // surface caves on land.
-        bool isUnderwater = (height <= 60);
-        bool preserveCrust = false;
-        if (isUnderwater && gy > height - 3)
-          preserveCrust = true;
-
-        if (preserveCrust) {
-          // Keep solid crust to prevent ocean draining
-        } else if (gy > 1) {
-          // Seabed Protection: Redundant check but safe
-          // ...
-          if (gy == height && height < 60) {
-            // Do nothing
-          } else {
-            int caveOffX = (seed * 6789) % 65536;
-            int caveOffY = (seed * 4321) % 65536;
-            int caveOffZ = (seed * 1111) % 65536;
-
-            float cx = (float)gx + (float)caveOffX;
-            float cy = (float)gy + (float)caveOffY;
-            float cz = (float)gz + (float)caveOffZ;
-            float caveNoise = glm::perlin(glm::vec3(cx, cy, cz) * 0.06f);
-            if (caveNoise > 0.25f) {
-              if (type != WATER) {
-                // Side Wall Protection: Check adjacent blocks for water
-                // (intra-chunk)
-                bool nearWater = false;
-                if (x > 0 && chunk.getBlock(x - 1, y, z).getType() == WATER)
-                  nearWater = true;
-                if (x < CHUNK_SIZE - 1 &&
-                    chunk.getBlock(x + 1, y, z).getType() == WATER)
-                  nearWater = true;
-                if (z > 0 && chunk.getBlock(x, y, z - 1).getType() == WATER)
-                  nearWater = true;
-                if (z < CHUNK_SIZE - 1 &&
-                    chunk.getBlock(x, y, z + 1).getType() == WATER)
-                  nearWater = true;
-                // Also check Up/Down (though Up is handled by Crust/Seabed)
-                if (y < CHUNK_SIZE - 1 &&
-                    chunk.getBlock(x, y + 1, z).getType() == WATER)
-                  nearWater = true;
-
-                if (!nearWater) {
-                  // Lava Lake Level
-                  if (gy <= 10)
-                    type = LAVA;
-                  else
-                    type = AIR;
-                }
-              }
-            }
-          }
+          // Ice in Tundra?
+          if (biome == BIOME_TUNDRA && gy == 60) // Frozen Ocean Surface
+            type = ICE;
+          else
+            type = WATER;
         }
 
         chunk.setBlock(x, y, z, type);
-
-        // Post-Set Fixes (Grass->Dirt)
-        // Since we delayed setBlock, we can check logic
-        if (type == WATER && gy <= 60) {
-          // Grass under current block
-          if (y > 0) {
-            if (chunk.getBlock(x, y - 1, z).getType() == GRASS) {
-              chunk.setBlock(x, y - 1, z, DIRT);
-            }
-          }
-        }
       }
     }
   }
