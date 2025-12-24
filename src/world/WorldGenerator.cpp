@@ -18,20 +18,42 @@ WorldGenerator::~WorldGenerator() {
 }
 
 int WorldGenerator::GetHeight(int x, int z) {
-  // Noise & Heightmap
-  // Fix: Use modulo to prevent huge float values which destroy precision
-  // (Blocky Chunks) Keep offset within ~0-100,000 range.
+  // Fractal Brownian Motion (FBM)
+  // Summing multiple layers (octaves) of noise for natural terrain
+
   int seedX = (seed * 1337) % 65536;
   int seedZ = (seed * 9999) % 65536;
 
   float nx = (float)x + (float)seedX;
   float nz = (float)z + (float)seedZ;
 
-  float n = glm::perlin(glm::vec2(nx, nz) * 0.02f);
+  // FBM Settings
+  int octaves = 5;
+  float amplitude = 1.0f;
+  float frequency = 0.012f; // Slightly broader base features
+  float persistence = 0.5f; // Amplitude decay
+  float lacunarity = 2.0f;  // Frequency growth
 
-  // Map -1..1 to height. Base 64, Variation +/- 12 -> range 52 to 76 blocks
-  // Raised from 22 to allow deeper underground
-  return (int)(64 + n * 12);
+  float noiseHeight = 0.0f;
+  float maxAmplitude = 0.0f;
+
+  for (int i = 0; i < octaves; ++i) {
+    float n = glm::perlin(glm::vec2(nx, nz) * frequency);
+    noiseHeight += n * amplitude;
+
+    maxAmplitude += amplitude; // normalize factor if needed
+
+    amplitude *= persistence;
+    frequency *= lacunarity;
+  }
+
+  // Normalize to -1..1 range roughly (optional, but good for control)
+  noiseHeight /= 1.8f; // Estimation of max typical sum to keep similar scale
+
+  // Map to height.
+  // Base 64. Variation increased to +/- 20 blocks for more drama (44 to 84
+  // range)
+  return (int)(64 + noiseHeight * 20);
 }
 
 void WorldGenerator::GenerateChunk(Chunk &chunk) {
