@@ -6,16 +6,16 @@
 class Chunk;
 class WorldDecorator;
 
-class WorldGenerator
-{
+class WorldGenerator {
 public:
-    WorldGenerator();
-    ~WorldGenerator();
-    void GenerateChunk(Chunk& chunk);
-    static int GetHeight(int x, int z);
+  WorldGenerator(int seed);
+  ~WorldGenerator();
+  void GenerateChunk(Chunk &chunk);
+  int GetHeight(int x, int z); // Converted to Instance Method
 
 private:
-    std::vector<WorldDecorator*> decorators;
+  std::vector<WorldDecorator *> decorators;
+  int seed;
 };
 
 #endif
