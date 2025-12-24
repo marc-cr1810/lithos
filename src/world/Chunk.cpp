@@ -351,35 +351,95 @@ std::vector<float> Chunk::generateGeometry(int& outOpaqueCount)
                                     }
                                     
                                     if(!bVec.isActive()) {
-                                        // If center is Source, Air shouldn't pull it down (looks like pyramid).
-                                        // Treat Air as -1 (Ignore) for Source blocks to keep them full.
-                                        // For Flow blocks, we WANT to slope to Air, so return 0.0.
+                                        // Check if block above is liquid (Vertical Flow)
+                                        ChunkBlock aboveVec = { BlockRegistry::getInstance().getBlock(AIR), 0, 0, 0 };
+                                        
+                                        if(bx >= 0 && bx < CHUNK_SIZE && by+1 < CHUNK_SIZE && bz >= 0 && bz < CHUNK_SIZE) {
+                                            aboveVec = blocks[bx][by+1][bz];
+                                        } else {
+                                            if(world) {
+                                                int gx = chunkPosition.x * CHUNK_SIZE + bx;
+                                                int gy = chunkPosition.y * CHUNK_SIZE + by + 1;
+                                                int gz = chunkPosition.z * CHUNK_SIZE + bz;
+                                                aboveVec = world->getBlock(gx, gy, gz);
+                                            }
+                                        }
+                                        if(aboveVec.isActive() && (aboveVec.block->getId() == WATER || aboveVec.block->getId() == LAVA)) {
+                                            return 2.0f; // Flag: Force Full Height
+                                        }
+
                                         if(centerIsSource) return -1.0f; 
                                         return 0.0f; 
                                     }
                                     if(bVec.block->getId() == WATER || bVec.block->getId() == LAVA) {
+                                        // Check if this neighbor has liquid above it (vertical column)
+                                        bool isVertical = false;
+                                        ChunkBlock aboveVec = { BlockRegistry::getInstance().getBlock(AIR), 0, 0, 0 };
+                                        
+                                        if(bx >= 0 && bx < CHUNK_SIZE && by+1 < CHUNK_SIZE && bz >= 0 && bz < CHUNK_SIZE) {
+                                            aboveVec = blocks[bx][by+1][bz];
+                                        } else {
+                                            if(world) {
+                                                int gx = chunkPosition.x * CHUNK_SIZE + bx;
+                                                int gy = chunkPosition.y * CHUNK_SIZE + by + 1;
+                                                int gz = chunkPosition.z * CHUNK_SIZE + bz;
+                                                aboveVec = world->getBlock(gx, gy, gz);
+                                            }
+                                        }
+                                        if(aboveVec.isActive() && aboveVec.block->getId() == bVec.block->getId()) {
+                                            isVertical = true;
+                                        }
+                                        
+                                        if(isVertical) return 2.0f; // Flag: Force Full Height
+                                        
                                         if(bVec.metadata >= 8) return 0.0f; 
                                         return (9.0f - bVec.metadata) / 9.0f;
                                     }
-                                    if(bVec.isSolid()) return -1.0f; // Solid -> Ignore
+                                    if(bVec.isSolid()) return -1.0f;
                                     return -1.0f; 
                                 };
                                 
                                 auto avgHeight = [&](int bx, int by, int bz, bool centerIsSource) -> float {
+                                    // Get 4 samples around the corner
+                                    // 0: (bx, bz)
+                                    // 1: (bx-1, bz)
+                                    // 2: (bx-1, bz-1)
+                                    // 3: (bx, bz-1)
+                                    float h[4];
+                                    h[0] = getHeight(bx, by, bz, centerIsSource);
+                                    h[1] = getHeight(bx-1, by, bz, centerIsSource);
+                                    h[2] = getHeight(bx-1, by, bz-1, centerIsSource);
+                                    h[3] = getHeight(bx, by, bz-1, centerIsSource);
+                                    
+                                    // Bridge Logic: A vertical column (2.0) only forces snap if it connects to another liquid
+                                    for(int i=0; i<4; ++i) {
+                                        if(h[i] >= 2.0f) {
+                                            // Check neighbors in cycle (i+1, i+3)
+                                            // If either is liquid (>= 0.0), we bridge.
+                                            // Note: >= 0.0 includes vertical (2.0) and normal flow (0.0-1.0)
+                                            int n1 = (i + 1) % 4;
+                                            int n2 = (i + 3) % 4;
+                                            
+                                            bool bridge1 = (h[n1] >= 0.0f);
+                                            bool bridge2 = (h[n2] >= 0.0f);
+                                            
+                                            // If bridged, return 1.0 (Forced)
+                                            if(bridge1 || bridge2) return 1.0f;
+                                            
+                                            // If NOT bridged (isolated vertical), we ignore it (set to -1.0) to prevent spike
+                                            h[i] = -1.0f; 
+                                        }
+                                    }
+                                    
+                                    // Standard Average
                                     float s = 0.0f;
                                     float count = 0.0f;
-                                    
-                                    float hCurrent = getHeight(bx, by, bz, centerIsSource);
-                                    if(hCurrent >= 0.0f) { s += hCurrent; count += 1.0f; }
-                                    
-                                    float hX = getHeight(bx-1, by, bz, centerIsSource);
-                                    if(hX >= 0.0f) { s += hX; count += 1.0f; }
-                                    
-                                    float hZ = getHeight(bx, by, bz-1, centerIsSource);
-                                    if(hZ >= 0.0f) { s += hZ; count += 1.0f; }
-                                    
-                                    float hXZ = getHeight(bx-1, by, bz-1, centerIsSource);
-                                    if(hXZ >= 0.0f) { s += hXZ; count += 1.0f; }
+                                    for(int i=0; i<4; ++i) {
+                                        if(h[i] >= 0.0f) {
+                                            s += (h[i] >= 1.0f ? 1.0f : h[i]); // Clamp 2.0 to 1.0 for average
+                                            count += 1.0f;
+                                        }
+                                    }
                                     
                                     if(count <= 0.0f) return 1.0f;
                                     return s / count;
