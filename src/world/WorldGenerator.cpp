@@ -122,17 +122,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk) {
         subsurfaceBlock = SAND;
         break;
       case BIOME_TUNDRA:
-        surfaceBlock = SNOW; // We need to add SNOW block, but for now use
-                             // SAND/WHITE or just GRASS?
-        // Wait, checking Block.h... let's assume we might need to add one.
-        // For now, let's use STONE for Tundra surface to distinguish, or if not
-        // available, GRASS with no trees. Actually, let's stick to what we
-        // have. If SNOW doesn't exist, we should check. Assuming standard
-        // blocks: GRASS, DIRT, STONE, WATER, SAND, GRAVEL, AIR, WOOD, LEAVES,
-        // ORES. No SNOW block yet. Let's use SAND for Desert, and maybe GRAVEL
-        // for Tundra? Or just Grass. Let's use GRASS for Tundra but the trees
-        // will be different (handled in decorator).
-        surfaceBlock = GRASS;
+        surfaceBlock = SNOW;
         subsurfaceBlock = DIRT;
         break;
       case BIOME_FOREST:
@@ -143,21 +133,22 @@ void WorldGenerator::GenerateChunk(Chunk &chunk) {
         break;
       }
 
-      // Calculate Beach Noise for this column (Legacy but still nice for
-      // transitions)
+      // Calculate Beach Noise for this column
       int beachOffX = (seed * 5432) % 65536;
       int beachOffZ = (seed * 1234) % 65536;
       float beachNoise =
           glm::perlin(glm::vec3(((float)gx + beachOffX) * 0.05f, 0.0f,
                                 ((float)gz + beachOffZ) * 0.05f));
 
-      // Water Level Rules
-      // Ocean is fixed at Y=60 for now.
+      // Limit height for beaches
+      int beachHeightLimit = 60 + (int)(beachNoise * 4.0f); // 60 to 64
+      BlockType beachBlock = (beachNoise > 0.4f) ? GRAVEL : SAND;
 
       for (int y = 0; y < CHUNK_SIZE; ++y) {
         int gy = pos.y * CHUNK_SIZE + y;
         BlockType type = AIR;
 
+        // 1. Terrain Shape
         if (gy <= height) {
           if (gy == height) {
             // Surface Layer
@@ -166,8 +157,8 @@ void WorldGenerator::GenerateChunk(Chunk &chunk) {
               type = (beachNoise > 0.0f) ? GRAVEL : DIRT;
             } else {
               // Above water
-              if (gy <= 60 + (int)(beachNoise * 4.0f)) // Beach fringe
-                type = SAND;
+              if (gy <= beachHeightLimit)
+                type = beachBlock; // Natural Beach
               else
                 type = surfaceBlock;
             }
@@ -175,10 +166,8 @@ void WorldGenerator::GenerateChunk(Chunk &chunk) {
             // Subsurface
             if (gy < 60)
               type = DIRT; // Underwater subsurface
-            else if (surfaceBlock == SAND)
-              type = SAND; // Desert depth
             else
-              type = DIRT;
+              type = subsurfaceBlock;
           } else {
             // Deep Underground
             type = STONE;
@@ -191,14 +180,84 @@ void WorldGenerator::GenerateChunk(Chunk &chunk) {
 
         // Water Fill
         if (type == AIR && gy <= 60) {
-          // Ice in Tundra?
-          if (biome == BIOME_TUNDRA && gy == 60) // Frozen Ocean Surface
+          if (biome == BIOME_TUNDRA && gy == 60)
             type = ICE;
           else
             type = WATER;
         }
 
+        // 2. Carve Caves (Ridged Noise / Noodle Caves)
+        if (type != WATER) {
+          bool isUnderwater = (height <= 60);
+          bool preserveCrust = false;
+
+          // Only preserve crust underwater to prevent ocean draining.
+          if (isUnderwater && gy > height - 3)
+            preserveCrust = true;
+
+          // Bedrock preservation
+          if (gy <= 0)
+            preserveCrust = true;
+
+          if (!preserveCrust) {
+            int caveOffX = (seed * 6789) % 65536;
+            int caveOffY = (seed * 4321) % 65536;
+            int caveOffZ = (seed * 1111) % 65536;
+
+            float cx = (float)gx + (float)caveOffX;
+            float cy = (float)gy + (float)caveOffY;
+            float cz = (float)gz + (float)caveOffZ;
+
+            // Use slightly lower frequency for fatter caves? 0.04 -> 0.03
+            float n1 = glm::perlin(glm::vec3(cx, cy, cz) * 0.03f);
+            float n2 =
+                glm::perlin(glm::vec3(cx, cy, cz) * 0.01f + glm::vec3(100.0f));
+
+            // Density Mask: If n2 is too low, no caves here at all.
+            // Aggressive mask: Only generate where n2 > 0.0 (50% of world has
+            // no caves)
+            if (n2 < 0.0f) {
+              // No caves
+            } else {
+              // Variable width: Base 0.04, Max ~0.12 (Much thinner)
+              // Previous max was ~0.28 which was too massive.
+              float threshold = 0.04f + (n2 * 0.08f);
+              if (threshold < 0.02f)
+                threshold = 0.02f;
+
+              if (std::abs(n1) < threshold) {
+                // Cave Air or Lava?
+                if (gy <= 10)
+                  type = LAVA;
+                else
+                  type = AIR;
+              }
+            }
+          }
+        }
+
+        // Bedrock Flattening (Roughness)
+        if (gy <= 4) {
+          // Bedrock floor is at 0.
+          // Layer 1 has 80% bedrock, Layer 2 60%, etc.
+          // gy=0 is handled above.
+          if (gy > 0) {
+            int chance = 100 - (gy * 20);
+            if ((rand() % 100) < chance)
+              type = STONE;
+          }
+        }
+
         chunk.setBlock(x, y, z, type);
+
+        // Post-Set Fixes (Grass->Dirt under water)
+        if (type == WATER && gy <= 60) {
+          if (y > 0) {
+            if (chunk.getBlock(x, y - 1, z).getType() == GRASS) {
+              chunk.setBlock(x, y - 1, z, DIRT);
+            }
+          }
+        }
       }
     }
   }
