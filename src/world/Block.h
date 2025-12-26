@@ -32,7 +32,9 @@ enum BlockType {
   PINE_LEAVES = 17,
   TALL_GRASS = 18,
   DEAD_BUSH = 19,
-  ROSE = 20
+  ROSE = 20,
+  DRY_SHORT_GRASS = 21,
+  DRY_TALL_GRASS = 22
 };
 
 class World; // Forward declaration
@@ -64,31 +66,99 @@ public:
       textureNames[face] = texName;
   }
 
+  // Overlay Configuration
+  void setOverlayTexture(int face, const std::string &texName) {
+    if (face >= 0 && face < 6)
+      overlayTextureNames[face] = texName;
+  }
+
+  bool hasOverlay(int faceDir) const {
+    if (faceDir < 0 || faceDir >= 6)
+      return false;
+    return !overlayTextureNames[faceDir].empty();
+  }
+
   // Resolve UVs from Atlas
   virtual void resolveUVs(const TextureAtlas &atlas) {
     for (int i = 0; i < 6; ++i) {
       if (textureNames[i].empty())
         continue;
 
-      float u, v; // min
-      float um,
-          vm; // max (not used by getTextureUV currently, but stored if needed)
-
-      // We need getTextureUV to return min/max?
-      // Atlas::GetTextureUV returns min, min.
-      // Wait, TextureAtlas implementation stores uMin, vMin, uMax, vMax.
-      // I only exposed GetTextureUV(name, uMin, vMin) in header.
-      // I should probably update Block to just use uMin/vMin assuming uniform
-      // size? But Atlas might change slot size. Let's rely on
-      // TextureAtlas::GetTextureUV for now.
-
+      // 1. Resolve Base Textures
+      float u, v;
       if (atlas.GetTextureUV(textureNames[i], u, v)) {
         uMin[i] = u;
         vMin[i] = v;
+        textureVariants[i].push_back({u, v});
+      }
+
+      // Check for variants name_0, name_1, ... name_64
+      // We scan a fixed range to allow for gaps (e.g. grass_0, grass_2)
+      for (int counter = 0; counter <= 64; ++counter) {
+        std::string variantName =
+            textureNames[i] + "_" + std::to_string(counter);
+        if (atlas.GetTextureUV(variantName, u, v)) {
+          textureVariants[i].push_back({u, v});
+        }
+      }
+
+      // 2. Resolve Overlay Textures
+      if (!overlayTextureNames[i].empty()) {
+        float u, v;
+        if (atlas.GetTextureUV(overlayTextureNames[i], u, v)) {
+          overlayVariants[i].push_back({u, v});
+        }
+        // Check for variants
+        for (int counter = 0; counter <= 64; ++counter) {
+          std::string variantName =
+              overlayTextureNames[i] + "_" + std::to_string(counter);
+          if (atlas.GetTextureUV(variantName, u, v)) {
+            overlayVariants[i].push_back({u, v});
+          }
+        }
+      }
+    }
+  }
+
+  // Visuals
+  virtual void getTextureUV(int faceDir, float &u, float &v) const {
+    if (faceDir >= 0 && faceDir < 6) {
+      u = uMin[faceDir];
+      v = vMin[faceDir];
+    } else {
+      u = 0;
+      v = 0;
+    }
+  }
+
+  virtual void getTextureUV(int faceDir, float &u, float &v, int x, int y,
+                            int z, int layer = 0) const {
+    u = 0;
+    v = 0;
+    if (faceDir >= 0 && faceDir < 6) {
+      const auto &variants =
+          (layer == 0) ? textureVariants[faceDir] : overlayVariants[faceDir];
+      if (!variants.empty()) {
+        // Deterministic random selection
+        int hash = (x * 73856093) ^ (y * 19349663) ^ (z * 83492791);
+        int index = std::abs(hash) % variants.size();
+        u = variants[index].first;
+        v = variants[index].second;
       } else {
-        // Fallback or keep 0
-        // std::cerr << "Missing texture: " << textureNames[i] << " for block "
-        // << name << std::endl;
+        // Fallback to defaults if no variants found (e.g. standard texture)
+        // For layer 0, use uMin. For layer 1, we might not have a "default" if
+        // variants are empty but overlay name set? Actually resolveUVs
+        // populates variants even for single texture if name matches. But logic
+        // above: 1. check name, add to variants. So variants should contain at
+        // least one if texture exists. Except for overlay logic: I pushed back
+        // overlayVariants.
+        if (layer == 0) {
+          u = uMin[faceDir];
+          v = vMin[faceDir];
+        } else {
+          // If overlay variants empty but we are here, means no overlay.
+          // Caller should check hasOverlay first.
+        }
       }
     }
   }
@@ -111,17 +181,6 @@ public:
                                 int ny, int nz) const {}
   virtual void update(World &world, int x, int y, int z) const {}
 
-  // Visuals
-  virtual void getTextureUV(int faceDir, float &u, float &v) const {
-    if (faceDir >= 0 && faceDir < 6) {
-      u = uMin[faceDir];
-      v = vMin[faceDir];
-    } else {
-      u = 0;
-      v = 0;
-    }
-  }
-
   virtual void getColor(float &r, float &g, float &b) const {
     r = 1.0f;
     g = 1.0f;
@@ -129,6 +188,12 @@ public:
   }
 
   virtual float getAlpha() const { return 1.0f; }
+
+  // Layer-based Tinting
+  // layer 0 = base, layer 1 = overlay
+  virtual bool shouldTint(int faceDir, int layer) const {
+    return true; // Default behavior
+  }
 
 protected:
   uint8_t id;
@@ -139,6 +204,13 @@ protected:
   float vMin[6];
   float uMax[6];
   float vMax[6];
+
+  // Variants
+  std::vector<std::pair<float, float>> textureVariants[6];
+
+  // Overlay Support
+  std::string overlayTextureNames[6];
+  std::vector<std::pair<float, float>> overlayVariants[6];
 };
 
 // Singleton blocks

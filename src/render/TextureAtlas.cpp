@@ -43,6 +43,7 @@ void TextureAtlas::Load(const std::string &directory) {
       // Load Image
       int w, h, c;
       // Force 4 channels (RGBA)
+      stbi_set_flip_vertically_on_load(true);
       unsigned char *img = stbi_load(path.c_str(), &w, &h, &c, 4);
       if (img) {
         // Check for metadata

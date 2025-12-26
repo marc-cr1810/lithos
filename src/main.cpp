@@ -846,9 +846,6 @@ int main() {
 // ---------------------------------------------------------------------------------------------------------
 
 void processInput(GLFWwindow *window, const World &world) {
-  if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-    glfwSetWindowShouldClose(window, true);
-
   // Toggle Debug Mode
   bool currentM = glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS;
   if (currentM && !lastM) {

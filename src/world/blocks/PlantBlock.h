@@ -16,7 +16,8 @@ public:
 
   RenderShape getRenderShape() const override {
     if (id == BlockType::TALL_GRASS || id == BlockType::DEAD_BUSH ||
-        id == BlockType::ROSE)
+        id == BlockType::ROSE || id == BlockType::DRY_SHORT_GRASS ||
+        id == BlockType::DRY_TALL_GRASS)
       return RenderShape::CROSS;
     return RenderShape::CUBE; // Leaves are cubes
   }
@@ -30,8 +31,11 @@ public:
       r = 0.1f;
       g = 0.4f;
       b = 0.2f;
-    } // Darker
-    else {
+    } else if (id == BlockType::TALL_GRASS) {
+      r = 0.2f;
+      g = 0.8f;
+      b = 0.2f; // Match Leaves/Grass tint
+    } else {
       // Plants: Use Texture Color (White Tint)
       r = 1.0f;
       g = 1.0f;

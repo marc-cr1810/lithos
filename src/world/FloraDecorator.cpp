@@ -28,8 +28,13 @@ void FloraDecorator::Decorate(Chunk &chunk, WorldGenerator &generator) {
 
         if (biome == BIOME_DESERT) {
           if (surface.getType() == SAND) {
-            if ((rand() % 100) < 2) { // 2% Dead Bush
+            int r = rand() % 100;
+            if (r < 2) { // 2% Dead Bush
               chunk.setBlock(x, localY + 1, z, DEAD_BUSH);
+            } else if (r < 10) { // 8% Dry Short Grass
+              chunk.setBlock(x, localY + 1, z, DRY_SHORT_GRASS);
+            } else if (r < 12) { // 2% Dry Tall Grass
+              chunk.setBlock(x, localY + 1, z, DRY_TALL_GRASS);
             }
           }
         } else if (biome == BIOME_PLAINS) {

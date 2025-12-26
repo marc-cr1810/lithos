@@ -45,6 +45,17 @@ public:
       b = 1.0f;
     }
   }
+
+  bool shouldTint(int faceDir, int layer) const override {
+    if (id == BlockType::GRASS) {
+      if (layer == 1)
+        return true; // Overlay is tinted
+      if (faceDir == 4)
+        return true; // Top is tinted
+      return false;  // Side base (Dirt) is NOT tinted
+    }
+    return false; // Default: No tint for dirt, wood, etc.
+  }
 };
 
 #endif

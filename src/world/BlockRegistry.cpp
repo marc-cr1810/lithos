@@ -29,6 +29,10 @@ BlockRegistry::BlockRegistry() {
   grass->setTexture(1, "grass_block_side");
   grass->setTexture(2, "grass_block_side");
   grass->setTexture(3, "grass_block_side");
+  grass->setOverlayTexture(0, "grass_block_side_overlay");
+  grass->setOverlayTexture(1, "grass_block_side_overlay");
+  grass->setOverlayTexture(2, "grass_block_side_overlay");
+  grass->setOverlayTexture(3, "grass_block_side_overlay");
   registerBlock(grass);
 
   Block *stone = new SolidBlock(BlockType::STONE, "Stone");
@@ -86,9 +90,9 @@ BlockRegistry::BlockRegistry() {
 
   // Flora & Structures
   Block *cactus = new SolidBlock(BlockType::CACTUS, "Cactus");
-  cactus->setTexture("cactus_side"); // Assuming existence or fallback
+  cactus->setTexture("cactus_side");
   cactus->setTexture(4, "cactus_top");
-  cactus->setTexture(5, "cactus_top"); // Bottom?
+  cactus->setTexture(5, "cactus_bottom"); // Bottom
   registerBlock(cactus);
 
   Block *pine = new SolidBlock(BlockType::PINE_WOOD, "Pine Wood");
@@ -102,16 +106,25 @@ BlockRegistry::BlockRegistry() {
   registerBlock(pineLeaves);
 
   Block *tallGrass = new PlantBlock(BlockType::TALL_GRASS, "Tall Grass");
-  tallGrass->setTexture("tall_grass"); // Missing?
+  tallGrass->setTexture("short_grass");
   registerBlock(tallGrass);
 
   Block *deadBush = new PlantBlock(BlockType::DEAD_BUSH, "Dead Bush");
-  deadBush->setTexture("dead_bush"); // Missing?
+  deadBush->setTexture("dead_bush");
   registerBlock(deadBush);
 
   Block *rose = new PlantBlock(BlockType::ROSE, "Rose");
-  rose->setTexture("rose"); // Missing? Or poppy?
+  rose->setTexture("poppy");
   registerBlock(rose);
+
+  Block *dryShort =
+      new PlantBlock(BlockType::DRY_SHORT_GRASS, "Dry Short Grass");
+  dryShort->setTexture("short_dry_grass");
+  registerBlock(dryShort);
+
+  Block *dryTall = new PlantBlock(BlockType::DRY_TALL_GRASS, "Dry Tall Grass");
+  dryTall->setTexture("tall_dry_grass");
+  registerBlock(dryTall);
 }
 
 void BlockRegistry::registerBlock(Block *block) {

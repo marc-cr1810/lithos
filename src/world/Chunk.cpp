@@ -952,7 +952,18 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             addFace(isTrans ? transparentVertices : opaqueVertices, lx, ly, lz,
                     faceDir, current.block, w, h, current.ao[0], current.ao[1],
                     current.ao[2], current.ao[3], current.metadata, hBL, hBR,
-                    hTR, hTL);
+                    hTR, hTL, 0);
+
+            if (current.block->hasOverlay(faceDir)) {
+              // Render Overlay (Cutout)
+              // We put it in opaque queue usually or transparent?
+              // Overlay usually needs alpha testing (cutout).
+              // For now, put in same queue.
+              addFace(isTrans ? transparentVertices : opaqueVertices, lx, ly,
+                      lz, faceDir, current.block, w, h, current.ao[0],
+                      current.ao[1], current.ao[2], current.ao[3],
+                      current.metadata, hBL, hBR, hTR, hTL, 1);
+            }
 
             for (int j = 0; j < h; ++j)
               for (int i = 0; i < w; ++i)
@@ -975,9 +986,14 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
           float fy = (float)y;
           float fz = (float)z;
 
+          int gx = chunkPosition.x * CHUNK_SIZE + x;
+          int gy = chunkPosition.y * CHUNK_SIZE + y;
+          int gz = chunkPosition.z * CHUNK_SIZE + z;
+
           float uMin, vMin;
-          cb.block->getTextureUV(0, uMin, vMin); // Face 0 default
-          float uMax = uMin + 0.25f;             // Assumption: Tiles are 0.25
+          cb.block->getTextureUV(0, uMin, vMin, gx, gy,
+                                 gz); // Face 0 default, with randomization
+          float uMax = uMin + 0.25f;  // Assumption: Tiles are 0.25
           float vMax = vMin + 0.25f;
 
           float r, g, b;
@@ -1123,9 +1139,17 @@ void Chunk::updateMesh() {
 void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
                     int faceDir, const Block *block, int width, int height,
                     int aoBL, int aoBR, int aoTR, int aoTL, uint8_t metadata,
-                    float hBL, float hBR, float hTR, float hTL) {
+                    float hBL, float hBR, float hTR, float hTL, int layer) {
   float r, g, b;
-  block->getColor(r, g, b);
+  block->getColor(r, g, b); // Base Tint
+
+  // Decide tint
+  if (!block->shouldTint(faceDir, layer)) {
+    r = 1.0f;
+    g = 1.0f;
+    b = 1.0f;
+  }
+
   float alpha = block->getAlpha();
 
   float l1 = 1.0f, l2 = 1.0f;
@@ -1165,9 +1189,34 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
   }
 
   float uMin = 0.00f, vMin = 0.00f;
-  block->getTextureUV(faceDir, uMin, vMin);
+
+  if (world) {
+    int gx = chunkPosition.x * CHUNK_SIZE + x;
+    int gy = chunkPosition.y * CHUNK_SIZE + y;
+    int gz = chunkPosition.z * CHUNK_SIZE + z;
+    block->getTextureUV(faceDir, uMin, vMin, gx, gy, gz, layer);
+  } else {
+    block->getTextureUV(faceDir, uMin, vMin, 0, 0, 0, layer);
+  }
 
   float fx = (float)x, fy = (float)y, fz = (float)z;
+
+  // Overlay Offset to avoid Z-fighting
+  if (layer == 1) {
+    float offset = 0.002f;
+    if (faceDir == 0)
+      fz += offset;
+    else if (faceDir == 1)
+      fz -= offset;
+    else if (faceDir == 2)
+      fx -= offset;
+    else if (faceDir == 3)
+      fx += offset;
+    else if (faceDir == 4)
+      fy += offset;
+    else if (faceDir == 5)
+      fy -= offset;
+  }
   float fw = (float)width, fh = (float)height;
 
   // Fluid Height Logic
