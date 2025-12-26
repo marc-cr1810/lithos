@@ -1,572 +1,309 @@
 #include "TextureAtlas.h"
 #include <algorithm>
 #include <cmath>
-#include <cstdlib>
+#include <cstring> // for memcpy
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+
+#include <GL/glew.h>
+
+// STB Image (Already implemented in Texture.cpp, but we need definitions if we
+// want to use functions?) Actually stb_image implementation logic is strictly
+// in one file. We just need the header.
+#include "../vendor/stb_image.h"
+
+namespace fs = std::filesystem;
 
 TextureAtlas::TextureAtlas(int width, int height, int slotSize)
-    : width(width), height(height), slotSize(slotSize) {
-  data.resize(width * height * 3);
+    : width(width), height(height), slotSize(slotSize), nextSlotX(0),
+      nextSlotY(0), dirty(false) {
+  // Initialize transparent black
+  data.resize(width * height * 4, 0);
 }
 
 TextureAtlas::~TextureAtlas() {}
 
-void TextureAtlas::Generate() {
-  // Slot Map (4x4 grid of 16px)
-  // 0,0: Stone
-  // 1,0: Dirt
-  // 2,0: Grass
-  // 0,1: Wood Side
-  // 1,1: Wood Top
-  // 2,1: Leaves
-
-  GenerateStone(0, 0);
-  GenerateDirt(1, 0);
-  GenerateGrassTop(2, 0);
-  GenerateWoodSide(0, 1);
-  GenerateWoodTop(1, 1);
-  GenerateWoodTop(1, 1);
-  GenerateLeaves(2, 1);
-
-  // Ores
-  // Coal (3,0) - Black spots
-  GenerateOre(3, 0, 20, 20, 20);
-  // Iron (3,1) - Tan spots
-  GenerateOre(3, 1, 210, 180, 140);
-
-  // Glowstone (0, 2)
-  // Glowstone (0, 2)
-  GenerateGlowstone(0, 2);
-
-  // Water (1, 2) - Blue Noise
-  GenerateWater(1, 2);
-
-  // Lava (2, 2) - Orange/Red Noise
-  GenerateLava(2, 2);
-
-  // Sand (3, 2) - Beige Noise
-  GenerateSand(3, 2);
-
-  // Gravel (0, 3) - Grey Noise
-  GenerateGravel(0, 3);
-
-  // Snow (1, 3)
-  GenerateSnow(1, 3);
-
-  // Ice (2, 3)
-  // Ice (2, 3)
-  GenerateIce(2, 3);
-
-  // Flora
-  // Cactus Side (0, 4)
-  GenerateCactusSide(0, 4);
-  // Cactus Top (1, 4)
-  GenerateCactusTop(1, 4);
-  // Tall Grass (2, 4)
-  GenerateTallGrass(2, 4);
-  // Dead Bush (3, 4)
-  GenerateDeadBush(3, 4);
-  // Rose (0, 5)
-  GenerateRose(0, 5);
-}
-
-void TextureAtlas::SetPixel(int x, int y, unsigned char r, unsigned char g,
-                            unsigned char b, unsigned char a) {
-  if (x < 0 || x >= width || y < 0 || y >= height)
+void TextureAtlas::Load(const std::string &directory) {
+  if (!fs::exists(directory)) {
+    std::cerr << "TextureAtlas Error: Directory not found " << directory
+              << std::endl;
     return;
-  int idx = (y * width + x) * 4;
-  data[idx] = r;
-  data[idx + 1] = g;
-  data[idx + 2] = b;
-  data[idx + 3] = a;
-}
-
-void TextureAtlas::GenerateStone(int slotX, int slotY) {
-  int startX = slotX * slotSize;
-  int startY = slotY * slotSize;
-
-  for (int y = 0; y < slotSize; ++y) {
-    for (int x = 0; x < slotSize; ++x) {
-      // Stone: Rough noise (Darker Grey)
-      int noise = rand() % 40 + 60; // 60-100
-
-      // Add some "cracks" (darker spots)
-      if (rand() % 20 == 0)
-        noise -= 30;
-
-      SetPixel(startX + x, startY + y, (unsigned char)noise,
-               (unsigned char)noise, (unsigned char)noise);
-    }
   }
-}
 
-void TextureAtlas::GenerateDirt(int slotX, int slotY) {
-  int startX = slotX * slotSize;
-  int startY = slotY * slotSize;
-
-  for (int y = 0; y < slotSize; ++y) {
-    for (int x = 0; x < slotSize; ++x) {
-      // Dirt: Smoother, speckled (Brownish Grey)
-      // We want it distinct from Stone.
-      // Dithered pattern checkboard?
-      int noise = rand() % 40 + 100;
-
-      // Speckles
-      if ((x + y) % 2 == 0)
-        noise += 20;
-
-      // Reduce contrast compared to stone
-      unsigned char val = (unsigned char)noise;
-      SetPixel(startX + x, startY + y, val, val, val);
-    }
-  }
-}
-
-void TextureAtlas::GenerateGrassTop(int slotX, int slotY) {
-  int startX = slotX * slotSize;
-  int startY = slotY * slotSize;
-
-  for (int y = 0; y < slotSize; ++y) {
-    for (int x = 0; x < slotSize; ++x) {
-      // Grass: Noise with some "blades" (lighter streaks)
-      int noise = rand() % 50 + 150;
-
-      // Blade check?
-      if (rand() % 5 == 0)
-        noise += 30;
-
-      unsigned char val = (unsigned char)noise;
-      SetPixel(startX + x, startY + y, val, val, val);
-    }
-  }
-}
-
-void TextureAtlas::GenerateWoodSide(int slotX, int slotY) {
-  int startX = slotX * slotSize;
-  int startY = slotY * slotSize;
-
-  for (int y = 0; y < slotSize; ++y) {
-    for (int x = 0; x < slotSize; ++x) {
-      // Wood Side: Chaotic Bark
-      int noise = rand() % 40;
-      // Wavy vertical stripes
-      int shift = (y / 3);
-      bool fissure = ((x + shift) % 4 == 0);
-      int fVal = fissure ? 30 : 0;
-      if (rand() % 10 > 7)
-        fVal = 0; // Break fissures
-
-      int val = 120 + noise - fVal;
-      // Keep Vertex Color = White, so bake Color here?
-      // User complained about "planks".
-      // Let's use the Brown color here.
-      unsigned char r = val;
-      unsigned char g = (unsigned char)(val * 0.7f);
-      unsigned char b = (unsigned char)(val * 0.5f);
-      SetPixel(startX + x, startY + y, r, g, b);
-    }
-  }
-}
-
-void TextureAtlas::GenerateWoodTop(int slotX, int slotY) {
-  int startX = slotX * slotSize;
-  int startY = slotY * slotSize;
-  float center = slotSize / 2.0f - 0.5f;
-
-  for (int y = 0; y < slotSize; ++y) {
-    for (int x = 0; x < slotSize; ++x) {
-      // Rings
-      float dx = (float)x - center;
-      float dy = (float)y - center;
-      float dist = sqrt(dx * dx + dy * dy);
-
-      int ring = (int)(dist * 1.5f) % 2;
-      int val = 140 + (ring * 40) + (rand() % 20);
-
-      unsigned char r = val;
-      unsigned char g = (unsigned char)(val * 0.8f);
-      unsigned char b = (unsigned char)(val * 0.6f);
-      SetPixel(startX + x, startY + y, r, g, b);
-    }
-  }
-}
-
-void TextureAtlas::GenerateLeaves(int slotX, int slotY) {
-  int startX = slotX * slotSize;
-  int startY = slotY * slotSize;
-
-  for (int y = 0; y < slotSize; ++y) {
-    for (int x = 0; x < slotSize; ++x) {
-      // Leaves: Grid pattern + noise
-      int noise = rand() % 60;
-      if (x % 3 == 0 || y % 3 == 0)
-        noise -= 20;
-      int val = 100 + noise;
-
-      // Greyscale (Tinted Green by Vertex Color)
-      SetPixel(startX + x, startY + y, (unsigned char)val, (unsigned char)val,
-               (unsigned char)val);
-    }
-  }
-}
-
-void TextureAtlas::GenerateOre(int slotX, int slotY, int r, int g, int b) {
-  int startX = slotX * slotSize;
-  int startY = slotY * slotSize;
-
-  for (int y = 0; y < slotSize; ++y) {
-    for (int x = 0; x < slotSize; ++x) {
-      // Base Stone
-      int noise = rand() % 60 + 80;
-      if (rand() % 20 == 0)
-        noise -= 30;
-
-      unsigned char cr = (unsigned char)noise;
-      unsigned char cg = (unsigned char)noise;
-      unsigned char cb = (unsigned char)noise;
-
-      // Ore spots
-      // Simple noise check for spots
-      if (rand() % 10 < 2) {
-        cr = (unsigned char)r;
-        cg = (unsigned char)g;
-        cb = (unsigned char)b;
-      }
-
-      SetPixel(startX + x, startY + y, cr, cg, cb);
-    }
-  }
-}
-
-void TextureAtlas::GenerateGlowstone(int slotX, int slotY) {
-  int startX = slotX * slotSize;
-  int startY = slotY * slotSize;
-
-  for (int y = 0; y < slotSize; ++y) {
-    for (int x = 0; x < slotSize; ++x) {
-      // Glowstone: Crystalline High contrast
-      // Core: Bright Yellow/White
-      // Crystal edges: Orange/Brown
-
-      // Voronoi-ish or just simple blocky noise?
-      int noise = rand() % 50;
-      if (rand() % 5 == 0)
-        noise -= 30; // Dark spots
-
-      int baseVal = 200 + noise;
-      if (baseVal > 255)
-        baseVal = 255;
-      if (baseVal < 0)
-        baseVal = 0;
-
-      unsigned char r = (unsigned char)baseVal;
-      unsigned char g = (unsigned char)(baseVal * 0.8f);
-      unsigned char b = (unsigned char)(baseVal * 0.4f);
-
-      // Randomly very bright pixel (center of crystal)
-      if (rand() % 20 == 0) {
-        r = 255;
-        g = 255;
-        b = 200;
-      }
-
-      SetPixel(startX + x, startY + y, r, g, b);
-    }
-  }
-}
-
-void TextureAtlas::GenerateWater(int slotX, int slotY) {
-  int startX = slotX * slotSize;
-  int startY = slotY * slotSize;
-
-  for (int y = 0; y < slotSize; ++y) {
-    for (int x = 0; x < slotSize; ++x) {
-      // Water: Blue noise
-      int noise = rand() % 40 + 100;
-
-      // Wavy pattern?
-      if ((x + y) % 4 == 0)
-        noise += 20;
-
-      unsigned char r = 40;
-      unsigned char g = 80;
-      unsigned char b = (unsigned char)noise + 50;
-
-      SetPixel(startX + x, startY + y, r, g, b);
-    }
-  }
-}
-
-void TextureAtlas::GenerateLava(int slotX, int slotY) {
-  int startX = slotX * slotSize;
-  int startY = slotY * slotSize;
-
-  for (int y = 0; y < slotSize; ++y) {
-    for (int x = 0; x < slotSize; ++x) {
-      // Lava: Bright Orange/Red with dark clumps
-      int noise = rand() % 60 + 150;
-
-      unsigned char r = (unsigned char)noise;
-      unsigned char g = (unsigned char)(noise * 0.5f);
-      unsigned char b = 0;
-
-      // Dark spots (crust)
-      if (rand() % 10 == 0) {
-        r = 80;
-        g = 20;
-        b = 0;
-      }
-
-      SetPixel(startX + x, startY + y, r, g, b);
-    }
-  }
-}
-
-void TextureAtlas::GenerateSand(int slotX, int slotY) {
-  int startX = slotX * slotSize;
-  int startY = slotY * slotSize;
-
-  for (int y = 0; y < slotSize; ++y) {
-    for (int x = 0; x < slotSize; ++x) {
-      // Sand: Beige/Yellowish granular noise
-      // Base: 240, 235, 160 (More Yellow)
-      int noise = rand() % 30 - 15;
-
-      int r = 240 + noise;
-      int g = 235 + noise;
-      int b = 160 + noise;
-
-      // Random speckles (darker grains)
-      if (rand() % 10 == 0) {
-        r -= 30;
-        g -= 30;
-        b -= 30;
-      }
-
-      // Clamp
-      if (r > 255)
-        r = 255;
-      if (r < 0)
-        r = 0;
-      if (g > 255)
-        g = 255;
-      if (g < 0)
-        g = 0;
-      if (b > 255)
-        b = 255;
-      if (b < 0)
-        b = 0;
-
-      SetPixel(startX + x, startY + y, (unsigned char)r, (unsigned char)g,
-               (unsigned char)b);
-    }
-  }
-}
-
-void TextureAtlas::GenerateGravel(int slotX, int slotY) {
-  int startX = slotX * slotSize;
-  int startY = slotY * slotSize;
-
-  for (int y = 0; y < slotSize; ++y) {
-    for (int x = 0; x < slotSize; ++x) {
-      // Gravel: Grey, high frequency noise
-      int noise = rand() % 50 + 100; // 100-150
-
-      // Contrast spots
-      if (rand() % 5 == 0)
-        noise -= 30; // Dark pebble
-      if (rand() % 20 == 0)
-        noise += 40; // Light pebble
-
-      unsigned char val = (unsigned char)noise;
-      SetPixel(startX + x, startY + y, val, val, val);
-    }
-  }
-}
-
-void TextureAtlas::GenerateSnow(int slotX, int slotY) {
-  int startX = slotX * slotSize;
-  int startY = slotY * slotSize;
-
-  for (int y = 0; y < slotSize; ++y) {
-    for (int x = 0; x < slotSize; ++x) {
-      // Snow: Pure white with very subtle blueish noise
-      int noise = rand() % 10;
-
-      unsigned char r = 245 + noise;
-      unsigned char g = 245 + noise;
-      unsigned char b = 255;
-
-      SetPixel(startX + x, startY + y, r, g, b);
-    }
-  }
-}
-
-void TextureAtlas::GenerateIce(int slotX, int slotY) {
-  int startX = slotX * slotSize;
-  int startY = slotY * slotSize;
-
-  for (int y = 0; y < slotSize; ++y) {
-    for (int x = 0; x < slotSize; ++x) {
-      // Ice: Translucent Blueish (Opaque here, but light blue)
-      // With streaks
-      int noise = rand() % 20;
-
-      // Streaks
-      if ((x + y) % 5 == 0)
-        noise += 20;
-
-      unsigned char r = 160 + noise;
-      unsigned char g = 180 + noise;
-      unsigned char b = 255;
-
-      SetPixel(startX + x, startY + y, r, g, b);
-    }
-  }
-}
-
-void TextureAtlas::GenerateCactusSide(int slotX, int slotY) {
-  int startX = slotX * slotSize;
-  int startY = slotY * slotSize;
-
-  for (int y = 0; y < slotSize; ++y) {
-    for (int x = 0; x < slotSize; ++x) {
-      // Cactus Side: Green with spines
-      // Green base
-      int noise = rand() % 30;
-      // Vertical ridges
-      if (x % 4 == 0)
-        noise -= 20; // Dark groove
-
-      int r = 20 + noise;
-      int g = 100 + noise;
-      int b = 20 + noise;
-
-      // Spines (Dots)
-      if (rand() % 40 == 0 && x % 4 != 0) {
-        r = 200;
-        g = 200;
-        b = 180;
-      }
-
-      SetPixel(startX + x, startY + y, (unsigned char)r, (unsigned char)g,
-               (unsigned char)b);
-    }
-  }
-}
-
-void TextureAtlas::GenerateCactusTop(int slotX, int slotY) {
-  int startX = slotX * slotSize;
-  int startY = slotY * slotSize;
-
-  for (int y = 0; y < slotSize; ++y) {
-    for (int x = 0; x < slotSize; ++x) {
-      // Cactus Top: Green with rings or dots
-      int r = 20 + rand() % 20;
-      int g = 100 + rand() % 20;
-      int b = 20 + rand() % 20;
-
-      // Center pattern
-      if (x > 3 && x < 13 && y > 3 && y < 13) {
-        g += 20;
-      }
-
-      SetPixel(startX + x, startY + y, (unsigned char)r, (unsigned char)g,
-               (unsigned char)b);
-    }
-  }
-}
-
-void TextureAtlas::GenerateTallGrass(int slotX, int slotY) {
-  int startX = slotX * slotSize;
-  int startY = slotY * slotSize;
-
-  for (int y = 0; y < slotSize; ++y) {
-    for (int x = 0; x < slotSize; ++x) {
-      // Default "Transparent" (Black)
-      SetPixel(startX + x, startY + y, 0, 0, 0);
-
-      // Grass Blades - Straighter, simpler
-      bool isBlade = false;
-
-      int bladeCenters[] = {3, 7, 11, 14};
-      for (int bC : bladeCenters) {
-        // Reduced wiggle amplitude (was 2.0f, now 0.5f)
-        int wiggle = (int)(sin(y * 0.3f + bC) * 0.5f);
-        if (abs(x - (bC + wiggle)) < 2)
-          isBlade = true;
-      }
-
-      if (isBlade) {
-        int r = 30; // Slightly darker/richer green
-        int g = 140 + rand() % 40;
-        int b = 30;
-        if (y < 5)
-          g -= 20; // Gradient
-        // Set alpha to 255 for blade
-        SetPixel(startX + x, startY + y, (unsigned char)r, (unsigned char)g,
-                 (unsigned char)b, 255);
+  std::cout << "Loading textures from " << directory << "..." << std::endl;
+
+  for (const auto &entry : fs::directory_iterator(directory)) {
+    if (entry.path().extension() == ".png") {
+      std::string path = entry.path().string();
+      std::string filename = entry.path().filename().string();
+      // Remove extension for name
+      std::string name = entry.path().stem().string();
+
+      // Load Image
+      int w, h, c;
+      // Force 4 channels (RGBA)
+      unsigned char *img = stbi_load(path.c_str(), &w, &h, &c, 4);
+      if (img) {
+        // Check for metadata
+        int frameTime = 1;
+        bool animated = false;
+
+        std::string jsonPath = path + ".json";
+        if (fs::exists(jsonPath)) {
+          // Simple parse for "frametime"
+          std::ifstream f(jsonPath);
+          std::string content((std::istreambuf_iterator<char>(f)),
+                              std::istreambuf_iterator<char>());
+
+          size_t pos = content.find("\"frametime\"");
+          if (pos != std::string::npos) {
+            // Find colon
+            size_t colon = content.find(':', pos);
+            if (colon != std::string::npos) {
+              // Parse number
+              frameTime = std::stoi(content.substr(colon + 1));
+              animated = true;
+            }
+          } else {
+            // Check if "animation" object exists, maybe default frametime?
+            if (content.find("\"animation\"") != std::string::npos) {
+              animated = true;
+              frameTime = 1; // Default if not detailed?
+            }
+          }
+        }
+
+        // If height > width (strip), and not confirmed animated by JSON?
+        // In MC dealing, usually strip implies animation if N*width = height.
+        if (h > w && h % w == 0 && (h / w) > 1) {
+          // Auto-detect animation if not specified, or if we want to support it
+          // without JSON But let's stick to explicit or implicit logic. Let's
+          // assume strip = animation for block textures if explicit JSON wasn't
+          // found but format looks like one? User said "Make note of .json
+          // files... ensure support". Let's rely on aspect ratio too.
+          if (!animated) {
+            animated = true;
+            frameTime = 20; // Default slow?
+          }
+        }
+
+        // Resize if larger than slotSize (Nearest Neighbor)
+        if (w > slotSize && w % slotSize == 0) {
+          int scale = w / slotSize;
+          int newW = slotSize;
+          int newH = h / scale;
+          std::vector<unsigned char> resizedData(newW * newH * 4);
+
+          for (int y = 0; y < newH; ++y) {
+            for (int x = 0; x < newW; ++x) {
+              int srcX = x * scale;
+              int srcY = y * scale;
+              int srcIdx = (srcY * w + srcX) * 4;
+              int destIdx = (y * newW + x) * 4;
+
+              resizedData[destIdx + 0] = img[srcIdx + 0]; // R
+              resizedData[destIdx + 1] = img[srcIdx + 1]; // G
+              resizedData[destIdx + 2] = img[srcIdx + 2]; // B
+              resizedData[destIdx + 3] = img[srcIdx + 3]; // A
+            }
+          }
+
+          // Replace img with resized data
+          stbi_image_free(img);
+          img = (unsigned char *)malloc(newW * newH * 4);
+          memcpy(img, resizedData.data(), newW * newH * 4);
+          w = newW;
+          h = newH;
+        }
+
+        int frames = 1;
+        if (animated && w > 0)
+          frames = h / w;
+
+        PackTexture(name, img, w, h, 4, frames, frameTime);
+
+        stbi_image_free(img);
       } else {
-        // Explicitly set transparent background
-        SetPixel(startX + x, startY + y, 0, 0, 0, 0);
+        std::cerr << "Failed to load texture: " << filename
+                  << " Reason: " << stbi_failure_reason() << std::endl;
       }
+    }
+  }
+
+  std::cout << "Texture Atlas Loaded. " << textures.size()
+            << " textures packed." << std::endl;
+}
+
+void TextureAtlas::PackTexture(const std::string &name, unsigned char *imgData,
+                               int w, int h, int channels, int frameCount,
+                               int frameTime) {
+  // Only support square slots for now (or frame width = slotSize)
+  // If texture is larger/smaller, we resize or just attempt to fit in slot?
+  // For this task, assuming pixel art 16x16 blocks.
+  int frameW = w;
+  int frameH = h / frameCount;
+
+  if (frameW != slotSize || frameH != slotSize) {
+    // Warn? Or just accept?
+    // If it's 16x16 vs 32x32, mixing resolutions in one atlas is messy if we
+    // use grid. But we initialized atlas with slotSize=16. If we load a 32x32
+    // texture, it won't fit in 16x16 grid easily without flexible packing. But
+    // let's assume assets are compliant or we just write what we can.
+  }
+
+  // Find Slot
+  if (nextSlotX * slotSize >= width) {
+    nextSlotX = 0;
+    nextSlotY++;
+  }
+  if (nextSlotY * slotSize >= height) {
+    std::cerr << "Texture Atlas Full! Cannot pack " << name << std::endl;
+    return;
+  }
+
+  int slotX = nextSlotX;
+  int slotY = nextSlotY;
+  nextSlotX++;
+
+  // Store Info
+  TextureInfo info;
+  info.slotX = slotX;
+  info.slotY = slotY;
+
+  // UVs
+  // add small epsilon to avoid bleeding? Or rely on Nearest.
+  // Nearest neighbor at patch boundaries can bleed if not careful.
+  // Using padding is better, but here we just use strict coordinates.
+  info.uMin = (float)(slotX * slotSize) / width;
+  info.vMin = (float)(slotY * slotSize) / height;
+  info.uMax = (float)((slotX + 1) * slotSize) / width;
+  info.vMax = (float)((slotY + 1) * slotSize) / height;
+
+  info.isAnimated = (frameCount > 1);
+  info.frameCount = frameCount;
+  info.frameTime = frameTime;
+
+  textures[name] = info;
+  // Also store by "filename" without ext?
+  // Handled by Load() using stem().
+
+  // Copy first frame to Atlas Data
+  SetRegion(slotX * slotSize, slotY * slotSize, frameW, frameH, imgData,
+            channels);
+
+  // Handle Animation
+  if (frameCount > 1) {
+    AnimatedTexture anim;
+    anim.name = name;
+    anim.width = frameW;
+    anim.height = frameH;
+    anim.slotX = slotX;
+    anim.slotY = slotY;
+    anim.currentFrame = 0;
+    anim.timer = 0.0f;
+    // FrameTime is in Ticks (1/20s)
+    anim.fps = 20 / (frameTime > 0 ? frameTime : 1);
+    if (anim.fps <= 0)
+      anim.fps = 1;
+
+    // Copy all frames
+    size_t totalSize = w * h * 4; // Assuming 4 channels conversion
+    anim.frames.resize(totalSize);
+    // If source was RGBA (4), copy directly.
+    // We forced 4 channels in load.
+    memcpy(anim.frames.data(), imgData, totalSize);
+
+    animatedTextures.push_back(anim);
+  }
+}
+
+void TextureAtlas::SetRegion(int x, int y, int w, int h,
+                             const unsigned char *src, int channels) {
+  // Copy row by row
+  for (int row = 0; row < h; ++row) {
+    int destY = y + row;
+    if (destY >= height)
+      break;
+
+    int destIdx = (destY * width + x) * 4;
+    int srcIdx = (row * w) * channels;
+
+    // Copy pixels
+    for (int col = 0; col < w; ++col) {
+      if (x + col >= width)
+        break;
+
+      int d = destIdx + col * 4;
+      int s = srcIdx + col * channels;
+
+      data[d] = src[s];
+      data[d + 1] = src[s + 1];
+      data[d + 2] = src[s + 2];
+      if (channels == 4)
+        data[d + 3] = src[s + 3];
+      else
+        data[d + 3] = 255;
     }
   }
 }
 
-void TextureAtlas::GenerateDeadBush(int slotX, int slotY) {
-  int startX = slotX * slotSize;
-  int startY = slotY * slotSize;
+bool TextureAtlas::Update(float deltaTime) {
+  bool anyUpdate = false;
+  for (auto &anim : animatedTextures) {
+    anim.timer += deltaTime;
+    float distinctFrameTime = 1.0f / anim.fps;
 
-  for (int y = 0; y < slotSize; ++y) {
-    for (int x = 0; x < slotSize; ++x) {
+    if (anim.timer >= distinctFrameTime) {
+      anim.timer -= distinctFrameTime;
+      anim.currentFrame = (anim.currentFrame + 1) %
+                          (anim.frames.size() / (anim.width * anim.height * 4));
 
-      // Default to transparent
-      SetPixel(startX + x, startY + y, 0, 0, 0, 0);
+      // Update Atlas Data helper (Host side)
+      // We need to update the GPU. The host data 'data' should also optionally
+      // be updated if we re-upload everything? But we usually use SubImage.
 
-      // Branch structure
-      bool isBranch = false;
-      if (abs(x - 8) < 1 && y < 6)
-        isBranch = true; // Stem
-      // V shape
-      if (y >= 4) {
-        if (abs(x - (8 + (y - 4))) < 1)
-          isBranch = true;
-        if (abs(x - (8 - (y - 4))) < 1)
-          isBranch = true;
-      }
-
-      if (isBranch) {
-        int r = 100;
-        int g = 80;
-        int b = 40;
-        SetPixel(startX + x, startY + y, (unsigned char)r, (unsigned char)g,
-                 (unsigned char)b, 255);
-      }
+      dirty = true;
+      anyUpdate = true;
     }
   }
+  return anyUpdate;
 }
 
-void TextureAtlas::GenerateRose(int slotX, int slotY) {
-  int startX = slotX * slotSize;
-  int startY = slotY * slotSize;
+void TextureAtlas::UpdateTextureGPU(unsigned int textureID) {
+  if (!dirty)
+    return;
 
-  for (int y = 0; y < slotSize; ++y) {
-    for (int x = 0; x < slotSize; ++x) {
-      SetPixel(startX + x, startY + y, 0, 0, 0, 0);
+  glBindTexture(GL_TEXTURE_2D, textureID);
 
-      // Stem
-      if (abs(x - 8) < 1 && y < 10) {
-        SetPixel(startX + x, startY + y, 0, 100, 0, 255);
-      }
+  for (const auto &anim : animatedTextures) {
+    // Find offset in frames
+    // total frames = height / frameHeight
+    // frame data start = currentFrame * (w * h * 4)
+    size_t frameSize = anim.width * anim.height * 4;
 
-      // Leaf
-      if (y == 6 && (x == 7 || x == 9))
-        SetPixel(startX + x, startY + y, 0, 120, 0, 255);
+    // Safety check
+    if ((anim.currentFrame + 1) * frameSize > anim.frames.size())
+      continue;
 
-      // Flower
-      if (y >= 10 && abs(x - 8) < 3 && abs(y - 12) < 3) {
-        SetPixel(startX + x, startY + y, 220, 20, 40, 255);
-      }
-    }
+    const unsigned char *frameData =
+        anim.frames.data() + (anim.currentFrame * frameSize);
+
+    glTexSubImage2D(GL_TEXTURE_2D, 0, anim.slotX * slotSize,
+                    anim.slotY * slotSize, anim.width, anim.height, GL_RGBA,
+                    GL_UNSIGNED_BYTE, frameData);
   }
+
+  dirty = false;
+}
+
+bool TextureAtlas::GetTextureUV(const std::string &name, float &uMin,
+                                float &vMin) const {
+  auto it = textures.find(name);
+  if (it != textures.end()) {
+    uMin = it->second.uMin;
+    vMin = it->second.vMin;
+    return true;
+  }
+  return false;
 }

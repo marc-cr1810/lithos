@@ -12,17 +12,6 @@ public:
     return RenderLayer::TRANSPARENT;
   }
 
-  void getTextureUV(int faceDir, float &uMin, float &vMin) const override {
-    if (id == BlockType::WATER) {
-      uMin = 0.25f;
-      vMin = 0.25f;
-    } // Slot (1, 2) -> 2*0.125 = 0.25
-    else if (id == BlockType::LAVA) {
-      uMin = 0.50f;
-      vMin = 0.25f;
-    } // Slot (2, 2) -> 2*0.125 = 0.25
-  }
-
   void getColor(float &r, float &g, float &b) const override {
     if (id == BlockType::WATER) {
       r = 0.2f;

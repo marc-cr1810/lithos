@@ -2,12 +2,14 @@
 #define BLOCK_H
 
 #include <cstdint>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-// Keep enum for IDs, useful for generation and serialization
+#include "../render/TextureAtlas.h" // Include full definition for resolveUVs
+
 // Keep enum for IDs, useful for generation and serialization
 enum BlockType {
   AIR = 0,
@@ -37,11 +39,59 @@ class World; // Forward declaration
 
 class Block {
 public:
-  Block(uint8_t id, const std::string &name) : id(id), name(name) {}
+  Block(uint8_t id, const std::string &name) : id(id), name(name) {
+    for (int i = 0; i < 6; ++i) {
+      textureNames[i] = "pink"; // fallback
+      uMin[i] = 0.0f;
+      vMin[i] = 0.0f;
+      uMax[i] = 1.0f;
+      vMax[i] = 1.0f;
+    }
+  }
   virtual ~Block() {}
 
   uint8_t getId() const { return id; }
   const std::string &getName() const { return name; }
+
+  // Texture Configuration
+  void setTexture(const std::string &texName) {
+    for (int i = 0; i < 6; ++i)
+      textureNames[i] = texName;
+  }
+
+  void setTexture(int face, const std::string &texName) {
+    if (face >= 0 && face < 6)
+      textureNames[face] = texName;
+  }
+
+  // Resolve UVs from Atlas
+  virtual void resolveUVs(const TextureAtlas &atlas) {
+    for (int i = 0; i < 6; ++i) {
+      if (textureNames[i].empty())
+        continue;
+
+      float u, v; // min
+      float um,
+          vm; // max (not used by getTextureUV currently, but stored if needed)
+
+      // We need getTextureUV to return min/max?
+      // Atlas::GetTextureUV returns min, min.
+      // Wait, TextureAtlas implementation stores uMin, vMin, uMax, vMax.
+      // I only exposed GetTextureUV(name, uMin, vMin) in header.
+      // I should probably update Block to just use uMin/vMin assuming uniform
+      // size? But Atlas might change slot size. Let's rely on
+      // TextureAtlas::GetTextureUV for now.
+
+      if (atlas.GetTextureUV(textureNames[i], u, v)) {
+        uMin[i] = u;
+        vMin[i] = v;
+      } else {
+        // Fallback or keep 0
+        // std::cerr << "Missing texture: " << textureNames[i] << " for block "
+        // << name << std::endl;
+      }
+    }
+  }
 
   // Properties
   virtual bool isSolid() const { return true; }  // Collision
@@ -62,9 +112,14 @@ public:
   virtual void update(World &world, int x, int y, int z) const {}
 
   // Visuals
-  virtual void getTextureUV(int faceDir, float &uMin, float &vMin) const {
-    uMin = 0.0f;
-    vMin = 0.0f; // Default (Magenta/Pink usually, or 0,0)
+  virtual void getTextureUV(int faceDir, float &u, float &v) const {
+    if (faceDir >= 0 && faceDir < 6) {
+      u = uMin[faceDir];
+      v = vMin[faceDir];
+    } else {
+      u = 0;
+      v = 0;
+    }
   }
 
   virtual void getColor(float &r, float &g, float &b) const {
@@ -78,6 +133,12 @@ public:
 protected:
   uint8_t id;
   std::string name;
+
+  std::string textureNames[6];
+  float uMin[6];
+  float vMin[6];
+  float uMax[6];
+  float vMax[6];
 };
 
 // Singleton blocks
@@ -101,6 +162,13 @@ public:
 
   void registerBlock(Block *block);
   Block *getBlock(uint8_t id);
+
+  // New: resolve all blocks
+  void resolveUVs(const TextureAtlas &atlas) {
+    for (auto &pair : blocks) {
+      pair.second->resolveUVs(atlas);
+    }
+  }
 
 private:
   BlockRegistry();

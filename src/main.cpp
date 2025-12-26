@@ -188,13 +188,23 @@ int main() {
   // Generate Procedural Atlas using TextureAtlas class
   // Output Atlas size to debug
   std::cout << "Generating Texture Atlas..." << std::endl;
-  TextureAtlas atlas(64, 128, 16); // Increased height to support more blocks
-  atlas.Generate();
+  TextureAtlas atlas(1024, 1024,
+                     16); // Increased size to 1024x1024 to fit all textures
+  atlas.Load("assets/textures/block");
+
+  // Resolve Blocks
+  BlockRegistry::getInstance().resolveUVs(atlas);
 
   Texture blockTexture(atlas.GetWidth(), atlas.GetHeight(), atlas.GetData(), 4);
   // tell opengl for each sampler to which texture unit it belongs to
   ourShader.use();
   ourShader.setInt("texture1", 0);
+
+  // Set UV Scale directly
+  // SlotSize=16, Width=1024, Height=1024
+  float uScale = 16.0f / atlas.GetWidth();
+  float vScale = 16.0f / atlas.GetHeight();
+  ourShader.setVec2("uvScale", uScale, vScale);
 
   // World generation
   World world;
@@ -370,6 +380,11 @@ int main() {
 
     if (!dbg_timePaused) {
       globalTime += deltaTime * dbg_timeSpeed;
+
+      // Update Animations
+      if (atlas.Update(deltaTime * dbg_timeSpeed)) {
+        atlas.UpdateTextureGPU(blockTexture.ID);
+      }
     }
 
     // Start the Dear ImGui frame

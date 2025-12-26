@@ -17,28 +17,101 @@ BlockRegistry::BlockRegistry() {
   blocks[BlockType::AIR] = defaultBlock;
 
   registerBlock(new AirBlock());
-  registerBlock(new SolidBlock(BlockType::DIRT, "Dirt"));
-  registerBlock(new SolidBlock(BlockType::GRASS, "Grass"));
-  registerBlock(new SolidBlock(BlockType::STONE, "Stone"));
-  registerBlock(new SolidBlock(BlockType::WOOD, "Wood"));
-  registerBlock(new PlantBlock(BlockType::LEAVES, "Leaves"));
-  registerBlock(new SolidBlock(BlockType::COAL_ORE, "Coal Ore"));
-  registerBlock(new SolidBlock(BlockType::IRON_ORE, "Iron Ore"));
-  registerBlock(new LightBlock(BlockType::GLOWSTONE, "Glowstone", 15));
-  registerBlock(new LiquidBlock(BlockType::WATER, "Water"));
-  registerBlock(new LiquidBlock(BlockType::LAVA, "Lava"));
-  registerBlock(new FallingBlock(BlockType::SAND, "Sand"));
-  registerBlock(new FallingBlock(BlockType::GRAVEL, "Gravel"));
-  registerBlock(new SolidBlock(BlockType::SNOW, "Snow"));
-  registerBlock(new SolidBlock(BlockType::ICE, "Ice"));
+
+  Block *dirt = new SolidBlock(BlockType::DIRT, "Dirt");
+  dirt->setTexture("dirt");
+  registerBlock(dirt);
+
+  Block *grass = new SolidBlock(BlockType::GRASS, "Grass");
+  grass->setTexture("dirt"); // Default/Bottom
+  grass->setTexture(4, "grass_block_top");
+  grass->setTexture(0, "grass_block_side");
+  grass->setTexture(1, "grass_block_side");
+  grass->setTexture(2, "grass_block_side");
+  grass->setTexture(3, "grass_block_side");
+  registerBlock(grass);
+
+  Block *stone = new SolidBlock(BlockType::STONE, "Stone");
+  stone->setTexture("stone");
+  registerBlock(stone);
+
+  Block *wood = new SolidBlock(BlockType::WOOD, "Wood");
+  wood->setTexture("oak_log");
+  wood->setTexture(4, "oak_log_top");
+  wood->setTexture(5, "oak_log_top");
+  registerBlock(wood);
+
+  Block *leaves = new PlantBlock(BlockType::LEAVES, "Leaves");
+  leaves->setTexture("oak_leaves");
+  registerBlock(leaves);
+
+  Block *coal = new SolidBlock(BlockType::COAL_ORE, "Coal Ore");
+  coal->setTexture("coal_ore");
+  registerBlock(coal);
+
+  Block *iron = new SolidBlock(BlockType::IRON_ORE, "Iron Ore");
+  iron->setTexture("iron_ore");
+  registerBlock(iron);
+
+  Block *glow = new LightBlock(BlockType::GLOWSTONE, "Glowstone", 15);
+  glow->setTexture("glowstone");
+  registerBlock(glow);
+
+  Block *water = new LiquidBlock(BlockType::WATER, "Water");
+  water->setTexture(
+      "water_still"); // Use still for all for now, maybe flow for sides?
+  // water->setTexture(0, "water_flow"); ...
+  // Let's stick to water_still to match expectations or simple setup
+  registerBlock(water);
+
+  Block *lava = new LiquidBlock(BlockType::LAVA, "Lava");
+  lava->setTexture("lava_still");
+  registerBlock(lava);
+
+  Block *sand = new FallingBlock(BlockType::SAND, "Sand");
+  sand->setTexture("sand");
+  registerBlock(sand);
+
+  Block *gravel = new FallingBlock(BlockType::GRAVEL, "Gravel");
+  gravel->setTexture("gravel");
+  registerBlock(gravel);
+
+  Block *snow = new SolidBlock(BlockType::SNOW, "Snow");
+  snow->setTexture("snow");
+  registerBlock(snow);
+
+  Block *ice = new SolidBlock(BlockType::ICE, "Ice");
+  ice->setTexture("ice");
+  registerBlock(ice);
 
   // Flora & Structures
-  registerBlock(new SolidBlock(BlockType::CACTUS, "Cactus"));
-  registerBlock(new SolidBlock(BlockType::PINE_WOOD, "Pine Wood"));
-  registerBlock(new PlantBlock(BlockType::PINE_LEAVES, "Pine Leaves"));
-  registerBlock(new PlantBlock(BlockType::TALL_GRASS, "Tall Grass"));
-  registerBlock(new PlantBlock(BlockType::DEAD_BUSH, "Dead Bush"));
-  registerBlock(new PlantBlock(BlockType::ROSE, "Rose"));
+  Block *cactus = new SolidBlock(BlockType::CACTUS, "Cactus");
+  cactus->setTexture("cactus_side"); // Assuming existence or fallback
+  cactus->setTexture(4, "cactus_top");
+  cactus->setTexture(5, "cactus_top"); // Bottom?
+  registerBlock(cactus);
+
+  Block *pine = new SolidBlock(BlockType::PINE_WOOD, "Pine Wood");
+  pine->setTexture("spruce_log");
+  pine->setTexture(4, "spruce_log_top");
+  pine->setTexture(5, "spruce_log_top");
+  registerBlock(pine);
+
+  Block *pineLeaves = new PlantBlock(BlockType::PINE_LEAVES, "Pine Leaves");
+  pineLeaves->setTexture("spruce_leaves");
+  registerBlock(pineLeaves);
+
+  Block *tallGrass = new PlantBlock(BlockType::TALL_GRASS, "Tall Grass");
+  tallGrass->setTexture("tall_grass"); // Missing?
+  registerBlock(tallGrass);
+
+  Block *deadBush = new PlantBlock(BlockType::DEAD_BUSH, "Dead Bush");
+  deadBush->setTexture("dead_bush"); // Missing?
+  registerBlock(deadBush);
+
+  Block *rose = new PlantBlock(BlockType::ROSE, "Rose");
+  rose->setTexture("rose"); // Missing? Or poppy?
+  registerBlock(rose);
 }
 
 void BlockRegistry::registerBlock(Block *block) {

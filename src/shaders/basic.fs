@@ -12,6 +12,7 @@ uniform sampler2D texture1;
 uniform bool useTexture;
 uniform float sunStrength;
 uniform vec3 viewPos; // Camera Position for Fog
+uniform vec2 uvScale; // Atlas Slot Size
 
 // Phase 4: Heatmap
 uniform bool useHeatmap;
@@ -29,9 +30,9 @@ void main()
     // We Map 0..1 sub-tile to 0..0.25 atlas space
     
     vec2 tileUV = fract(TexCoord);
-    // Atlas is 64x128 (4 slots wide, 8 slots high)
-    // U step is 0.25, V step is 0.125
-    vec2 finalUV = TexOrigin + vec2(tileUV.x * 0.25, tileUV.y * 0.125);
+    
+    // Dynamic UV Scale from Uniform
+    vec2 finalUV = TexOrigin + vec2(tileUV.x * uvScale.x, tileUV.y * uvScale.y);
     
     vec4 texColor = texture(texture1, finalUV);
     if(!useTexture)
