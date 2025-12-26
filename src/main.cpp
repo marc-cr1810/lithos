@@ -186,10 +186,12 @@ int main() {
 
   // load texture
   // Generate Procedural Atlas using TextureAtlas class
-  TextureAtlas atlas(64, 64, 16);
+  // Output Atlas size to debug
+  std::cout << "Generating Texture Atlas..." << std::endl;
+  TextureAtlas atlas(64, 128, 16); // Increased height to support more blocks
   atlas.Generate();
 
-  Texture blockTexture(atlas.GetWidth(), atlas.GetHeight(), atlas.GetData(), 3);
+  Texture blockTexture(atlas.GetWidth(), atlas.GetHeight(), atlas.GetData(), 4);
   // tell opengl for each sampler to which texture unit it belongs to
   ourShader.use();
   ourShader.setInt("texture1", 0);

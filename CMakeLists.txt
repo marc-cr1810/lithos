@@ -99,6 +99,7 @@ add_executable(minceraft
     src/world/Player.cpp
     src/world/WorldGenerator.cpp
     src/world/TreeDecorator.cpp
+    src/world/FloraDecorator.cpp
     src/world/OreDecorator.cpp
     src/world/World.cpp
     src/world/blocks/LiquidBlock.cpp

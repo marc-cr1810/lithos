@@ -4,12 +4,14 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/noise.hpp>
 
+#include "FloraDecorator.h"
 #include "OreDecorator.h"
 #include "TreeDecorator.h"
 
 WorldGenerator::WorldGenerator(int seed) : seed(seed) {
   decorators.push_back(new OreDecorator());
   decorators.push_back(new TreeDecorator());
+  decorators.push_back(new FloraDecorator());
 }
 
 WorldGenerator::~WorldGenerator() {

@@ -31,6 +31,14 @@ BlockRegistry::BlockRegistry() {
   registerBlock(new FallingBlock(BlockType::GRAVEL, "Gravel"));
   registerBlock(new SolidBlock(BlockType::SNOW, "Snow"));
   registerBlock(new SolidBlock(BlockType::ICE, "Ice"));
+
+  // Flora & Structures
+  registerBlock(new SolidBlock(BlockType::CACTUS, "Cactus"));
+  registerBlock(new SolidBlock(BlockType::PINE_WOOD, "Pine Wood"));
+  registerBlock(new PlantBlock(BlockType::PINE_LEAVES, "Pine Leaves"));
+  registerBlock(new PlantBlock(BlockType::TALL_GRASS, "Tall Grass"));
+  registerBlock(new PlantBlock(BlockType::DEAD_BUSH, "Dead Bush"));
+  registerBlock(new PlantBlock(BlockType::ROSE, "Rose"));
 }
 
 void BlockRegistry::registerBlock(Block *block) {

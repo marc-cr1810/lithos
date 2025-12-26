@@ -1,6 +1,7 @@
 #include "Chunk.h"
 #include "World.h"
 #include "WorldGenerator.h"
+#include <cmath>
 #include <glm/gtc/matrix_transform.hpp>
 #include <queue>
 #include <tuple>
@@ -421,6 +422,11 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
       for (int v = 0; v < CHUNK_SIZE; ++v) {
         for (int u = 0; u < CHUNK_SIZE; ++u) {
           if (mask[u][v].block->isActive()) {
+
+            // Skip Cross Shapes for Cube Meshing
+            if (mask[u][v].block->getRenderShape() == Block::RenderShape::CROSS)
+              continue;
+
             MaskInfo current = mask[u][v];
             // Greedy Extend
             // Disable greedy meshing for liquids to allow per-block smooth
@@ -957,6 +963,116 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
       }
     } // End d loop
   } // End faceDir loop
+
+  // Pass 2: Cross Geometry (Plants)
+  for (int x = 0; x < CHUNK_SIZE; ++x) {
+    for (int y = 0; y < CHUNK_SIZE; ++y) {
+      for (int z = 0; z < CHUNK_SIZE; ++z) {
+        ChunkBlock cb = blocks[x][y][z];
+        if (cb.isActive() &&
+            cb.block->getRenderShape() == Block::RenderShape::CROSS) {
+          float fx = (float)x;
+          float fy = (float)y;
+          float fz = (float)z;
+
+          float uMin, vMin;
+          cb.block->getTextureUV(0, uMin, vMin); // Face 0 default
+          float uMax = uMin + 0.25f;             // Assumption: Tiles are 0.25
+          float vMax = vMin + 0.25f;
+
+          float r, g, b;
+          cb.block->getColor(r, g, b);
+          float alpha = cb.block->getAlpha();
+
+          uint8_t sky = cb.skyLight;
+          uint8_t bl = cb.blockLight;
+          float l1 = pow((float)sky / 15.0f, 0.8f);
+          float l2 = pow((float)bl / 15.0f, 0.8f);
+          float ao = 0.0f; // No occlusion
+
+          auto pushVert = [&](float vx, float vy, float vz, float u, float v) {
+            opaqueVertices.push_back(vx);
+            opaqueVertices.push_back(vy);
+            opaqueVertices.push_back(vz);
+            opaqueVertices.push_back(r);
+            opaqueVertices.push_back(g);
+            opaqueVertices.push_back(b);
+            opaqueVertices.push_back(alpha);
+            opaqueVertices.push_back(u);
+            opaqueVertices.push_back(v);
+            opaqueVertices.push_back(l1);
+            opaqueVertices.push_back(l2);
+            opaqueVertices.push_back(ao);
+            opaqueVertices.push_back(uMin);
+            opaqueVertices.push_back(vMin);
+          };
+
+          // Plane 1 (Diagonal A)
+          // (0,0,0) -> (1,0,1) -> (1,1,1) -> (0,1,0)
+          // Reverting to offset to ensure aspect ratio is 1:1 (Square)
+          // Diagonal w/o offset is 1.414, texture is 1.0 -> Stretched
+          // With offset 0.1465, diagonal is 1.0 -> Square
+          float off = 0.1465f;
+          float p1_x1 = fx + off;
+          float p1_z1 = fz + off;
+          float p1_x2 = fx + 1.0f - off;
+          float p1_z2 = fz + 1.0f - off;
+
+          // Tri 1
+          // UVs: The shader expects 0..1 for local coords.
+          // TexOrigin (uMin, vMin) handles the atlas offset.
+          // FLIPPED Y for correct orientation: Bottom=0, Top=1
+          pushVert(p1_x1, fy, p1_z1, 0.0f, 0.0f);        // Bottom-Left
+          pushVert(p1_x2, fy, p1_z2, 1.0f, 0.0f);        // Bottom-Right
+          pushVert(p1_x2, fy + 1.0f, p1_z2, 1.0f, 1.0f); // Top-Right
+
+          // Tri 2
+          pushVert(p1_x1, fy, p1_z1, 0.0f, 0.0f);
+          pushVert(p1_x2, fy + 1.0f, p1_z2, 1.0f, 1.0f);
+          pushVert(p1_x1, fy + 1.0f, p1_z1, 0.0f, 1.0f); // Top-Left
+
+          // Back Face Plane 1 (Double Sided)
+          // Tri 3
+          pushVert(p1_x2, fy, p1_z2, 1.0f, 0.0f);
+          pushVert(p1_x1, fy, p1_z1, 0.0f, 0.0f);
+          pushVert(p1_x1, fy + 1.0f, p1_z1, 0.0f, 1.0f);
+
+          // Tri 4
+          pushVert(p1_x2, fy, p1_z2, 1.0f, 0.0f);
+          pushVert(p1_x1, fy + 1.0f, p1_z1, 0.0f, 1.0f);
+          pushVert(p1_x2, fy + 1.0f, p1_z2, 1.0f, 1.0f);
+
+          // Plane 2 (Diagonal B)
+          // (0, 0, 1) -> (1, 0, 0)
+          float p2_x1 = fx + off;
+          float p2_z1 = fz + 1.0f - off;
+          float p2_x2 = fx + 1.0f - off;
+          float p2_z2 = fz + off;
+
+          // Tri 1
+          pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f);
+          pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f);
+          pushVert(p2_x2, fy + 1.0f, p2_z2, 1.0f, 1.0f);
+
+          // Tri 2
+          pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f);
+          pushVert(p2_x2, fy + 1.0f, p2_z2, 1.0f, 1.0f);
+          pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f);
+
+          // Back face Plane 2
+          // Tri 3
+          pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f);
+          pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f);
+          pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f);
+
+          // Tri 4
+          pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f);
+          pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f);
+          pushVert(p2_x2, fy + 1.0f, p2_z2, 1.0f, 1.0f);
+        }
+      }
+    }
+  }
 
   // Stitch Vectors
   outOpaqueCount = opaqueVertices.size() / 14;

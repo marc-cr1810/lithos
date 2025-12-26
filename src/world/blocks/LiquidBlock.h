@@ -5,37 +5,55 @@
 
 class LiquidBlock : public Block {
 public:
-    LiquidBlock(uint8_t id, const std::string& name) : Block(id, name) {}
-    bool isSolid() const override { return false; }
-    bool isOpaque() const override { return false; }
-    RenderLayer getRenderLayer() const override { return RenderLayer::TRANSPARENT; }
+  LiquidBlock(uint8_t id, const std::string &name) : Block(id, name) {}
+  bool isSolid() const override { return false; }
+  bool isOpaque() const override { return false; }
+  RenderLayer getRenderLayer() const override {
+    return RenderLayer::TRANSPARENT;
+  }
 
-    void getTextureUV(int faceDir, float& uMin, float& vMin) const override {
-         if(id == BlockType::WATER) { uMin = 0.25f; vMin = 0.50f; }
-         else if(id == BlockType::LAVA) { uMin = 0.50f; vMin = 0.50f; }
-    }
-    
-    void getColor(float& r, float& g, float& b) const override {
-         if(id == BlockType::WATER) { r = 0.2f; g = 0.4f; b = 1.0f; }
-         else if(id == BlockType::LAVA) { r = 1.0f; g = 0.4f; b = 0.0f; }
-    }
-    
-    float getAlpha() const override {
-         if(id == BlockType::WATER) return 0.6f;
-         return 1.0f;
-    }
-    
-    uint8_t getEmission() const override {
-        if(id == BlockType::LAVA) return 13;
-        return 0;
-    }
+  void getTextureUV(int faceDir, float &uMin, float &vMin) const override {
+    if (id == BlockType::WATER) {
+      uMin = 0.25f;
+      vMin = 0.25f;
+    } // Slot (1, 2) -> 2*0.125 = 0.25
+    else if (id == BlockType::LAVA) {
+      uMin = 0.50f;
+      vMin = 0.25f;
+    } // Slot (2, 2) -> 2*0.125 = 0.25
+  }
 
-    void update(World& world, int x, int y, int z) const override;
-    void onPlace(World& world, int x, int y, int z) const override;
-    void onNeighborChange(World& world, int x, int y, int z, int nx, int ny, int nz) const override;
+  void getColor(float &r, float &g, float &b) const override {
+    if (id == BlockType::WATER) {
+      r = 0.2f;
+      g = 0.4f;
+      b = 1.0f;
+    } else if (id == BlockType::LAVA) {
+      r = 1.0f;
+      g = 0.4f;
+      b = 0.0f;
+    }
+  }
+
+  float getAlpha() const override {
+    if (id == BlockType::WATER)
+      return 0.6f;
+    return 1.0f;
+  }
+
+  uint8_t getEmission() const override {
+    if (id == BlockType::LAVA)
+      return 13;
+    return 0;
+  }
+
+  void update(World &world, int x, int y, int z) const override;
+  void onPlace(World &world, int x, int y, int z) const override;
+  void onNeighborChange(World &world, int x, int y, int z, int nx, int ny,
+                        int nz) const override;
 
 private:
-    void trySpread(World& world, int x, int y, int z, int newMeta) const;
+  void trySpread(World &world, int x, int y, int z, int newMeta) const;
 };
 
 #endif

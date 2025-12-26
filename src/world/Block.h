@@ -24,7 +24,13 @@ enum BlockType {
   SAND = 11,
   GRAVEL = 12,
   SNOW = 13,
-  ICE = 14
+  ICE = 14,
+  CACTUS = 15,
+  PINE_WOOD = 16,
+  PINE_LEAVES = 17,
+  TALL_GRASS = 18,
+  DEAD_BUSH = 19,
+  ROSE = 20
 };
 
 class World; // Forward declaration
@@ -45,6 +51,9 @@ public:
 
   enum class RenderLayer { OPAQUE, CUTOUT, TRANSPARENT };
   virtual RenderLayer getRenderLayer() const { return RenderLayer::OPAQUE; }
+
+  enum class RenderShape { CUBE, CROSS };
+  virtual RenderShape getRenderShape() const { return RenderShape::CUBE; }
 
   // Events
   virtual void onPlace(World &world, int x, int y, int z) const {}
