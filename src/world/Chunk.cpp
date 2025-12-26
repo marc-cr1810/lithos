@@ -1023,16 +1023,35 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             opaqueVertices.push_back(vMin);
           };
 
-          // Plane 1 (Diagonal A)
-          // (0,0,0) -> (1,0,1) -> (1,1,1) -> (0,1,0)
-          // Reverting to offset to ensure aspect ratio is 1:1 (Square)
-          // Diagonal w/o offset is 1.414, texture is 1.0 -> Stretched
-          // With offset 0.1465, diagonal is 1.0 -> Square
-          float off = 0.1465f;
-          float p1_x1 = fx + off;
-          float p1_z1 = fz + off;
-          float p1_x2 = fx + 1.0f - off;
-          float p1_z2 = fz + 1.0f - off;
+          // Randomize Rotation and Offset
+          // Simple Hash for deterministic randomness based on position
+          long long seed = ((long long)gx * 31337 + (long long)gy * 19283 +
+                            (long long)gz * 84211) ^
+                           0x5a17e5;
+          auto myRand = [&seed]() {
+            seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF;
+            return (float)seed / (float)0x7FFFFFFF;
+          };
+
+          float rndX = (myRand() - 0.5f) * 0.4f;       // +/- 0.2 offset
+          float rndZ = (myRand() - 0.5f) * 0.4f;       // +/- 0.2 offset
+          float rotation = myRand() * 3.14159f * 2.0f; // 0 to 360 degrees
+
+          float centerX = fx + 0.5f + rndX;
+          float centerZ = fz + 0.5f + rndZ;
+
+          // Cross has 2 planes.
+          // Scale for width 1.0 (Radius 0.5)
+          float scale = 0.5f;
+
+          // Plane 1
+          // Original was 45 degrees. We add random rotation.
+          float angle1 = rotation + 0.785398f; // + 45 deg
+
+          float p1_x1 = centerX + cos(angle1) * -scale;
+          float p1_z1 = centerZ + sin(angle1) * -scale;
+          float p1_x2 = centerX + cos(angle1) * scale;
+          float p1_z2 = centerZ + sin(angle1) * scale;
 
           // Tri 1
           // UVs: The shader expects 0..1 for local coords.
@@ -1058,12 +1077,12 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
           pushVert(p1_x1, fy + 1.0f, p1_z1, 0.0f, 1.0f);
           pushVert(p1_x2, fy + 1.0f, p1_z2, 1.0f, 1.0f);
 
-          // Plane 2 (Diagonal B)
-          // (0, 0, 1) -> (1, 0, 0)
-          float p2_x1 = fx + off;
-          float p2_z1 = fz + 1.0f - off;
-          float p2_x2 = fx + 1.0f - off;
-          float p2_z2 = fz + off;
+          // Plane 2 (Perpendicular)
+          float angle2 = angle1 + 1.570796f; // + 90 degrees
+          float p2_x1 = centerX + cos(angle2) * -scale;
+          float p2_z1 = centerZ + sin(angle2) * -scale;
+          float p2_x2 = centerX + cos(angle2) * scale;
+          float p2_z2 = centerZ + sin(angle2) * scale;
 
           // Tri 1
           pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f);
