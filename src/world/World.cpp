@@ -313,20 +313,51 @@ void World::loadChunks(const glm::vec3 &playerPos, int renderDistance,
   int cx = (int)floor(playerPos.x / CHUNK_SIZE);
   int cz = (int)floor(playerPos.z / CHUNK_SIZE);
 
+  // Incremental Scanning: Spread work over multiple frames
+  static int scanX = 0;
+  static int scanZ = 0;
+  static int lastCx = INT_MIN;
+  static int lastCz = INT_MIN;
+  static int lastRenderDistance = -1;
+
+  if (cx != lastCx || cz != lastCz || renderDistance != lastRenderDistance) {
+    scanX = cx - renderDistance;
+    scanZ = cz - renderDistance;
+    lastCx = cx;
+    lastCz = cz;
+    lastRenderDistance = renderDistance;
+  }
+
   auto planes = extractPlanes(viewProjection);
 
-  // Simple radius check
-  // Spiraling or distance sort would be better but simple loops for now
-  for (int x = cx - renderDistance; x <= cx + renderDistance; ++x) {
-    for (int z = cz - renderDistance; z <= cz + renderDistance; ++z) {
-      int distSq = (x - cx) * (x - cx) + (z - cz) * (z - cz);
-      if (distSq > renderDistance * renderDistance)
-        continue;
+  // Process only N chunks per frame to avoid spikes
+  const int MAX_CHUNKS_PER_FRAME = 80;
+  int chunksProcessed = 0;
 
-      // Check visibility (Columns)
-      // We check a large box for the column (y=0 to 16?)
-      // Just specific chunks for now
+  int minX = cx - renderDistance;
+  int maxX = cx + renderDistance;
+  int minZ = cz - renderDistance;
+  int maxZ = cz + renderDistance;
+  int renderDistSq = renderDistance * renderDistance;
 
+  while (chunksProcessed < MAX_CHUNKS_PER_FRAME) {
+    // Check if current scan position is valid
+    if (scanX > maxX) {
+      // Completed full scan, wrap around
+      scanX = minX;
+      scanZ = minZ;
+      break; // Exit to avoid infinite loop
+    }
+
+    int x = scanX;
+    int z = scanZ;
+
+    // Distance check
+    int dx = x - cx;
+    int dz = z - cz;
+    int distSq = dx * dx + dz * dz;
+
+    if (distSq <= renderDistSq) {
       // Generate columns 0 to 4 (limited height for now)
       for (int y = 0; y < 5; ++y) {
         auto key = std::make_tuple(x, y, z);
@@ -359,6 +390,15 @@ void World::loadChunks(const glm::vec3 &playerPos, int renderDistance,
         }
       }
     }
+
+    // Advance scan position
+    scanZ++;
+    if (scanZ > maxZ) {
+      scanZ = minZ;
+      scanX++;
+    }
+
+    chunksProcessed++;
   }
 }
 
