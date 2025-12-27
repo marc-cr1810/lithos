@@ -352,6 +352,11 @@ int main() {
       glm::vec3((float)spawnX + 0.5f, spawnY, (float)spawnZ + 0.5f);
   camera.Position = player.GetEyePosition();
 
+  // Set default teleport location to spawn
+  dbg_teleport_pos[0] = player.Position.x;
+  dbg_teleport_pos[1] = player.Position.y;
+  dbg_teleport_pos[2] = player.Position.z;
+
   // Create Player Entity
   auto playerEntity = registry.create();
   registry.emplace<TransformComponent>(playerEntity, player.Position,
@@ -523,8 +528,14 @@ int main() {
         if (ImGui::Button("Teleport")) {
           player.Position = glm::vec3(dbg_teleport_pos[0], dbg_teleport_pos[1],
                                       dbg_teleport_pos[2]);
-          // Reset velocity to avoid carrying momentum into wall
           player.Velocity = glm::vec3(0.0f);
+
+          // Sync to ECS
+          auto &transform = registry.get<TransformComponent>(playerEntity);
+          transform.position = player.Position;
+
+          auto &velocity = registry.get<VelocityComponent>(playerEntity);
+          velocity.velocity = player.Velocity;
         }
         ImGui::SameLine();
         ImGui::InputFloat3("##pos", dbg_teleport_pos);
