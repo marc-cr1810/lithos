@@ -105,6 +105,7 @@ add_executable(lithos
     src/world/blocks/LiquidBlock.cpp
     src/world/BlockRegistry.cpp
     src/ecs/Systems.cpp
+    src/debug/Profiler.cpp
     
     # ImGui
     ${imgui_SOURCE_DIR}/imgui.cpp

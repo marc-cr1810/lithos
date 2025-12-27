@@ -18,6 +18,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include "debug/Profiler.h"
 #include "render/Camera.h"
 #include "render/Shader.h"
 #include "render/Texture.h"
@@ -48,7 +49,9 @@ float lastFrame = 0.0f;
 
 // Debug State
 bool isDebugMode = false;
+bool showProfiler = false;
 bool lastM = false;
+bool lastP = false;
 
 // Debug UI State
 float dbg_teleport_pos[3] = {0.0f, 0.0f, 0.0f};
@@ -368,9 +371,16 @@ int main() {
   const float TICK_RATE = 20.0f;
   const float TICK_INTERVAL = 1.0f / TICK_RATE;
 
+  // Interaction Vars
+  glm::ivec3 hitPos;
+  glm::ivec3 prePos;
+  bool hit = false;
+  float sunStrength = 1.0f;
+
   // render loop
   // -----------
   while (!glfwWindowShouldClose(window)) {
+    PROFILE_SCOPE("Main Loop");
     // per-frame time logic
     // --------------------
     float currentFrame = static_cast<float>(glfwGetTime());
@@ -383,6 +393,7 @@ int main() {
 
       // Update Animations
       if (atlas.Update(deltaTime * dbg_timeSpeed)) {
+        PROFILE_SCOPE("Texture Anims");
         atlas.UpdateTextureGPU(blockTexture.ID);
       }
     }
@@ -394,18 +405,22 @@ int main() {
 
     tickAccumulator += deltaTime;
     while (tickAccumulator >= TICK_INTERVAL) {
+      PROFILE_SCOPE("World Tick");
       world.Tick();
       tickAccumulator -= TICK_INTERVAL;
     }
 
     // World Update (Mesh Uploads)
-    world.Update();
+    {
+      PROFILE_SCOPE("World Update");
+      world.Update();
+    }
 
     // LOD Check (Every 0.5s)
     static float lodTimer = 0.0f;
     lodTimer += deltaTime;
     if (lodTimer > 0.5f) {
-
+      PROFILE_SCOPE("Chunk Loading");
       lodTimer = 0.0f;
       glm::mat4 projection =
           glm::perspective(glm::radians(camera.Zoom),
@@ -419,15 +434,17 @@ int main() {
     // Cycle length: 2400 seconds
     // Factor = 2*PI / 2400 = PI / 1200
     const float cycleFactor = 3.14159265f / 1200.0f;
-    float sunStrength = (sin(globalTime * cycleFactor) + 1.0f) * 0.5f;
+    // Calculate Sun Brightness
+    // Simple Sine wave day/night cycle
+    // Cycle length: 2400 seconds
+    // Factor = 2*PI / 2400 = PI / 1200
+
+    sunStrength = (sin(globalTime * cycleFactor) + 1.0f) * 0.5f;
     // Clamp minimum brightness so it's not pitch black (moonlight)
     sunStrength = std::max(0.05f, sunStrength);
 
     // Interaction (Raycast)
-    glm::ivec3 hitPos;
-    glm::ivec3 prePos;
-    bool hit =
-        world.raycast(camera.Position, camera.Front, 5.0f, hitPos, prePos);
+    hit = world.raycast(camera.Position, camera.Front, 5.0f, hitPos, prePos);
 
     // Debug Window
     if (isDebugMode) {
@@ -452,15 +469,6 @@ int main() {
         ImGui::Text("Yaw: %.1f, Pitch: %.1f", player.Yaw, player.Pitch);
         ImGui::Text("Grounded: %s", player.IsGrounded ? "Yes" : "No");
 
-        ImGui::Separator();
-        ImGui::Text("Sun Strength: %.2f", sunStrength);
-        ImGui::Text("Chunks: %d / %zu", dbg_renderedChunks,
-                    world.getChunkCount());
-        ImGui::Text("Tick: %lld", world.currentTick);
-      }
-
-      if (ImGui::CollapsingHeader("Controls", ImGuiTreeNodeFlags_DefaultOpen)) {
-        // Teleport
         if (ImGui::Button("Teleport")) {
           player.Position = glm::vec3(dbg_teleport_pos[0], dbg_teleport_pos[1],
                                       dbg_teleport_pos[2]);
@@ -469,56 +477,56 @@ int main() {
         }
         ImGui::SameLine();
         ImGui::InputFloat3("##pos", dbg_teleport_pos);
+      }
 
-        // Current Pos to Teleport Target
-        if (ImGui::Button("Copy Current Pos")) {
-          dbg_teleport_pos[0] = player.Position.x;
-          dbg_teleport_pos[1] = player.Position.y;
-          dbg_teleport_pos[2] = player.Position.z;
-        }
+      // Current Pos to Teleport Target
+      if (ImGui::Button("Copy Current Pos")) {
+        dbg_teleport_pos[0] = player.Position.x;
+        dbg_teleport_pos[1] = player.Position.y;
+        dbg_teleport_pos[2] = player.Position.z;
+      }
 
-        ImGui::Separator();
-        // FOV
-        ImGui::SliderFloat("FOV", &camera.Zoom, 1.0f, 120.0f);
+      ImGui::Separator();
+      // FOV
+      ImGui::SliderFloat("FOV", &camera.Zoom, 1.0f, 120.0f);
 
-        // VSync
-        if (ImGui::Checkbox("VSync", &dbg_vsync)) {
-          glfwSwapInterval(dbg_vsync ? 1 : 0);
-        }
+      // VSync
+      if (ImGui::Checkbox("VSync", &dbg_vsync)) {
+        glfwSwapInterval(dbg_vsync ? 1 : 0);
+      }
 
-        ImGui::Separator();
-        ImGui::Text("Time Controls");
-        if (ImGui::Button(dbg_timePaused ? "Resume" : "Pause")) {
-          dbg_timePaused = !dbg_timePaused;
-        }
-        ImGui::SameLine();
-        ImGui::SliderFloat("Speed", &dbg_timeSpeed, 0.0f, 10.0f);
-        ImGui::SliderFloat("Time", &globalTime, 0.0f, 2400.0f); // 2400s cycle
+      ImGui::Separator();
+      ImGui::Text("Time Controls");
+      if (ImGui::Button(dbg_timePaused ? "Resume" : "Pause")) {
+        dbg_timePaused = !dbg_timePaused;
+      }
+      ImGui::SameLine();
+      ImGui::SliderFloat("Speed", &dbg_timeSpeed, 0.0f, 10.0f);
+      ImGui::SliderFloat("Time", &globalTime, 0.0f, 2400.0f); // 2400s cycle
 
-        ImGui::Separator();
-        ImGui::Text("Player / Render");
-        ImGui::Checkbox("Fly Mode (Noclip)", &player.FlyMode);
-        ImGui::Checkbox("Wireframe", &dbg_wireframe);
-        if (ImGui::SliderInt("Render Dist", &dbg_renderDistance, 2, 32)) {
-          glm::mat4 proj = glm::perspective(
-              glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT,
-              0.1f, 1000.0f);
-          glm::mat4 view = camera.GetViewMatrix();
-          world.loadChunks(player.Position, dbg_renderDistance, proj * view);
-        }
-        ImGui::SliderFloat("Gravity", &player.Gravity, 0.0f, 50.0f);
+      ImGui::Separator();
+      ImGui::Text("Player / Render");
+      ImGui::Checkbox("Fly Mode (Noclip)", &player.FlyMode);
+      ImGui::Checkbox("Wireframe", &dbg_wireframe);
+      if (ImGui::SliderInt("Render Dist", &dbg_renderDistance, 2, 32)) {
+        glm::mat4 proj = glm::perspective(glm::radians(camera.Zoom),
+                                          (float)SCR_WIDTH / (float)SCR_HEIGHT,
+                                          0.1f, 1000.0f);
+        glm::mat4 view = camera.GetViewMatrix();
+        world.loadChunks(player.Position, dbg_renderDistance, proj * view);
+      }
+      ImGui::SliderFloat("Gravity", &player.Gravity, 0.0f, 50.0f);
 
-        ImGui::SameLine();
-        ImGui::Checkbox("Freeze Culling", &dbg_freezeCulling);
+      ImGui::SameLine();
+      ImGui::Checkbox("Freeze Culling", &dbg_freezeCulling);
 
-        ImGui::Separator();
-        ImGui::Text("Visualization");
-        ImGui::Checkbox("Chunk Borders", &dbg_chunkBorders);
-        ImGui::Checkbox("Light Heatmap", &dbg_useHeatmap);
-        ImGui::Checkbox("Fog", &dbg_useFog);
-        if (dbg_useFog) {
-          ImGui::SliderFloat("Fog Dist", &dbg_fogDist, 10.0f, 200.0f);
-        }
+      ImGui::Separator();
+      ImGui::Text("Visualization");
+      ImGui::Checkbox("Chunk Borders", &dbg_chunkBorders);
+      ImGui::Checkbox("Light Heatmap", &dbg_useHeatmap);
+      ImGui::Checkbox("Fog", &dbg_useFog);
+      if (dbg_useFog) {
+        ImGui::SliderFloat("Fog Dist", &dbg_fogDist, 10.0f, 200.0f);
       }
 
       if (ImGui::CollapsingHeader("Creative Menu",
@@ -571,12 +579,46 @@ int main() {
       ImGui::End();
     }
 
-    // input
-    // -----
-    processInput(window, world);
+    // Profiler Window
+    if (isDebugMode || showProfiler) {
+      // Overlay Mode if not in full debug mode
+      if (!isDebugMode) {
+        ImGui::SetNextWindowBgAlpha(0.35f); // Transparent background
+        ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(300, 400), ImGuiCond_FirstUseEver);
+      }
 
+      ImGuiWindowFlags flags = 0;
+      if (!isDebugMode) {
+        flags |= ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
+                 ImGuiWindowFlags_AlwaysAutoResize |
+                 ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+      }
+
+      if (ImGui::Begin("Profiler", nullptr, flags)) {
+        if (!isDebugMode) {
+          ImGui::Text("Profiler Overlay (Press P to toggle, M for Mouse)");
+          ImGui::Separator();
+        }
+
+        for (auto &result : Profiler::Get().GetResults()) {
+          const std::string &name = result.first;
+          std::vector<float> &history = result.second;
+          if (!history.empty()) {
+            char label[50];
+            sprintf(label, "%.3fms", history.back());
+            ImGui::PlotLines(name.c_str(), history.data(), (int)history.size(),
+                             0, label, 0.0f, 20.0f, ImVec2(0, 50));
+          }
+        }
+      }
+      ImGui::End();
+    }
     // Update Player Physics
-    player.Update(deltaTime, world);
+    {
+      PROFILE_SCOPE("Player Update");
+      player.Update(deltaTime, world);
+    }
 
     // Sync Camera
     camera.Position = player.Position;
@@ -654,6 +696,10 @@ int main() {
     }
 
     dbg_renderedChunks = world.render(ourShader, cullMatrix);
+    {
+      PROFILE_SCOPE("Render Chunks");
+      dbg_renderedChunks = world.render(ourShader, cullMatrix);
+    }
 
     if (dbg_wireframe)
       glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
@@ -814,8 +860,8 @@ int main() {
     // save/restore it to make it easier to paste this code elsewhere.
     //  For this specific demo app we could also call
     //  glfwMakeContextCurrent(window) directly)
-    ImGuiIO &io = ImGui::GetIO();
-    (void)io;
+    // ImGuiIO &io = ImGui::GetIO(); // Already declared
+
     if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
       GLFWwindow *backup_current_context = glfwGetCurrentContext();
       ImGui::UpdatePlatformWindows();
@@ -823,7 +869,10 @@ int main() {
       glfwMakeContextCurrent(backup_current_context);
     }
 
-    glfwSwapBuffers(window);
+    {
+      PROFILE_SCOPE("Swap Buffers");
+      glfwSwapBuffers(window);
+    }
     glfwPollEvents();
   }
 
@@ -841,8 +890,8 @@ int main() {
   return 0;
 }
 
-// process all input: query GLFW whether relevant keys are pressed/released this
-// frame and react accordingly
+// process all input: query GLFW whether relevant keys are pressed/released
+// this frame and react accordingly
 // ---------------------------------------------------------------------------------------------------------
 
 void processInput(GLFWwindow *window, const World &world) {
@@ -858,6 +907,13 @@ void processInput(GLFWwindow *window, const World &world) {
     }
   }
   lastM = currentM;
+
+  // Toggle Profiler Overlay
+  bool currentP = glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS;
+  if (currentP && !lastP) {
+    showProfiler = !showProfiler;
+  }
+  lastP = currentP;
 
   // If in debug mode, return early or skip player controls (except movement
   // maybe?) Let's keep movement but disable mouse look.
