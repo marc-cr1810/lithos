@@ -428,8 +428,7 @@ int main() {
                            (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
       glm::mat4 view = camera.GetViewMatrix();
       world.loadChunks(player.Position, dbg_renderDistance, projection * view);
-      // TODO: Re-enable after testing
-      // world.unloadChunks(player.Position, dbg_renderDistance);
+      world.unloadChunks(player.Position, dbg_renderDistance);
     }
 
     // Calculate Sun Brightness
