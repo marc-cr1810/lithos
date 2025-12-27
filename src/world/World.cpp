@@ -313,16 +313,73 @@ void World::loadChunks(const glm::vec3 &playerPos, int renderDistance,
   int cx = (int)floor(playerPos.x / CHUNK_SIZE);
   int cz = (int)floor(playerPos.z / CHUNK_SIZE);
 
-  // Incremental Scanning: Spread work over multiple frames
-  static int scanX = 0;
-  static int scanZ = 0;
+  // Priority Queue: Sort chunks by distance, visibility, and height
+  struct ChunkRequest {
+    int x, y, z;
+    float priority;
+
+    bool operator<(const ChunkRequest &other) const {
+      return priority < other.priority; // Min heap (we want max priority first)
+    }
+  };
+
+  static std::vector<ChunkRequest> loadQueue;
   static int lastCx = INT_MIN;
   static int lastCz = INT_MIN;
   static int lastRenderDistance = -1;
+  static size_t queueIndex = 0;
 
+  // Rebuild queue when player moves to new chunk
   if (cx != lastCx || cz != lastCz || renderDistance != lastRenderDistance) {
-    scanX = cx - renderDistance;
-    scanZ = cz - renderDistance;
+    loadQueue.clear();
+    queueIndex = 0;
+
+    auto planes = extractPlanes(viewProjection);
+    int minX = cx - renderDistance;
+    int maxX = cx + renderDistance;
+    int minZ = cz - renderDistance;
+    int maxZ = cz + renderDistance;
+    int renderDistSq = renderDistance * renderDistance;
+
+    // Build priority queue of all chunks in range
+    for (int x = minX; x <= maxX; ++x) {
+      for (int z = minZ; z <= maxZ; ++z) {
+        int dx = x - cx;
+        int dz = z - cz;
+        int distSq = dx * dx + dz * dz;
+
+        if (distSq <= renderDistSq) {
+          float distance = std::sqrt((float)distSq);
+
+          for (int y = 0; y < 5; ++y) {
+            // Calculate priority score
+            float priority = 1000.0f / (distance + 1.0f); // Closer = higher
+
+            // Check if in frustum
+            glm::vec3 min =
+                glm::vec3(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE);
+            glm::vec3 max = min + glm::vec3(CHUNK_SIZE);
+            if (isAABBInFrustum(min, max, planes)) {
+              priority *= 2.0f; // Double priority if visible
+            }
+
+            // Boost ground-level chunks
+            if (y <= 2) {
+              priority *= 1.5f;
+            }
+
+            loadQueue.push_back({x, y, z, priority});
+          }
+        }
+      }
+    }
+
+    // Sort by priority (highest first)
+    std::sort(loadQueue.begin(), loadQueue.end(),
+              [](const ChunkRequest &a, const ChunkRequest &b) {
+                return a.priority > b.priority;
+              });
+
     lastCx = cx;
     lastCz = cz;
     lastRenderDistance = renderDistance;
@@ -330,75 +387,45 @@ void World::loadChunks(const glm::vec3 &playerPos, int renderDistance,
 
   auto planes = extractPlanes(viewProjection);
 
-  // Process only N chunks per frame to avoid spikes
+  // Process top N chunks from queue
   const int MAX_CHUNKS_PER_FRAME = 80;
   int chunksProcessed = 0;
 
-  int minX = cx - renderDistance;
-  int maxX = cx + renderDistance;
-  int minZ = cz - renderDistance;
-  int maxZ = cz + renderDistance;
-  int renderDistSq = renderDistance * renderDistance;
+  while (chunksProcessed < MAX_CHUNKS_PER_FRAME &&
+         queueIndex < loadQueue.size()) {
+    const auto &req = loadQueue[queueIndex];
+    queueIndex++;
 
-  while (chunksProcessed < MAX_CHUNKS_PER_FRAME) {
-    // Check if current scan position is valid
-    if (scanX > maxX) {
-      // Completed full scan, wrap around
-      scanX = minX;
-      scanZ = minZ;
-      break; // Exit to avoid infinite loop
+    auto key = std::make_tuple(req.x, req.y, req.z);
+
+    bool exists = false;
+    {
+      std::lock_guard<std::mutex> lock(worldMutex);
+      if (chunks.find(key) != chunks.end())
+        exists = true;
     }
 
-    int x = scanX;
-    int z = scanZ;
+    if (!exists) {
+      std::lock_guard<std::mutex> lock(genMutex);
+      if (generatingChunks.find(key) == generatingChunks.end()) {
+        generatingChunks.insert(key);
 
-    // Distance check
-    int dx = x - cx;
-    int dz = z - cz;
-    int distSq = dx * dx + dz * dz;
-
-    if (distSq <= renderDistSq) {
-      // Generate columns 0 to 4 (limited height for now)
-      for (int y = 0; y < 5; ++y) {
-        auto key = std::make_tuple(x, y, z);
-
-        bool exists = false;
-        {
-          std::lock_guard<std::mutex> lock(worldMutex);
-          if (chunks.find(key) != chunks.end())
-            exists = true;
+        // High priority chunks go to front
+        if (req.priority > 100.0f) {
+          genQueue.push_front(key);
+        } else {
+          genQueue.push_back(key);
         }
-
-        if (!exists) {
-          std::lock_guard<std::mutex> lock(genMutex);
-          if (generatingChunks.find(key) == generatingChunks.end()) {
-            generatingChunks.insert(key);
-
-            // Priority Check
-            glm::vec3 min =
-                glm::vec3(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE);
-            glm::vec3 max = min + glm::vec3(CHUNK_SIZE);
-
-            if (isAABBInFrustum(min, max, planes)) {
-              // Priority!
-              genQueue.push_front(key);
-            } else {
-              genQueue.push_back(key);
-            }
-            genCondition.notify_one();
-          }
-        }
+        genCondition.notify_one();
       }
     }
 
-    // Advance scan position
-    scanZ++;
-    if (scanZ > maxZ) {
-      scanZ = minZ;
-      scanX++;
-    }
-
     chunksProcessed++;
+  }
+
+  // Reset queue when finished
+  if (queueIndex >= loadQueue.size()) {
+    queueIndex = 0;
   }
 }
 
