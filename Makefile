@@ -6,22 +6,22 @@ all: debug
 # Debug Build
 debug:
 	cmake -B build/debug -DCMAKE_BUILD_TYPE=Debug -Wno-dev
-	cmake --build build/debug
+	cmake --build build/debug --config Debug
 
 # Release Build
 release:
 	cmake -B build/release -DCMAKE_BUILD_TYPE=Release -Wno-dev
-	cmake --build build/release
+	cmake --build build/release --config Release
 
 # Run Debug
 run: run_debug
 
 run_debug: debug
-	./build/debug/lithos
+	python run_game.py debug
 
 # Run Release
 run_release: release
-	./build/release/minceraft
+	python run_game.py release
 
 clean:
 	rm -rf build build_release
