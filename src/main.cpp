@@ -27,8 +27,14 @@
 #include "world/World.h"
 #include "world/WorldGenerator.h"
 
+#include "ecs/Components.h"
+#include "ecs/Systems.h"
+#include <entt/entt.hpp>
+
 void framebuffer_size_callback(GLFWwindow *window, int width, int height);
-void processInput(GLFWwindow *window, const World &world);
+void processInput(GLFWwindow *window, const World &world,
+                  entt::registry &registry, entt::entity playerEntity,
+                  float deltaTime);
 
 // settings
 // settings
@@ -238,6 +244,9 @@ int main() {
 
   // World generation
   World world;
+
+  // ECS Registry
+  entt::registry registry;
   // WorldGenerator generator; // Unused, and now requires seed. World handles
   // generation internally.
 
@@ -342,6 +351,19 @@ int main() {
   player.Position =
       glm::vec3((float)spawnX + 0.5f, spawnY, (float)spawnZ + 0.5f);
   camera.Position = player.GetEyePosition();
+
+  // Create Player Entity
+  auto playerEntity = registry.create();
+  registry.emplace<TransformComponent>(playerEntity, player.Position,
+                                       glm::vec3(0.0f), glm::vec3(1.0f));
+  registry.emplace<VelocityComponent>(playerEntity, glm::vec3(0.0f));
+  registry.emplace<GravityComponent>(playerEntity, 45.0f);
+  registry.emplace<CameraComponent>(playerEntity, camera.Front, camera.Right,
+                                    camera.Up, camera.WorldUp, camera.Yaw,
+                                    camera.Pitch, camera.Zoom);
+  registry.emplace<InputComponent>(playerEntity, 0.1f, 6.0f, 10.5f, false,
+                                   false, false);
+  registry.emplace<PlayerTag>(playerEntity);
 
   // Crosshair Setup
   float crosshairVertices[] = {
@@ -675,18 +697,26 @@ int main() {
       }
       ImGui::End();
     }
-    // Update Player Physics
+    // ECS Update
     {
-      PROFILE_SCOPE("Player Update");
-      player.Update(deltaTime, world);
+      PROFILE_SCOPE("ECS Update");
+
+      // Physics (Gravity & Velocity integration)
+      PhysicsSystem::Update(registry, deltaTime);
+
+      // Input & Player Control (Movement, Jump, Camera Look)
+      processInput(window, world, registry, playerEntity, deltaTime);
+
+      // Syn Camera
+      CameraSystem::Update(registry, camera);
+
+      // Sync ECS back to Legacy Player for Debug UI & compatibility
+      auto &transform = registry.get<TransformComponent>(playerEntity);
+      player.Position = transform.position;
+      // also sync velocity for debug?
+      // player.Velocity =
+      // registry.get<VelocityComponent>(playerEntity).velocity;
     }
-
-    // Sync Camera
-    camera.Position = player.Position;
-    camera.Front = player.Front;
-    camera.Up = player.Up;
-
-    processInput(window, world);
 
     // Render
     // ------
@@ -980,29 +1010,39 @@ int main() {
 // this frame and react accordingly
 // ---------------------------------------------------------------------------------------------------------
 
-void processInput(GLFWwindow *window, const World &world) {
-  // Toggle Debug Mode
+void processInput(GLFWwindow *window, const World &world,
+                  entt::registry &registry, entt::entity playerEntity,
+                  float deltaTime) {
+  if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+    glfwSetWindowShouldClose(window, true);
+
+  // Debug Toggles
+  static bool lastMState = false;
   bool currentM = glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS;
-  if (currentM && !lastM) {
-    isDebugMode = !isDebugMode;
+  if (currentM && !lastMState) {
     if (isDebugMode) {
-      glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-    } else {
-      glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-      firstMouse = true; // Reset mouse look to avoid jumps
+      // Toggle cursor
+      if (glfwGetInputMode(window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED)
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+      else
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     }
   }
-  lastM = currentM;
+  lastMState = currentM;
 
-  // Toggle Profiler Overlay
+  static bool lastPState = false;
   bool currentP = glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS;
-  if (currentP && !lastP) {
+  if (currentP && !lastPState) {
+    isDebugMode = !isDebugMode;
     showProfiler = !showProfiler;
   }
-  lastP = currentP;
+  lastPState = currentP;
 
   // If in debug mode, return early or skip player controls (except movement
-  // maybe?) Let's keep movement but disable mouse look.
+  // maybe?)
+
+  // ECS Input Handling
+  auto &input = registry.get<InputComponent>(playerEntity);
 
   // Sprint Logic
   static bool lastWState = false;
@@ -1019,7 +1059,7 @@ void processInput(GLFWwindow *window, const World &world) {
 
   // Toggle Sprint with Ctrl
   if (ctrlPressed && !lastCtrlState) {
-    player.IsSprinting = !player.IsSprinting;
+    input.isSprinting = !input.isSprinting;
   }
   lastCtrlState = ctrlPressed;
 
@@ -1027,7 +1067,7 @@ void processInput(GLFWwindow *window, const World &world) {
   if (currentWState && !lastWState) {
     float currentTime = (float)glfwGetTime();
     if (currentTime - lastWTime < 0.3f) {
-      player.IsSprinting = true;
+      input.isSprinting = true;
     }
     lastWTime = currentTime;
   }
@@ -1035,27 +1075,28 @@ void processInput(GLFWwindow *window, const World &world) {
 
   // Reset Sprint if stopped moving
   if (!isMoving) {
-    player.IsSprinting = false;
+    input.isSprinting = false;
   }
 
   bool up = false;
   bool down = false;
 
-  if (player.FlyMode) {
+  if (input.flyMode) {
     if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
       up = true;
     if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
       down = true;
   } else {
     if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-      player.ProcessJump(true, world);
+      up = true; // Handled by System
   }
 
-  // Normalized Movement Call
-  player.ProcessKeyboard(currentWState, currentSState, currentAState,
-                         currentDState, up, down, deltaTime, world);
+  // Call System
+  PlayerControlSystem::Update(registry, currentWState, currentSState,
+                              currentAState, currentDState, up, down, deltaTime,
+                              world);
 
-  // Mouse Polling
+  // Mouse Polling & Camera Update
   if (!isDebugMode) {
     double xpos, ypos;
     glfwGetCursorPos(window, &xpos, &ypos);
@@ -1074,7 +1115,22 @@ void processInput(GLFWwindow *window, const World &world) {
     lastX = (float)xpos;
     lastY = (float)ypos;
 
-    player.ProcessMouseMovement(xoffset, yoffset);
+    // Update Camera Component
+    auto &camComp = registry.get<CameraComponent>(playerEntity);
+    float sensitivity = input.mouseSensitivity;
+    xoffset *= sensitivity;
+    yoffset *= sensitivity;
+
+    camComp.yaw += xoffset;
+    camComp.pitch += yoffset;
+
+    // Constrain pitch
+    if (camComp.pitch > 89.0f)
+      camComp.pitch = 89.0f;
+    if (camComp.pitch < -89.0f)
+      camComp.pitch = -89.0f;
+
+    // Front vector is updated by PlayerControlSystem based on yaw/pitch
   }
 }
 
