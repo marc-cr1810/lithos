@@ -178,23 +178,43 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
     // --- PHASE 2: Fluid Physics (Water/Lava) ---
     bool inWater = false;
     bool inLava = false;
+    bool headInWater = false;
+    bool headInLava = false;
     {
       int ix = (int)floor(transform.position.x);
       int iy = (int)floor(transform.position.y); // Eye pos
       int iz = (int)floor(transform.position.z);
 
-      auto checkFluid = [&](int x, int y, int z) {
-        ChunkBlock b = world.getBlock(x, y, z);
-        if (b.getType() == BlockType::WATER)
-          inWater = true;
-        if (b.getType() == BlockType::LAVA)
-          inLava = true;
+      auto getBlockType = [&](int x, int y, int z) {
+        return world.getBlock(x, y, z).getType();
       };
 
-      checkFluid(ix, iy, iz);
+      uint8_t headType = getBlockType(ix, iy, iz);
+      if (headType == BlockType::WATER) {
+        inWater = true;
+        headInWater = true;
+      }
+      if (headType == BlockType::LAVA) {
+        inLava = true;
+        headInLava = true;
+      }
+
       // Check feet (Eye - 1.6)
       int iyFeet = (int)floor(transform.position.y - 1.6f);
-      checkFluid(ix, iyFeet, iz);
+      uint8_t feetType = getBlockType(ix, iyFeet, iz);
+      if (feetType == BlockType::WATER)
+        inWater = true;
+      if (feetType == BlockType::LAVA)
+        inLava = true;
+
+      // Extended Range (Sub-feet) to smooth surface transition.
+      // Helps prevent "skipping" by keeping fluid physics active during crest.
+      int iySub = (int)floor(transform.position.y - 1.85f);
+      uint8_t subType = getBlockType(ix, iySub, iz);
+      if (subType == BlockType::WATER)
+        inWater = true;
+      if (subType == BlockType::LAVA)
+        inLava = true;
     }
 
     // Adjust Gravity & Drag
@@ -301,12 +321,29 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
     }
 
     // --- PHASE 4: Jump / Swim ---
+    // --- PHASE 4: Jump / Swim ---
     if (up) {
-      if (inWater || inLava) {
-        // Swim up
-        vel.velocity.y = 5.0f;
+      if (headInWater || headInLava) {
+        // Only force swim UP if head is submerged.
+        // If head is out but feet in, we let buoyancy/gravity handle the
+        // bobbing.
+        float swimSpeed = 5.0f;
+        if (headInLava)
+          swimSpeed = 3.0f;
+        vel.velocity.y = swimSpeed;
+      } else if (inWater || inLava) {
+        // Feet in, Head out.
+        // Surface Lift Assist: Ensure enough lift to exit fluid.
+        // If we sink too deep, we can't get out.
+        // Gravity is pulling down.
+        float minLift = 3.5f;
         if (inLava)
-          vel.velocity.y = 3.0f; // Slower swim in lava
+          minLift = 2.5f; // Slower exit from lava
+
+        // If holding jump at surface, maintain minimum climb speed
+        if (vel.velocity.y < minLift) {
+          vel.velocity.y = minLift;
+        }
       } else if (input.isGrounded) {
         vel.velocity.y = 13.0f;
         input.isGrounded = false;
