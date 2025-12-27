@@ -429,6 +429,98 @@ void World::loadChunks(const glm::vec3 &playerPos, int renderDistance,
   }
 }
 
+void World::unloadChunks(const glm::vec3 &playerPos, int renderDistance) {
+  int cx = (int)floor(playerPos.x / CHUNK_SIZE);
+  int cz = (int)floor(playerPos.z / CHUNK_SIZE);
+
+  // Unload distance = render distance + buffer to avoid thrashing
+  int unloadDistance = renderDistance + 2;
+  int unloadDistSq = unloadDistance * unloadDistance;
+
+  std::vector<std::tuple<int, int, int>> toUnload;
+
+  // Find chunks to unload
+  {
+    std::lock_guard<std::mutex> lock(worldMutex);
+    for (auto &pair : chunks) {
+      auto [x, y, z] = pair.first;
+      int dx = x - cx;
+      int dz = z - cz;
+      int distSq = dx * dx + dz * dz;
+
+      // Only check horizontal distance, keep all Y levels
+      if (distSq > unloadDistSq) {
+        toUnload.push_back(pair.first);
+      }
+    }
+  }
+
+  // Unload chunks
+  for (auto &key : toUnload) {
+    auto [x, y, z] = key;
+
+    // Get chunk before erasing
+    Chunk *chunkToUnload = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(worldMutex);
+      auto it = chunks.find(key);
+      if (it != chunks.end()) {
+        chunkToUnload = it->second.get();
+      }
+    }
+
+    if (chunkToUnload) {
+      // Unlink neighbors
+      int dx[] = {0, 0, -1, 1, 0, 0};
+      int dy[] = {0, 0, 0, 0, 1, -1};
+      int dz[] = {1, -1, 0, 0, 0, 0};
+      int dirs[] = {Chunk::DIR_FRONT, Chunk::DIR_BACK, Chunk::DIR_LEFT,
+                    Chunk::DIR_RIGHT, Chunk::DIR_TOP,  Chunk::DIR_BOTTOM};
+      int opps[] = {Chunk::DIR_BACK, Chunk::DIR_FRONT,  Chunk::DIR_RIGHT,
+                    Chunk::DIR_LEFT, Chunk::DIR_BOTTOM, Chunk::DIR_TOP};
+
+      for (int i = 0; i < 6; ++i) {
+        Chunk *neighbor = chunkToUnload->neighbors[dirs[i]];
+        if (neighbor) {
+          neighbor->neighbors[opps[i]] = nullptr;
+          chunkToUnload->neighbors[dirs[i]] = nullptr;
+        }
+      }
+
+      // Remove from mesh queue if present
+      {
+        std::lock_guard<std::mutex> lock(queueMutex);
+        meshSet.erase(chunkToUnload);
+        // Note: Can't easily remove from deque, but meshSet prevents processing
+      }
+
+      // Remove from upload queue if present (CRITICAL!)
+      {
+        std::lock_guard<std::mutex> lock(uploadMutex);
+        uploadQueue.erase(std::remove_if(uploadQueue.begin(), uploadQueue.end(),
+                                         [chunkToUnload](const auto &item) {
+                                           return std::get<0>(item) ==
+                                                  chunkToUnload;
+                                         }),
+                          uploadQueue.end());
+      }
+
+      // Remove from generation queue if present
+      {
+        std::lock_guard<std::mutex> lock(genMutex);
+        generatingChunks.erase(key);
+        // Note: Can't easily remove from deque
+      }
+
+      // Finally, erase the chunk
+      {
+        std::lock_guard<std::mutex> lock(worldMutex);
+        chunks.erase(key);
+      }
+    }
+  }
+}
+
 void World::addChunk(int x, int y, int z) {
   std::unique_lock<std::mutex> lock(worldMutex);
   auto key = std::make_tuple(x, y, z);

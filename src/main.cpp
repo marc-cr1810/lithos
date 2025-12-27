@@ -62,6 +62,7 @@ bool dbg_timePaused = false;
 float dbg_timeSpeed = 1.0f;
 bool dbg_wireframe = false;
 int dbg_renderDistance = 8;
+int dbg_simulationDistance = 4;
 bool dbg_chunkBorders = false;
 bool dbg_useHeatmap = false;
 bool dbg_useFog = false;
@@ -427,6 +428,8 @@ int main() {
                            (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
       glm::mat4 view = camera.GetViewMatrix();
       world.loadChunks(player.Position, dbg_renderDistance, projection * view);
+      // TODO: Re-enable after testing
+      // world.unloadChunks(player.Position, dbg_renderDistance);
     }
 
     // Calculate Sun Brightness
@@ -515,6 +518,8 @@ int main() {
         glm::mat4 view = camera.GetViewMatrix();
         world.loadChunks(player.Position, dbg_renderDistance, proj * view);
       }
+      ImGui::SliderInt("Simulation Dist", &dbg_simulationDistance, 1, 16);
+      ImGui::Text("Chunks Loaded: %zu", world.getChunkCount());
       ImGui::SliderFloat("Gravity", &player.Gravity, 0.0f, 50.0f);
 
       ImGui::SameLine();
