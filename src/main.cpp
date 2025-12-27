@@ -800,10 +800,13 @@ int main() {
     }
 
     if (hit) {
+      // Check if ImGui wants the mouse
+      bool mouseCaptured = ImGui::GetIO().WantCaptureMouse;
+
       // Destruction
       bool currentLeftMouse =
           glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-      if (currentLeftMouse && !lastLeftMouse) {
+      if (currentLeftMouse && !lastLeftMouse && !mouseCaptured) {
         world.setBlock(hitPos.x, hitPos.y, hitPos.z, AIR);
       }
 
@@ -861,7 +864,8 @@ int main() {
     // Right Mouse - Placement
     bool currentRightMouse =
         glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
-    if (hit && currentRightMouse && !lastRightMouse) {
+    if (hit && currentRightMouse && !lastRightMouse &&
+        !ImGui::GetIO().WantCaptureMouse) {
       // Use prePos for placement
       int placeX = prePos.x;
       int placeY = prePos.y;
@@ -1017,15 +1021,17 @@ void processInput(GLFWwindow *window, const World &world,
     glfwSetWindowShouldClose(window, true);
 
   // Debug Toggles
+  // Debug Toggles
   static bool lastMState = false;
   bool currentM = glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS;
   if (currentM && !lastMState) {
+    isDebugMode = !isDebugMode;
+    // Toggle cursor visibility based on Debug Mode
     if (isDebugMode) {
-      // Toggle cursor
-      if (glfwGetInputMode(window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED)
-        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-      else
-        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+      glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+    } else {
+      glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+      firstMouse = true; // Reset mouse look to prevent jump
     }
   }
   lastMState = currentM;
@@ -1033,7 +1039,6 @@ void processInput(GLFWwindow *window, const World &world,
   static bool lastPState = false;
   bool currentP = glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS;
   if (currentP && !lastPState) {
-    isDebugMode = !isDebugMode;
     showProfiler = !showProfiler;
   }
   lastPState = currentP;

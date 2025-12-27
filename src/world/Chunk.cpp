@@ -424,8 +424,11 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
         for (int u = 0; u < CHUNK_SIZE; ++u) {
           if (mask[u][v].block->isActive()) {
 
-            // Skip Cross Shapes for Cube Meshing
-            if (mask[u][v].block->getRenderShape() == Block::RenderShape::CROSS)
+            // Skip Special Shapes for Cube Meshing
+            Block::RenderShape shape = mask[u][v].block->getRenderShape();
+            if (shape == Block::RenderShape::CROSS ||
+                shape == Block::RenderShape::SLAB_BOTTOM ||
+                shape == Block::RenderShape::STAIRS)
               continue;
 
             MaskInfo current = mask[u][v];
@@ -976,57 +979,65 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
     } // End d loop
   } // End faceDir loop
 
-  // Pass 2: Cross Geometry (Plants)
+  // Pass 2: Special Shapes (Plants, Slabs, Stairs)
   for (int x = 0; x < CHUNK_SIZE; ++x) {
     for (int y = 0; y < CHUNK_SIZE; ++y) {
       for (int z = 0; z < CHUNK_SIZE; ++z) {
         ChunkBlock cb = blocks[x][y][z];
-        if (cb.isActive() &&
-            cb.block->getRenderShape() == Block::RenderShape::CROSS) {
-          float fx = (float)x;
-          float fy = (float)y;
-          float fz = (float)z;
+        if (!cb.isActive())
+          continue;
 
-          int gx = chunkPosition.x * CHUNK_SIZE + x;
-          int gy = chunkPosition.y * CHUNK_SIZE + y;
-          int gz = chunkPosition.z * CHUNK_SIZE + z;
+        Block::RenderShape shape = cb.block->getRenderShape();
+        if (shape == Block::RenderShape::CUBE)
+          continue;
 
+        float fx = (float)x;
+        float fy = (float)y;
+        float fz = (float)z;
+
+        int gx = chunkPosition.x * CHUNK_SIZE + x;
+        int gy = chunkPosition.y * CHUNK_SIZE + y;
+        int gz = chunkPosition.z * CHUNK_SIZE + z;
+
+        float r, g, b;
+        cb.block->getColor(r, g, b);
+        float alpha = cb.block->getAlpha();
+
+        uint8_t sky = cb.skyLight;
+        uint8_t bl = cb.blockLight;
+        float l1Source = pow((float)sky / 15.0f, 0.8f);
+        float l2Source = pow((float)bl / 15.0f, 0.8f);
+
+        std::vector<float> &targetVerts =
+            (cb.block->getRenderLayer() == Block::RenderLayer::TRANSPARENT)
+                ? transparentVertices
+                : opaqueVertices;
+
+        auto pushVert = [&](float vx, float vy, float vz, float u, float v,
+                            float uOrigin, float vOrigin, float aoVal = 0.0f,
+                            float l1Override = -1.0f,
+                            float l2Override = -1.0f) {
+          targetVerts.push_back(vx);
+          targetVerts.push_back(vy);
+          targetVerts.push_back(vz);
+          targetVerts.push_back(r);
+          targetVerts.push_back(g);
+          targetVerts.push_back(b);
+          targetVerts.push_back(alpha);
+          targetVerts.push_back(u);
+          targetVerts.push_back(v);
+          targetVerts.push_back(l1Override < 0 ? l1Source : l1Override);
+          targetVerts.push_back(l2Override < 0 ? l2Source : l2Override);
+          targetVerts.push_back(aoVal);
+          targetVerts.push_back(uOrigin);
+          targetVerts.push_back(vOrigin);
+        };
+
+        if (shape == Block::RenderShape::CROSS) {
           float uMin, vMin;
-          cb.block->getTextureUV(
-              0, uMin, vMin, gx, gy, gz,
-              cb.metadata);          // Face 0 default, with randomization
-          float uMax = uMin + 0.25f; // Assumption: Tiles are 0.25
-          float vMax = vMin + 0.25f;
-
-          float r, g, b;
-          cb.block->getColor(r, g, b);
-          float alpha = cb.block->getAlpha();
-
-          uint8_t sky = cb.skyLight;
-          uint8_t bl = cb.blockLight;
-          float l1 = pow((float)sky / 15.0f, 0.8f);
-          float l2 = pow((float)bl / 15.0f, 0.8f);
-          float ao = 0.0f; // No occlusion
-
-          auto pushVert = [&](float vx, float vy, float vz, float u, float v) {
-            opaqueVertices.push_back(vx);
-            opaqueVertices.push_back(vy);
-            opaqueVertices.push_back(vz);
-            opaqueVertices.push_back(r);
-            opaqueVertices.push_back(g);
-            opaqueVertices.push_back(b);
-            opaqueVertices.push_back(alpha);
-            opaqueVertices.push_back(u);
-            opaqueVertices.push_back(v);
-            opaqueVertices.push_back(l1);
-            opaqueVertices.push_back(l2);
-            opaqueVertices.push_back(ao);
-            opaqueVertices.push_back(uMin);
-            opaqueVertices.push_back(vMin);
-          };
+          cb.block->getTextureUV(0, uMin, vMin, gx, gy, gz, cb.metadata);
 
           // Randomize Rotation and Offset
-          // Simple Hash for deterministic randomness based on position
           long long seed = ((long long)gx * 31337 + (long long)gy * 19283 +
                             (long long)gz * 84211) ^
                            0x5a17e5;
@@ -1035,77 +1046,265 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             return (float)seed / (float)0x7FFFFFFF;
           };
 
-          float rndX = (myRand() - 0.5f) * 0.4f;       // +/- 0.2 offset
-          float rndZ = (myRand() - 0.5f) * 0.4f;       // +/- 0.2 offset
-          float rotation = myRand() * 3.14159f * 2.0f; // 0 to 360 degrees
+          float rndX = (myRand() - 0.5f) * 0.4f;
+          float rndZ = (myRand() - 0.5f) * 0.4f;
+          float rotation = myRand() * 3.14159f * 2.0f;
 
           float centerX = fx + 0.5f + rndX;
           float centerZ = fz + 0.5f + rndZ;
 
-          // Cross has 2 planes.
-          // Scale for width 1.0 (Radius 0.5)
           float scale = 0.5f;
 
           // Plane 1
-          // Original was 45 degrees. We add random rotation.
-          float angle1 = rotation + 0.785398f; // + 45 deg
-
+          float angle1 = rotation + 0.785398f;
           float p1_x1 = centerX + cos(angle1) * -scale;
           float p1_z1 = centerZ + sin(angle1) * -scale;
           float p1_x2 = centerX + cos(angle1) * scale;
           float p1_z2 = centerZ + sin(angle1) * scale;
 
-          // Tri 1
-          // UVs: The shader expects 0..1 for local coords.
-          // TexOrigin (uMin, vMin) handles the atlas offset.
-          // FLIPPED Y for correct orientation: Bottom=0, Top=1
-          pushVert(p1_x1, fy, p1_z1, 0.0f, 0.0f);        // Bottom-Left
-          pushVert(p1_x2, fy, p1_z2, 1.0f, 0.0f);        // Bottom-Right
-          pushVert(p1_x2, fy + 1.0f, p1_z2, 1.0f, 1.0f); // Top-Right
+          pushVert(p1_x1, fy, p1_z1, 0.0f, 0.0f, uMin, vMin);
+          pushVert(p1_x2, fy, p1_z2, 1.0f, 0.0f, uMin, vMin);
+          pushVert(p1_x2, fy + 1.0f, p1_z2, 1.0f, 1.0f, uMin, vMin);
 
-          // Tri 2
-          pushVert(p1_x1, fy, p1_z1, 0.0f, 0.0f);
-          pushVert(p1_x2, fy + 1.0f, p1_z2, 1.0f, 1.0f);
-          pushVert(p1_x1, fy + 1.0f, p1_z1, 0.0f, 1.0f); // Top-Left
+          pushVert(p1_x1, fy, p1_z1, 0.0f, 0.0f, uMin, vMin);
+          pushVert(p1_x2, fy + 1.0f, p1_z2, 1.0f, 1.0f, uMin, vMin);
+          pushVert(p1_x1, fy + 1.0f, p1_z1, 0.0f, 1.0f, uMin, vMin);
 
-          // Back Face Plane 1 (Double Sided)
-          // Tri 3
-          pushVert(p1_x2, fy, p1_z2, 1.0f, 0.0f);
-          pushVert(p1_x1, fy, p1_z1, 0.0f, 0.0f);
-          pushVert(p1_x1, fy + 1.0f, p1_z1, 0.0f, 1.0f);
+          // Back Face Plane 1
+          pushVert(p1_x2, fy, p1_z2, 1.0f, 0.0f, uMin, vMin);
+          pushVert(p1_x1, fy, p1_z1, 0.0f, 0.0f, uMin, vMin);
+          pushVert(p1_x1, fy + 1.0f, p1_z1, 0.0f, 1.0f, uMin, vMin);
 
-          // Tri 4
-          pushVert(p1_x2, fy, p1_z2, 1.0f, 0.0f);
-          pushVert(p1_x1, fy + 1.0f, p1_z1, 0.0f, 1.0f);
-          pushVert(p1_x2, fy + 1.0f, p1_z2, 1.0f, 1.0f);
+          pushVert(p1_x2, fy, p1_z2, 1.0f, 0.0f, uMin, vMin);
+          pushVert(p1_x1, fy + 1.0f, p1_z1, 0.0f, 1.0f, uMin, vMin);
+          pushVert(p1_x2, fy + 1.0f, p1_z2, 1.0f, 1.0f, uMin, vMin);
 
-          // Plane 2 (Perpendicular)
-          float angle2 = angle1 + 1.570796f; // + 90 degrees
+          // Plane 2
+          float angle2 = angle1 + 1.570796f;
           float p2_x1 = centerX + cos(angle2) * -scale;
           float p2_z1 = centerZ + sin(angle2) * -scale;
           float p2_x2 = centerX + cos(angle2) * scale;
           float p2_z2 = centerZ + sin(angle2) * scale;
 
-          // Tri 1
-          pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f);
-          pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f);
-          pushVert(p2_x2, fy + 1.0f, p2_z2, 1.0f, 1.0f);
+          pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f, uMin, vMin);
+          pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f, uMin, vMin);
+          pushVert(p2_x2, fy + 1.0f, p2_z2, 1.0f, 1.0f, uMin, vMin);
 
-          // Tri 2
-          pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f);
-          pushVert(p2_x2, fy + 1.0f, p2_z2, 1.0f, 1.0f);
-          pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f);
+          pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f, uMin, vMin);
+          pushVert(p2_x2, fy + 1.0f, p2_z2, 1.0f, 1.0f, uMin, vMin);
+          pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f, uMin, vMin);
 
-          // Back face Plane 2
-          // Tri 3
-          pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f);
-          pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f);
-          pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f);
+          // Back Face Plane 2
+          pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f, uMin, vMin);
+          pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f, uMin, vMin);
+          pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f, uMin, vMin);
 
-          // Tri 4
-          pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f);
-          pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f);
-          pushVert(p2_x2, fy + 1.0f, p2_z2, 1.0f, 1.0f);
+          pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f, uMin, vMin);
+          pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f, uMin, vMin);
+          pushVert(p2_x2, fy + 1.0f, p2_z2, 1.0f, 1.0f, uMin, vMin);
+        } else if (shape == Block::RenderShape::SLAB_BOTTOM ||
+                   shape == Block::RenderShape::STAIRS) {
+          // Helper to add a quad
+          auto addFaceQuad = [&](int face, float xMin, float yMin, float zMin,
+                                 float xMax, float yMax, float zMax) {
+            // Occlusion Check (Simple)
+            // If face is flush with block boundary, check neighbor.
+            int nx = x, ny = y, nz = z;
+            bool checkNeighbor = false;
+
+            if (face == 4 && std::abs(yMax - 1.0f) < 0.001f) {
+              ny++;
+              checkNeighbor = true;
+            } // Top
+            if (face == 5 && std::abs(yMin - 0.0f) < 0.001f) {
+              ny--;
+              checkNeighbor = true;
+            } // Bottom
+            if (face == 0 && std::abs(zMax - 1.0f) < 0.001f) {
+              nz++;
+              checkNeighbor = true;
+            } // Front
+            if (face == 1 && std::abs(zMin - 0.0f) < 0.001f) {
+              nz--;
+              checkNeighbor = true;
+            } // Back
+            if (face == 3 && std::abs(xMax - 1.0f) < 0.001f) {
+              nx++;
+              checkNeighbor = true;
+            } // Right
+            if (face == 2 && std::abs(xMin - 0.0f) < 0.001f) {
+              nx--;
+              checkNeighbor = true;
+            } // Left
+
+            if (checkNeighbor) {
+              if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE &&
+                  nz >= 0 && nz < CHUNK_SIZE) {
+                if (blocks[nx][ny][nz].isOpaque())
+                  return;
+              } else if (world) {
+                int ngx = chunkPosition.x * CHUNK_SIZE + nx;
+                int ngy = chunkPosition.y * CHUNK_SIZE + ny;
+                int ngz = chunkPosition.z * CHUNK_SIZE + nz;
+                if (world->getBlock(ngx, ngy, ngz).isOpaque())
+                  return;
+              }
+            }
+
+            float uBase, vBase;
+            cb.block->getTextureUV(face, uBase, vBase, gx, gy, gz, cb.metadata);
+
+            float w = (face <= 1 || face >= 4) ? (xMax - xMin) : (zMax - zMin);
+            float h = (face >= 4) ? (zMax - zMin) : (yMax - yMin);
+
+            // UV Bounds (Local 0..1)
+            // For Sides, we want the bottom part of texture if it's a bottom
+            // slab? Actually, for SLAB_BOTTOM, y is 0..0.5. If we map 0..0.5 to
+            // 0..0.5V, it renders bottom half of texture. Correct. If we map
+            // 0..0.5 to 0..1V, it stretches. We want bottom half of texture for
+            // bottom slab. So if face is Side (0,1,2,3), V range should
+            // generally match Y range relative to full block? Yes, standard MC
+            // mapping: world coordinate modulo or block relative. Simplest: V
+            // range = Y range.
+
+            float u0 = 0.0f, v0 = 0.0f;
+            float u1 = w, v1 = h;
+
+            // Adjustment for Sides of Slab
+            // If Side Face, V should correspond to Y within the block.
+            // yMin is relative to block bottom (0..1).
+            if (face <= 3) {
+              v0 = yMin; // e.g. 0.0
+              v1 = yMax; // e.g. 0.5
+            }
+
+            // Draw
+            // 0=Z+, 1=Z-, 2=X-, 3=X+, 4=Y+, 5=Y-
+            if (face == 0) { // Z+ (Variable Z) -> Usually zMax
+              pushVert(fx + xMin, fy + yMin, fz + zMax, u0, v0, uBase, vBase);
+              pushVert(fx + xMax, fy + yMin, fz + zMax, u1, v0, uBase, vBase);
+              pushVert(fx + xMax, fy + yMax, fz + zMax, u1, v1, uBase, vBase);
+
+              pushVert(fx + xMin, fy + yMin, fz + zMax, u0, v0, uBase, vBase);
+              pushVert(fx + xMax, fy + yMax, fz + zMax, u1, v1, uBase, vBase);
+              pushVert(fx + xMin, fy + yMax, fz + zMax, u0, v1, uBase, vBase);
+            } else if (face == 1) { // Z-
+              pushVert(fx + xMax, fy + yMin, fz + zMin, u0, v0, uBase, vBase);
+              pushVert(fx + xMin, fy + yMin, fz + zMin, u1, v0, uBase, vBase);
+              pushVert(fx + xMin, fy + yMax, fz + zMin, u1, v1, uBase, vBase);
+
+              pushVert(fx + xMax, fy + yMin, fz + zMin, u0, v0, uBase, vBase);
+              pushVert(fx + xMin, fy + yMax, fz + zMin, u1, v1, uBase, vBase);
+              pushVert(fx + xMax, fy + yMax, fz + zMin, u0, v1, uBase, vBase);
+            } else if (face == 2) { // X-
+              pushVert(fx + xMin, fy + yMin, fz + zMin, u0, v0, uBase, vBase);
+              pushVert(fx + xMin, fy + yMin, fz + zMax, u1, v0, uBase, vBase);
+              pushVert(fx + xMin, fy + yMax, fz + zMax, u1, v1, uBase, vBase);
+
+              pushVert(fx + xMin, fy + yMin, fz + zMin, u0, v0, uBase, vBase);
+              pushVert(fx + xMin, fy + yMax, fz + zMax, u1, v1, uBase, vBase);
+              pushVert(fx + xMin, fy + yMax, fz + zMin, u0, v1, uBase, vBase);
+            } else if (face == 3) { // X+
+              pushVert(fx + xMax, fy + yMin, fz + zMax, u0, v0, uBase, vBase);
+              pushVert(fx + xMax, fy + yMin, fz + zMin, u1, v0, uBase, vBase);
+              pushVert(fx + xMax, fy + yMax, fz + zMin, u1, v1, uBase, vBase);
+
+              pushVert(fx + xMax, fy + yMin, fz + zMax, u0, v0, uBase, vBase);
+              pushVert(fx + xMax, fy + yMax, fz + zMin, u1, v1, uBase, vBase);
+              pushVert(fx + xMax, fy + yMax, fz + zMax, u0, v1, uBase, vBase);
+            } else if (face == 4) { // Y+
+              pushVert(fx + xMin, fy + yMax, fz + zMax, 0, 0, uBase, vBase);
+              pushVert(fx + xMax, fy + yMax, fz + zMax, 1, 0, uBase, vBase);
+              pushVert(fx + xMax, fy + yMax, fz + zMin, 1, 1, uBase, vBase);
+
+              pushVert(fx + xMin, fy + yMax, fz + zMax, 0, 0, uBase, vBase);
+              pushVert(fx + xMax, fy + yMax, fz + zMin, 1, 1, uBase, vBase);
+              pushVert(fx + xMin, fy + yMax, fz + zMin, 0, 1, uBase, vBase);
+            } else if (face == 5) { // Y-
+              pushVert(fx + xMin, fy + yMin, fz + zMin, 0, 0, uBase, vBase);
+              pushVert(fx + xMax, fy + yMin, fz + zMin, 1, 0, uBase, vBase);
+              pushVert(fx + xMax, fy + yMin, fz + zMax, 1, 1, uBase, vBase);
+
+              pushVert(fx + xMin, fy + yMin, fz + zMin, 0, 0, uBase, vBase);
+              pushVert(fx + xMax, fy + yMin, fz + zMax, 1, 1, uBase, vBase);
+              pushVert(fx + xMin, fy + yMin, fz + zMax, 0, 1, uBase, vBase);
+            }
+          };
+
+          // SLAB_BOTTOM Logic
+          // Base Slab (Always present for both SlabBottom and Stairs?)
+          // Stairs usually have a base slab (0..0.5) plus a top part.
+          // Yes.
+
+          addFaceQuad(0, 0, 0, 0, 1, 0.5f, 1); // Z+
+          addFaceQuad(1, 0, 0, 0, 1, 0.5f, 1); // Z-
+          addFaceQuad(2, 0, 0, 0, 1, 0.5f, 1); // X-
+          addFaceQuad(3, 0, 0, 0, 1, 0.5f, 1); // X+
+          addFaceQuad(5, 0, 0, 0, 1, 0.5f, 1); // Y- (Bottom)
+
+          if (shape == Block::RenderShape::SLAB_BOTTOM) {
+            addFaceQuad(4, 0, 0, 0, 1, 0.5f, 1); // Y+ (Top of Slab)
+          } else {
+            // STAIRS
+            // Needs Top Half.
+            // Helper for Partial Box?
+            // Determine quadrant from metadata?
+            // Metadata 0: East (X+), 1: West (X-), 2: South (Z+), 3: North (Z-)
+            // Let's assume standard metadata.
+
+            // Base is drawn. Now draw Top Part (0.5..1.0)
+            // Area depends on rotation.
+            float tX1 = 0, tZ1 = 0, tX2 = 1, tZ2 = 1;
+
+            // If East (Stairs go UP towards East/West? Or Face East?)
+            // "Stairs facing East" usually means Back is West, Front is East.
+            // The "Step" is on the West side? Or "Ascends" to East?
+            // Let's implement one and check.
+            // Assume Meta 0 = Ascend towards X+ (East).
+            // Blocks: Bottom full, Top Right (X > 0.5) is filled?
+
+            int meta = cb.metadata;
+            if (meta == 0) { // East (X+)
+              tX1 = 0.5f;
+              tX2 = 1.0f;           // Fill X+ half
+            } else if (meta == 1) { // West (X-)
+              tX1 = 0.0f;
+              tX2 = 0.5f;           // Fill X- half
+            } else if (meta == 2) { // South (Z+)
+              tZ1 = 0.5f;
+              tZ2 = 1.0f; // Fill Z+ half
+            } else {      // North (Z-)
+              tZ1 = 0.0f;
+              tZ2 = 0.5f; // Fill Z- half
+            }
+
+            // Top Box
+            // Y range: 0.5 to 1.0
+            addFaceQuad(0, tX1, 0.5f, tZ1, tX2, 1.0f, tZ2);
+            addFaceQuad(1, tX1, 0.5f, tZ1, tX2, 1.0f, tZ2);
+            addFaceQuad(2, tX1, 0.5f, tZ1, tX2, 1.0f, tZ2);
+            addFaceQuad(3, tX1, 0.5f, tZ1, tX2, 1.0f, tZ2);
+            addFaceQuad(4, tX1, 0.5f, tZ1, tX2, 1.0f, tZ2); // Top of Stairs
+            // Note: Bottom of Top Box (at 0.5) sits on Base Slab Top (at 0.5).
+            // Base Slab Top (at 0.5) was NOT drawn for Stair (I split the if
+            // above). But we need to draw the Exposed part of Base Slab Top!
+
+            // Base Slab Top (Exposed Part)
+            // It's the Inverse of Top Box X/Z rect.
+            // If East (Top is X>0.5), Exposed Base Top is X<0.5.
+            float bX1 = 0, bZ1 = 0, bX2 = 1, bZ2 = 1;
+            if (meta == 0) {
+              bX2 = 0.5f;
+            } else if (meta == 1) {
+              bX1 = 0.5f;
+            } else if (meta == 2) {
+              bZ2 = 0.5f;
+            } else {
+              bZ1 = 0.5f;
+            }
+
+            addFaceQuad(4, bX1, 0, bZ1, bX2, 0.5f, bZ2); // Exposed Base Top
+          }
         }
       }
     }

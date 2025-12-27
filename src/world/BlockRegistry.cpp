@@ -5,7 +5,9 @@
 #include "blocks/LiquidBlock.h"
 #include "blocks/MetadataBlock.h"
 #include "blocks/PlantBlock.h"
+#include "blocks/SlabBlock.h"
 #include "blocks/SolidBlock.h"
+#include "blocks/StairBlock.h"
 
 BlockRegistry &BlockRegistry::getInstance() {
   static BlockRegistry instance;
@@ -147,6 +149,15 @@ BlockRegistry::BlockRegistry() {
   woodPlanks->setTextureForMetadata(0, "oak_planks");
   woodPlanks->setTextureForMetadata(1, "spruce_planks");
   registerBlock((Block *)woodPlanks);
+
+  // Custom Mesh Blocks
+  Block *stoneSlab = new SlabBlock(BlockType::STONE_SLAB, "Stone Slab");
+  stoneSlab->setTexture("stone");
+  registerBlock(stoneSlab);
+
+  Block *woodStairs = new StairBlock(BlockType::WOOD_STAIRS, "Wood Stairs");
+  woodStairs->setTexture("oak_planks");
+  registerBlock(woodStairs);
 }
 
 void BlockRegistry::registerBlock(Block *block) {

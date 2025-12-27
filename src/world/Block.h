@@ -37,7 +37,9 @@ enum BlockType {
   DRY_TALL_GRASS = 22,
   OBSIDIAN = 23,
   COBBLESTONE = 24,
-  WOOD_PLANKS = 25
+  WOOD_PLANKS = 25,
+  STONE_SLAB = 26,
+  WOOD_STAIRS = 27
 };
 
 class World; // Forward declaration
@@ -182,7 +184,7 @@ public:
   enum class RenderLayer { OPAQUE, CUTOUT, TRANSPARENT };
   virtual RenderLayer getRenderLayer() const { return RenderLayer::OPAQUE; }
 
-  enum class RenderShape { CUBE, CROSS };
+  enum class RenderShape { CUBE, CROSS, SLAB_BOTTOM, STAIRS };
   virtual RenderShape getRenderShape() const { return RenderShape::CUBE; }
 
   // Events
