@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(minceraft VERSION 1.0.0 LANGUAGES CXX C)
+project(lithos VERSION 1.0.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -89,7 +89,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_definitions(-DMINCERAFT_DEBUG)
 endif()
 
-add_executable(minceraft 
+add_executable(lithos 
     src/main.cpp 
     src/render/Shader.cpp 
     src/render/Camera.cpp
@@ -116,23 +116,23 @@ add_executable(minceraft
     ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
 )
 
-target_include_directories(minceraft PRIVATE 
+target_include_directories(lithos PRIVATE 
     ${imgui_SOURCE_DIR} 
     ${imgui_SOURCE_DIR}/backends
 )
 
-target_link_libraries(minceraft PRIVATE 
+target_link_libraries(lithos PRIVATE 
     OpenGL::GL
     glfw
     ${GLEW_TARGET}
     EnTT::EnTT
 )
 
-target_compile_definitions(minceraft PRIVATE USE_GLEW GLEW_NO_GLU)
+target_compile_definitions(lithos PRIVATE USE_GLEW GLEW_NO_GLU)
 
 
 if (TARGET glm::glm)
-    target_link_libraries(minceraft PRIVATE glm::glm)
+    target_link_libraries(lithos PRIVATE glm::glm)
 else()
-    target_include_directories(minceraft PRIVATE ${glm_SOURCE_DIR})
+    target_include_directories(lithos PRIVATE ${glm_SOURCE_DIR})
 endif()

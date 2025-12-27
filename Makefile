@@ -17,7 +17,7 @@ release:
 run: run_debug
 
 run_debug: debug
-	./build/debug/minceraft
+	./build/debug/lithos
 
 # Run Release
 run_release: release
