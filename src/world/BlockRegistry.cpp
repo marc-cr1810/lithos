@@ -62,14 +62,19 @@ BlockRegistry::BlockRegistry() {
   registerBlock(glow);
 
   Block *water = new LiquidBlock(BlockType::WATER, "Water");
-  water->setTexture(
-      "water_still"); // Use still for all for now, maybe flow for sides?
-  // water->setTexture(0, "water_flow"); ...
-  // Let's stick to water_still to match expectations or simple setup
+  water->setTexture("water_still");
+  water->setTexture(0, "water_flow");
+  water->setTexture(1, "water_flow");
+  water->setTexture(2, "water_flow");
+  water->setTexture(3, "water_flow");
   registerBlock(water);
 
   Block *lava = new LiquidBlock(BlockType::LAVA, "Lava");
   lava->setTexture("lava_still");
+  lava->setTexture(0, "lava_flow");
+  lava->setTexture(1, "lava_flow");
+  lava->setTexture(2, "lava_flow");
+  lava->setTexture(3, "lava_flow");
   registerBlock(lava);
 
   Block *sand = new FallingBlock(BlockType::SAND, "Sand");

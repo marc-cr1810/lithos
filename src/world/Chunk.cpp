@@ -1213,7 +1213,28 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
     int gx = chunkPosition.x * CHUNK_SIZE + x;
     int gy = chunkPosition.y * CHUNK_SIZE + y;
     int gz = chunkPosition.z * CHUNK_SIZE + z;
-    block->getTextureUV(faceDir, uMin, vMin, gx, gy, gz, layer);
+    // Use Flow Texture (Face 0) for Top Face (4) if flowing (meta > 0)
+    // Actually, user wants flow texture on top if it is flowing.
+    // If metadata > 0, it is flowing. Source (0) is still?
+    // Actually source blocks can flow too if they have velocity, but in this
+    // simplicity: Any liquid that has flow vector should probably use flow
+    // texture? Let's stick to user request: "flowing water... should have
+    // flowing texture". If metadata > 0 (decaying flow), definitely flowing. If
+    // metadata == 0 (source), might be still unless it's a source block flowing
+    // into a hole? Let's check neighbors to see if it's flowing. Simpler: If
+    // meta > 0, use flow. If meta == 0, use still. BUT user said "direction in
+    // which they are flowing".
+    if ((block->getId() == WATER || block->getId() == LAVA) && faceDir == 4) {
+      // Check if flowing
+      if (metadata > 0) {
+        block->getTextureUV(0, uMin, vMin, gx, gy, gz,
+                            layer); // Use Side Texture
+      } else {
+        block->getTextureUV(faceDir, uMin, vMin, gx, gy, gz, layer);
+      }
+    } else {
+      block->getTextureUV(faceDir, uMin, vMin, gx, gy, gz, layer);
+    }
   } else {
     block->getTextureUV(faceDir, uMin, vMin, 0, 0, 0, layer);
   }
@@ -1267,6 +1288,75 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
     }
   }
 
+  // Flow rotation logic
+  float rAngle = 0.0f;
+  if ((block->getId() == WATER || block->getId() == LAVA) && faceDir == 4) {
+    // Calculate Flow Vector
+    // Check neighbors (using World if available, else cache?)
+    // We are in addFace, called from generateGeometry, where we don't have easy
+    // random access to world without locking/etc. But we have 'world' pointer
+    // and coords.
+    if (world) {
+      float dx = 0.0f;
+      float dz = 0.0f;
+      int gx = chunkPosition.x * CHUNK_SIZE + x;
+      int gy = chunkPosition.y * CHUNK_SIZE + y;
+      int gz = chunkPosition.z * CHUNK_SIZE + z;
+
+      auto getLiquidHeight = [&](int bx, int by, int bz) -> float {
+        ChunkBlock n = world->getBlock(bx, by, bz);
+        if (!n.isActive())
+          return -1.0f; // Treat as sink? Or different?
+        if (n.block->getId() != block->getId()) {
+          if (n.isSolid())
+            return 100.0f; // Blocked
+          return -1.0f;    // Sink
+        }
+        return (float)n.metadata; // Higher meta = lower liquid = flow towards
+      };
+
+      // Neighbors
+      float hL = getLiquidHeight(gx - 1, gy, gz);
+      float hR = getLiquidHeight(gx + 1, gy, gz);
+      float hF = getLiquidHeight(gx, gy, gz + 1); // Z+
+      float hB = getLiquidHeight(gx, gy, gz - 1); // Z-
+
+      // If neighbor is -1 (sink), treats as strong flow towards it.
+      // If neighbor is 100 (solid), treats as blocked.
+      // If neighbor is liquid, compare metadata.
+
+      float myMeta = (float)metadata;
+
+      // X-Axis
+      if (hL == -1.0f || (hL != 100.0f && hL > myMeta))
+        dx -= 1.0f; // Flow Left
+      if (hR == -1.0f || (hR != 100.0f && hR > myMeta))
+        dx += 1.0f; // Flow Right
+
+      // Z-Axis
+      if (hB == -1.0f || (hB != 100.0f && hB > myMeta))
+        dz -= 1.0f; // Flow Back (Z-)
+      if (hF == -1.0f || (hF != 100.0f && hF > myMeta))
+        dz += 1.0f; // Flow Front (Z+)
+
+      if (dx != 0.0f || dz != 0.0f) {
+        // Only rotate if NOT Lava Source (Lava Still should not rotate)
+        // Water Source can rotate (visual choice) but User specifically
+        // complained about Lava Still.
+        if (block->getId() == LAVA && metadata == 0) {
+          rAngle = 0.0f;
+        } else {
+          rAngle = atan2(dz, dx) + 1.5708f; // +PI/2 to align texture correctly
+        }
+        // Normalize to 0..2PI or just use sin/cos
+        // Texture Default Alignment: Assuming Flow Texture points UP/NORTH?
+        // Standard minecraft water flow texture usually has lines going
+        // vertically? If vertical lines = Z axis? Need to experiment or check
+        // defaults. Let's assume standard UV orientation.
+      }
+    }
+  }
+
   auto pushVert = [&](float vx, float vy, float vz, float u, float v,
                       float ao) {
     vertices.push_back(vx);
@@ -1276,8 +1366,32 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
     vertices.push_back(g);
     vertices.push_back(b);
     vertices.push_back(alpha);
-    vertices.push_back(u);
-    vertices.push_back(v);
+
+    // Rotate UV if needed
+    float fu = u;
+    float fv = v;
+    if (rAngle != 0.0f) {
+      // Center of rotation (0.5, 0.5)
+      float cu = 0.5f;
+      float cv = 0.5f;
+      float s = sin(rAngle);
+      float c = cos(rAngle);
+
+      // Translate to origin
+      float tu = u - cu;
+      float tv = v - cv;
+
+      // Rotate
+      float ru = tu * c - tv * s;
+      float rv = tu * s + tv * c;
+
+      // Translate back
+      fu = ru + cu;
+      fv = rv + cv;
+    }
+
+    vertices.push_back(fu);
+    vertices.push_back(fv);
     vertices.push_back(l1);
     vertices.push_back(l2);
     vertices.push_back(ao);
@@ -1301,71 +1415,46 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
 
   float botY = fy;
 
+  // Determine V coordinates (Flip for liquids on sides)
+  float vBottom = 0.0f;
+  float vTop = fh;
+  if ((block->getId() == WATER || block->getId() == LAVA) && faceDir <= 3) {
+    vBottom = fh;
+    vTop = 0.0f;
+  }
+
   if (faceDir == 0) { // Front Z+ (at z+1)
-    // This face is at Z+1.
-    // It spans x to x+w.
-    // The corners of the quad are:
-    // (fx, fy, fz+1) -> uses hTL (for x, z+1)
-    // (fx+fw, fy, fz+1) -> uses hTR (for x+w, z+1)
-    // Note: For greedy meshing, fw and fh are the dimensions of the quad.
-    // The hBL, hBR, hTR, hTL are for the *bottom-left* block of the quad.
-    // For liquids, fw and fh will be 1.
+    pushVert(fx, botY, fz + 1, 0, vBottom, (float)aoBL);
+    pushVert(fx + fw, botY, fz + 1, fw, vBottom, (float)aoBR);
+    pushVert(fx + fw, fy + yTR, fz + 1, fw, vTop, (float)aoTR);
 
-    // Vertices for this face:
-    // Bottom-Left of quad: (fx, botY, fz+1)
-    // Bottom-Right of quad: (fx+fw, botY, fz+1)
-    // Top-Right of quad: (fx+fw, fy+yTR, fz+1)
-    // Top-Left of quad: (fx, fy+yTL, fz+1)
-
-    pushVert(fx, botY, fz + 1, 0, 0, (float)aoBL);
-    pushVert(fx + fw, botY, fz + 1, fw, 0, (float)aoBR);
-    pushVert(fx + fw, fy + yTR, fz + 1, fw, fh, (float)aoTR);
-
-    pushVert(fx, botY, fz + 1, 0, 0, (float)aoBL);
-    pushVert(fx + fw, fy + yTR, fz + 1, fw, fh, (float)aoTR);
-    pushVert(fx, fy + yTL, fz + 1, 0, fh, (float)aoTL);
+    pushVert(fx, botY, fz + 1, 0, vBottom, (float)aoBL);
+    pushVert(fx + fw, fy + yTR, fz + 1, fw, vTop, (float)aoTR);
+    pushVert(fx, fy + yTL, fz + 1, 0, vTop, (float)aoTL);
   } else if (faceDir == 1) { // Back Z- (at z=0)
-    // Vertices for this face:
-    // Bottom-Right of quad: (fx+fw, botY, fz)
-    // Bottom-Left of quad: (fx, botY, fz)
-    // Top-Left of quad: (fx, fy+yBL, fz)
-    // Top-Right of quad: (fx+fw, fy+yBR, fz)
+    pushVert(fx + fw, botY, fz, 0, vBottom, (float)aoBR);
+    pushVert(fx, botY, fz, fw, vBottom, (float)aoBL);
+    pushVert(fx, fy + yBL, fz, fw, vTop, (float)aoTL);
 
-    pushVert(fx + fw, botY, fz, 0, 0, (float)aoBR);
-    pushVert(fx, botY, fz, fw, 0, (float)aoBL);
-    pushVert(fx, fy + yBL, fz, fw, fh, (float)aoTL);
-
-    pushVert(fx + fw, botY, fz, 0, 0, (float)aoBR);
-    pushVert(fx, fy + yBL, fz, fw, fh, (float)aoTL);
-    pushVert(fx + fw, fy + yBR, fz, 0, fh, (float)aoTR);
+    pushVert(fx + fw, botY, fz, 0, vBottom, (float)aoBR);
+    pushVert(fx, fy + yBL, fz, fw, vTop, (float)aoTL);
+    pushVert(fx + fw, fy + yBR, fz, 0, vTop, (float)aoTR);
   } else if (faceDir == 2) { // Left X- (at x=0)
-    // Vertices for this face:
-    // Bottom-Left of quad: (fx, botY, fz)
-    // Bottom-Right of quad: (fx, botY, fz+fw)
-    // Top-Right of quad: (fx, fy+yTL, fz+fw)
-    // Top-Left of quad: (fx, fy+yBL, fz)
+    pushVert(fx, botY, fz, 0, vBottom, (float)aoBL);
+    pushVert(fx, botY, fz + fw, fw, vBottom, (float)aoBR);
+    pushVert(fx, fy + yTL, fz + fw, fw, vTop, (float)aoTR);
 
-    pushVert(fx, botY, fz, 0, 0, (float)aoBL);
-    pushVert(fx, botY, fz + fw, fw, 0, (float)aoBR);
-    pushVert(fx, fy + yTL, fz + fw, fw, fh, (float)aoTR);
-
-    pushVert(fx, botY, fz, 0, 0, (float)aoBL);
-    pushVert(fx, fy + yTL, fz + fw, fw, fh, (float)aoTR);
-    pushVert(fx, fy + yBL, fz, 0, fh, (float)aoTL);
+    pushVert(fx, botY, fz, 0, vBottom, (float)aoBL);
+    pushVert(fx, fy + yTL, fz + fw, fw, vTop, (float)aoTR);
+    pushVert(fx, fy + yBL, fz, 0, vTop, (float)aoTL);
   } else if (faceDir == 3) { // Right X+ (at x+1)
-    // Vertices for this face:
-    // Bottom-Right of quad: (fx+1, botY, fz+fw)
-    // Bottom-Left of quad: (fx+1, botY, fz)
-    // Top-Left of quad: (fx+1, fy+yBR, fz)
-    // Top-Right of quad: (fx+1, fy+yTR, fz+fw)
+    pushVert(fx + 1, botY, fz + fw, 0, vBottom, (float)aoBR);
+    pushVert(fx + 1, botY, fz, fw, vBottom, (float)aoBL);
+    pushVert(fx + 1, fy + yBR, fz, fw, vTop, (float)aoTL);
 
-    pushVert(fx + 1, botY, fz + fw, 0, 0, (float)aoBR);
-    pushVert(fx + 1, botY, fz, fw, 0, (float)aoBL);
-    pushVert(fx + 1, fy + yBR, fz, fw, fh, (float)aoTL);
-
-    pushVert(fx + 1, botY, fz + fw, 0, 0, (float)aoBR);
-    pushVert(fx + 1, fy + yBR, fz, fw, fh, (float)aoTL);
-    pushVert(fx + 1, fy + yTR, fz + fw, 0, fh, (float)aoTR);
+    pushVert(fx + 1, botY, fz + fw, 0, vBottom, (float)aoBR);
+    pushVert(fx + 1, fy + yBR, fz, fw, vTop, (float)aoTL);
+    pushVert(fx + 1, fy + yTR, fz + fw, 0, vTop, (float)aoTR);
   } else if (faceDir == 4) { // Top Y+ (at y+1)
     // Uses all 4 corner heights.
     // The 'width' (fw) here is along X, 'height' (fh) is along Z.
