@@ -389,6 +389,7 @@ int main() {
   bool lastLeftMouse = false;
   bool lastRightMouse = false;
   BlockType selectedBlock = STONE;
+  uint8_t selectedBlockMetadata = 0;
 
   // Global Time
   float globalTime = 0.0f;
@@ -582,16 +583,34 @@ int main() {
           std::string label = GetBlockName(blocks[i]);
           if (ImGui::Button((label + "##btn").c_str(), ImVec2(60, 60))) {
             selectedBlock = (BlockType)blocks[i];
+            selectedBlockMetadata = 0;
           }
 
           // Highlight selected
-          if ((int)selectedBlock == blocks[i]) {
+          if ((int)selectedBlock == blocks[i] && selectedBlockMetadata == 0) {
             ImGui::GetWindowDrawList()->AddRect(
                 ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
                 IM_COL32(255, 255, 0, 255), 3.0f);
           }
         }
-        ImGui::Text("Selected: %s", GetBlockName(selectedBlock));
+
+        // Manual Additions for Metadata Blocks
+        if (numBlocks % buttonsPerRow != 0)
+          ImGui::SameLine();
+
+        // SPRUCE PLANKS
+        if (ImGui::Button("Spruce Planks##btn", ImVec2(60, 60))) {
+          selectedBlock = WOOD_PLANKS;
+          selectedBlockMetadata = 1;
+        }
+        if (selectedBlock == WOOD_PLANKS && selectedBlockMetadata == 1) {
+          ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(),
+                                              ImGui::GetItemRectMax(),
+                                              IM_COL32(255, 255, 0, 255), 3.0f);
+        }
+
+        ImGui::Text("Selected: %s (Meta: %d)", GetBlockName(selectedBlock),
+                    selectedBlockMetadata);
       }
 
       if (ImGui::CollapsingHeader("Raycast", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -853,6 +872,7 @@ int main() {
 
         if (!intersects || !isPlacedBlockSolid) {
           world.setBlock(placeX, placeY, placeZ, selectedBlock);
+          world.setMetadata(placeX, placeY, placeZ, selectedBlockMetadata);
         } else {
           // Collision detected, do not place block.
         }
@@ -861,26 +881,46 @@ int main() {
     lastRightMouse = currentRightMouse;
 
     // Inventory Selection (Hotbar)
-    if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS)
+    if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS) {
       selectedBlock = DIRT;
-    if (glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS)
+      selectedBlockMetadata = 0;
+    }
+    if (glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS) {
       selectedBlock = STONE;
-    if (glfwGetKey(window, GLFW_KEY_3) == GLFW_PRESS)
+      selectedBlockMetadata = 0;
+    }
+    if (glfwGetKey(window, GLFW_KEY_3) == GLFW_PRESS) {
       selectedBlock = GRASS;
-    if (glfwGetKey(window, GLFW_KEY_4) == GLFW_PRESS)
+      selectedBlockMetadata = 0;
+    }
+    if (glfwGetKey(window, GLFW_KEY_4) == GLFW_PRESS) {
       selectedBlock = WOOD;
-    if (glfwGetKey(window, GLFW_KEY_5) == GLFW_PRESS)
+      selectedBlockMetadata = 0;
+    }
+    if (glfwGetKey(window, GLFW_KEY_5) == GLFW_PRESS) {
       selectedBlock = WOOD_PLANKS;
-    if (glfwGetKey(window, GLFW_KEY_6) == GLFW_PRESS)
+      selectedBlockMetadata = 0;
+    }
+    if (glfwGetKey(window, GLFW_KEY_6) == GLFW_PRESS) {
       selectedBlock = COBBLESTONE;
-    if (glfwGetKey(window, GLFW_KEY_7) == GLFW_PRESS)
+      selectedBlockMetadata = 0;
+    }
+    if (glfwGetKey(window, GLFW_KEY_7) == GLFW_PRESS) {
       selectedBlock = OBSIDIAN;
-    if (glfwGetKey(window, GLFW_KEY_8) == GLFW_PRESS)
+      selectedBlockMetadata = 0;
+    }
+    if (glfwGetKey(window, GLFW_KEY_8) == GLFW_PRESS) {
       selectedBlock = SAND;
-    if (glfwGetKey(window, GLFW_KEY_9) == GLFW_PRESS)
+      selectedBlockMetadata = 0;
+    }
+    if (glfwGetKey(window, GLFW_KEY_9) == GLFW_PRESS) {
       selectedBlock = GLOWSTONE;
-    if (glfwGetKey(window, GLFW_KEY_0) == GLFW_PRESS)
+      selectedBlockMetadata = 0;
+    }
+    if (glfwGetKey(window, GLFW_KEY_0) == GLFW_PRESS) {
       selectedBlock = WATER;
+      selectedBlockMetadata = 0;
+    }
 
     // Draw Crosshair
     float aspect = (float)SCR_WIDTH / (float)SCR_HEIGHT;
@@ -964,24 +1004,56 @@ void processInput(GLFWwindow *window, const World &world) {
   // If in debug mode, return early or skip player controls (except movement
   // maybe?) Let's keep movement but disable mouse look.
 
-  if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-    player.ProcessKeyboard(P_FORWARD, deltaTime, world);
-  if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-    player.ProcessKeyboard(P_BACKWARD, deltaTime, world);
-  if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-    player.ProcessKeyboard(P_LEFT, deltaTime, world);
-  if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-    player.ProcessKeyboard(P_RIGHT, deltaTime, world);
+  // Sprint Logic
+  static bool lastWState = false;
+  static float lastWTime = -1.0f;
+  static bool lastCtrlState = false;
+
+  bool currentWState = glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS;
+  bool currentSState = glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
+  bool currentAState = glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS;
+  bool currentDState = glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
+  bool ctrlPressed = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS;
+  bool isMoving =
+      currentWState || currentSState || currentAState || currentDState;
+
+  // Toggle Sprint with Ctrl
+  if (ctrlPressed && !lastCtrlState) {
+    player.IsSprinting = !player.IsSprinting;
+  }
+  lastCtrlState = ctrlPressed;
+
+  // Double Tap W to Enable Sprint
+  if (currentWState && !lastWState) {
+    float currentTime = (float)glfwGetTime();
+    if (currentTime - lastWTime < 0.3f) {
+      player.IsSprinting = true;
+    }
+    lastWTime = currentTime;
+  }
+  lastWState = currentWState;
+
+  // Reset Sprint if stopped moving
+  if (!isMoving) {
+    player.IsSprinting = false;
+  }
+
+  bool up = false;
+  bool down = false;
 
   if (player.FlyMode) {
     if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-      player.ProcessKeyboard(P_UP, deltaTime, world);
+      up = true;
     if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
-      player.ProcessKeyboard(P_DOWN, deltaTime, world);
+      down = true;
   } else {
     if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
       player.ProcessJump(true, world);
   }
+
+  // Normalized Movement Call
+  player.ProcessKeyboard(currentWState, currentSState, currentAState,
+                         currentDState, up, down, deltaTime, world);
 
   // Mouse Polling
   if (!isDebugMode) {
