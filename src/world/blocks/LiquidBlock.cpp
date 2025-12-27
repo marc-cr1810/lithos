@@ -16,6 +16,7 @@ void LiquidBlock::onNeighborChange(World &world, int x, int y, int z, int nx,
 }
 
 void LiquidBlock::update(World &world, int x, int y, int z) const {
+  checkMixing(world, x, y, z);
   uint8_t meta = world.getMetadata(x, y, z);
 
   // Check if we are still supported (Decay Logic)
@@ -131,6 +132,63 @@ void LiquidBlock::trySpread(World &world, int x, int y, int z,
       world.setMetadata(x, y, z, newMeta);
       int delay = (this->id == WATER) ? 5 : 30;
       world.scheduleBlockUpdate(x, y, z, delay);
+    }
+  }
+}
+
+void LiquidBlock::checkMixing(World &world, int x, int y, int z) const {
+  uint8_t meta = world.getMetadata(x, y, z);
+
+  // Only Flowing Liquids cause mixing interactions (mostly)
+  // or rather, we check neighbors OF this block.
+
+  // Rule 1: Flowing Lava (this) touches Water Source (neighbor) -> Water Source
+  // becomes Stone Rule 2: Flowing Lava (this) touches Flowing Water (neighbor)
+  // -> Flowing Water becomes Cobblestone Rule 3: Flowing Water (this) touches
+  // Lava Source (neighbor) -> Lava Source becomes Obsidian
+
+  if (meta > 0) { // THIS is Flowing
+    int dirs[6][3] = {{1, 0, 0},  {-1, 0, 0}, {0, 1, 0},
+                      {0, -1, 0}, {0, 0, 1},  {0, 0, -1}};
+
+    for (auto &d : dirs) {
+      int nx = x + d[0];
+      int ny = y + d[1];
+      int nz = z + d[2];
+
+      ChunkBlock nb = world.getBlock(nx, ny, nz);
+      if (nb.isActive()) {
+        if (this->id == LAVA) {
+          // I am Flowing Lava
+          if (nb.block->getId() == WATER) {
+            uint8_t nMeta = world.getMetadata(nx, ny, nz);
+            if (nMeta == 0) { // Water Source
+              // Turn to Stone
+              world.setBlock(nx, ny, nz, STONE);
+              world.setMetadata(nx, ny, nz, 0); // Reset meta
+                                                // Sound/Particle?
+            } else {                            // Flowing Water
+              // Turn to Cobblestone
+              world.setBlock(nx, ny, nz, COBBLESTONE);
+              world.setMetadata(nx, ny, nz, 0);
+            }
+          }
+        } else if (this->id == WATER) {
+          // I am Flowing Water
+          if (nb.block->getId() == LAVA) {
+            uint8_t nMeta = world.getMetadata(nx, ny, nz);
+            if (nMeta == 0) { // Lava Source
+              // Turn to Obsidian
+              world.setBlock(nx, ny, nz, OBSIDIAN);
+              world.setMetadata(nx, ny, nz, 0);
+            } else { // Flowing Lava
+              // Turn to Cobblestone
+              world.setBlock(nx, ny, nz, COBBLESTONE);
+              world.setMetadata(nx, ny, nz, 0);
+            }
+          }
+        }
+      }
     }
   }
 }

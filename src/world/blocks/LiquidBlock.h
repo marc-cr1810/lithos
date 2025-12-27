@@ -24,9 +24,7 @@ public:
     }
   }
 
-  float getAlpha() const override {
-    return 1.0f;
-  }
+  float getAlpha() const override { return 1.0f; }
 
   uint8_t getEmission() const override {
     if (id == BlockType::LAVA)
@@ -41,6 +39,7 @@ public:
 
 private:
   void trySpread(World &world, int x, int y, int z, int newMeta) const;
+  void checkMixing(World &world, int x, int y, int z) const;
 };
 
 #endif
