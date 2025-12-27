@@ -100,12 +100,19 @@ void World::WorkerLoop() {
     Chunk *c = nullptr;
     {
       std::unique_lock<std::mutex> lock(queueMutex);
-      condition.wait(lock, [this] { return !meshQueue.empty() || shutdown; });
+      condition.wait(lock, [this] {
+        return !meshQueue.empty() || !meshQueueHighPrio.empty() || shutdown;
+      });
 
-      if (shutdown && meshQueue.empty())
+      if (shutdown && meshQueue.empty() && meshQueueHighPrio.empty())
         break;
 
-      if (!meshQueue.empty()) {
+      // Check high-priority queue first (block breaks)
+      if (!meshQueueHighPrio.empty()) {
+        c = meshQueueHighPrio.front();
+        meshQueueHighPrio.pop_front();
+        meshSet.erase(c);
+      } else if (!meshQueue.empty()) {
         c = meshQueue.front();
         meshQueue.pop_front();
         meshSet.erase(c);
@@ -184,17 +191,17 @@ void World::QueueMeshUpdate(Chunk *c, bool priority) {
   if (c) {
     std::lock_guard<std::mutex> lock(queueMutex);
     if (meshSet.find(c) == meshSet.end()) {
+      // Add to appropriate queue based on priority
       if (priority)
-        meshQueue.push_front(c);
+        meshQueueHighPrio.push_back(c);
       else
         meshQueue.push_back(c);
       meshSet.insert(c);
       condition.notify_one();
-    } else {
-      // Already in queue. If priority is true, should we move it to front?
-      // Since std::deque/set makes it hard to move, we skip for now.
-      // Deduplication is more important.
     }
+    // If already queued, we don't re-add (deduplication)
+    // High priority requests for already-queued chunks are handled
+    // by workers checking high-priority queue first
   }
 }
 

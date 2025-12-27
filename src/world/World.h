@@ -93,8 +93,9 @@ private:
   std::condition_variable condition;
 
   std::mutex queueMutex;
-  std::deque<Chunk *> meshQueue;
-  std::unordered_set<Chunk *> meshSet; // For deduplication
+  std::deque<Chunk *> meshQueue;         // Low priority (chunk generation)
+  std::deque<Chunk *> meshQueueHighPrio; // High priority (block breaks)
+  std::unordered_set<Chunk *> meshSet;   // For deduplication across both queues
 
   std::mutex uploadMutex;
   std::vector<std::tuple<Chunk *, std::vector<float>, int>> uploadQueue;
