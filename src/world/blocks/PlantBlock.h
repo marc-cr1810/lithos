@@ -11,6 +11,7 @@ public:
       return true;
     return false;
   }
+  bool isSelectable() const override { return true; }
   bool isOpaque() const override { return false; }
   RenderLayer getRenderLayer() const override { return RenderLayer::CUTOUT; }
 

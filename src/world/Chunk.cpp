@@ -1782,8 +1782,8 @@ bool Chunk::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist,
     // Check bounds
     if (x >= 0 && x < CHUNK_SIZE && y >= 0 && y < CHUNK_SIZE && z >= 0 &&
         z < CHUNK_SIZE) {
-      // Use isSolid() to ignore Water/Lava for raycasting
-      if (blocks[x][y][z].isSolid()) {
+      // Use isSelectable() to allow picking flora but ignore Water
+      if (blocks[x][y][z].isSelectable()) {
         outputPos = glm::ivec3(x, y, z);
         outputPrePos = glm::ivec3((int)floor(lastPos.x), (int)floor(lastPos.y),
                                   (int)floor(lastPos.z));

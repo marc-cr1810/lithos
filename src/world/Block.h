@@ -176,7 +176,8 @@ public:
   }
 
   // Properties
-  virtual bool isSolid() const { return true; }  // Collision
+  virtual bool isSolid() const { return true; }           // Collision
+  virtual bool isSelectable() const { return isSolid(); } // Selection/Raycast
   virtual bool isOpaque() const { return true; } // Visualization/Light Blocking
   virtual uint8_t getEmission() const { return 0; } // Light source
   virtual bool isActive() const { return true; }    // Replaces != AIR check
@@ -235,6 +236,7 @@ struct ChunkBlock {
   bool isActive() const { return block->isActive(); }
   bool isOpaque() const { return block->isOpaque(); }
   bool isSolid() const { return block->isSolid(); }
+  bool isSelectable() const { return block->isSelectable(); }
   uint8_t getEmission() const { return block->getEmission(); }
   uint8_t getType() const { return block->getId(); }
   Block::RenderLayer getRenderLayer() const { return block->getRenderLayer(); }
