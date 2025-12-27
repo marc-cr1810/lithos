@@ -120,6 +120,14 @@ void World::WorkerLoop() {
     }
 
     if (c) {
+      // Recalculate lighting if needed (moved from main thread)
+      if (c->needsLightingUpdate) {
+        c->calculateSunlight();
+        c->calculateBlockLight();
+        c->spreadLight();
+        c->needsLightingUpdate = false;
+      }
+
       // Collecting geometry
       int opaqueCount = 0;
       std::vector<float> data = c->generateGeometry(opaqueCount);
@@ -719,14 +727,11 @@ void World::setBlock(int x, int y, int z, BlockType type) {
   if (c) {
     c->setBlock(lx, ly, lz, type);
 
-    // Recalculate lighting for this chunk
-    c->calculateSunlight();
-    c->calculateBlockLight();
-    c->spreadLight();
+    // Mark for lighting recalculation (done in worker thread)
+    c->needsLightingUpdate = true;
+    QueueMeshUpdate(c, true); // High priority for instant visual feedback
 
-    QueueMeshUpdate(c, true); // Update Parent SuperChunk (High Priority)
-
-    // Update neighbor chunks (Propagate Light)
+    // Update neighbor chunks
     int nDx[] = {-1, 1, 0, 0, 0, 0};
     int nDy[] = {0, 0, -1, 1, 0, 0};
     int nDz[] = {0, 0, 0, 0, -1, 1};
@@ -734,9 +739,7 @@ void World::setBlock(int x, int y, int z, BlockType type) {
     for (int i = 0; i < 6; ++i) {
       Chunk *n = getChunk(cx + nDx[i], cy + nDy[i], cz + nDz[i]);
       if (n) {
-        n->calculateSunlight();
-        n->calculateBlockLight();
-        n->spreadLight();
+        n->needsLightingUpdate = true;
         QueueMeshUpdate(n, true);
       }
     }

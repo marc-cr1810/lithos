@@ -36,6 +36,8 @@ public:
   void updateMesh();
 
   bool meshDirty; // Flag for light updates
+  bool needsLightingUpdate =
+      false; // Flag to recalculate lighting before mesh gen
 
   // Neighbor Pointers (Cached for lock-free access)
   // Indexes: 0=Front(Z+), 1=Back(Z-), 2=Left(X-), 3=Right(X+), 4=Top(Y+),
