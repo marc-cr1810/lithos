@@ -7,6 +7,20 @@ class SolidBlock : public Block {
 public:
   SolidBlock(uint8_t id, const std::string &name) : Block(id, name) {}
 
+  bool isOpaque() const override {
+    if (id == BlockType::ICE)
+      return false;
+    return true;
+  }
+
+  RenderLayer getRenderLayer() const override {
+    if (id == BlockType::ICE)
+      return RenderLayer::TRANSPARENT;
+    // Transparent leaves check? Leaves usually use CUTOUT or OPAQUE
+    // (Fast/Fancy) For now standard SolidBlock is opaque.
+    return RenderLayer::OPAQUE;
+  }
+
   void getColor(float &r, float &g, float &b) const override {
     if (id == BlockType::GRASS) {
       r = 0.0f;

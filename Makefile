@@ -17,11 +17,11 @@ release:
 run: run_debug
 
 run_debug: debug
-	python run_game.py debug
+	python3 run_game.py debug
 
 # Run Release
 run_release: release
-	python run_game.py release
+	python3 run_game.py release
 
 clean:
 	rm -rf build build_release

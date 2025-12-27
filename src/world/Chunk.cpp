@@ -3,6 +3,7 @@
 #include "WorldGenerator.h"
 #include <cmath>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/norm.hpp>
 #include <queue>
 #include <tuple>
 
@@ -1125,10 +1126,20 @@ void Chunk::uploadMesh(const std::vector<float> &data, int opaqueCount) {
   glBindVertexArray(VAO);
   glBindBuffer(GL_ARRAY_BUFFER, VBO);
   glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(float), data.data(),
-               GL_STATIC_DRAW);
+               GL_DYNAMIC_DRAW);
 
   vertexCount = opaqueCount;
   vertexCountTransparent = (data.size() / 14) - opaqueCount;
+
+  // Store transparent part for sorting
+  if (vertexCountTransparent > 0) {
+    size_t opaqueFloats = opaqueCount * 14;
+    if (opaqueFloats < data.size()) {
+      transparentVertices.assign(data.begin() + opaqueFloats, data.end());
+    }
+  } else {
+    transparentVertices.clear();
+  }
 
   // Attribs
   float stride = 14 * sizeof(float);
@@ -1147,6 +1158,76 @@ void Chunk::uploadMesh(const std::vector<float> &data, int opaqueCount) {
   glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, stride,
                         (void *)(12 * sizeof(float))); // TexOrigin
   glEnableVertexAttribArray(4);
+}
+
+void Chunk::sortAndUploadTransparent(const glm::vec3 &cameraPos) {
+  if (transparentVertices.empty() || VAO == 0)
+    return;
+
+  // Structure to hold quad info
+  struct QuadInfo {
+    int index; // Index of the quad (0 to N-1)
+    float distSq;
+  };
+
+  int floatsPerVertex = 14;
+  int vertsPerQuad = 6;
+  int floatsPerQuad = vertsPerQuad * floatsPerVertex;
+  int quadCount = transparentVertices.size() / floatsPerQuad;
+
+  std::vector<QuadInfo> quads(quadCount);
+
+  // Calculate distances
+  for (int i = 0; i < quadCount; ++i) {
+    quads[i].index = i;
+    float *qData = &transparentVertices[i * floatsPerQuad];
+
+    // Calculate centroid (average of 6 vertices)
+    glm::vec3 centroid(0.0f);
+    for (int v = 0; v < 6; ++v) {
+      centroid.x += qData[v * floatsPerVertex + 0];
+      centroid.y += qData[v * floatsPerVertex + 1];
+      centroid.z += qData[v * floatsPerVertex + 2];
+    }
+    centroid /= 6.0f;
+
+    // Transform centroid to world space
+    // Chunk vertices are LOCAL to the chunk?
+    // Let's check generateGeometry...
+    // "glm::translate(glm::mat4(1.0f), glm::vec3(chunkPosition.x *
+    // CHUNK_SIZE...))" in render() So vertices are LOCAL (0..16).
+    glm::vec3 worldCentroid =
+        centroid + glm::vec3(chunkPosition.x * CHUNK_SIZE,
+                             chunkPosition.y * CHUNK_SIZE,
+                             chunkPosition.z * CHUNK_SIZE);
+
+    quads[i].distSq = glm::distance2(worldCentroid, cameraPos);
+  }
+
+  // Sort Back-to-Front (Far to Near) -> Descending Distance
+  std::sort(
+      quads.begin(), quads.end(),
+      [](const QuadInfo &a, const QuadInfo &b) { return a.distSq > b.distSq; });
+
+  // Reconstruct sorted buffer
+  std::vector<float> sortedData;
+  sortedData.reserve(transparentVertices.size());
+
+  for (const auto &q : quads) {
+    int offset = q.index * floatsPerQuad;
+    sortedData.insert(sortedData.end(), transparentVertices.begin() + offset,
+                      transparentVertices.begin() + offset + floatsPerQuad);
+  }
+
+  // Upload to GPU (SubData)
+  // Offset = opaque vertex count * stride bytes
+  glBindVertexArray(VAO);
+  glBindBuffer(GL_ARRAY_BUFFER, VBO);
+  glBufferSubData(GL_ARRAY_BUFFER,
+                  vertexCount * floatsPerVertex * sizeof(float),
+                  sortedData.size() * sizeof(float), sortedData.data());
+  glBindBuffer(GL_ARRAY_BUFFER, 0); // Unbind VBO
+  glBindVertexArray(0);
 }
 
 void Chunk::updateMesh() {

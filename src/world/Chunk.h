@@ -79,7 +79,12 @@ private:
   unsigned int VAO, VBO, EBO;
   int vertexCount;
   int vertexCountTransparent;
+  std::vector<float> transparentVertices; // CPU-side copy for sorting
 
+public:
+  void sortAndUploadTransparent(const glm::vec3 &cameraPos);
+
+private:
   void addFace(std::vector<float> &vertices, int x, int y, int z, int faceDir,
                const Block *block, int width, int height, int aoBL, int aoBR,
                int aoTR, int aoTL, uint8_t metadata, float hBL, float hBR,

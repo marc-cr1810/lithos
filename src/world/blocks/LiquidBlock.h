@@ -25,8 +25,6 @@ public:
   }
 
   float getAlpha() const override {
-    if (id == BlockType::WATER)
-      return 0.6f;
     return 1.0f;
   }
 

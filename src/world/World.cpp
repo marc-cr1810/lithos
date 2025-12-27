@@ -816,7 +816,8 @@ void World::setBlock(int x, int y, int z, BlockType type) {
   }
 }
 
-int World::render(Shader &shader, const glm::mat4 &viewProjection) {
+int World::render(Shader &shader, const glm::mat4 &viewProjection,
+                  const glm::vec3 &cameraPos) {
   // Collect Visible Chunks under lock
   std::vector<Chunk *> visibleChunks;
   visibleChunks.reserve(chunks.size());
@@ -852,6 +853,18 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection) {
   int count = 0;
 
   // Pass 1: Opaque
+  // Optimization: Sort Front-to-Back for opaque (minimizes overdraw)
+  std::sort(visibleChunks.begin(), visibleChunks.end(),
+            [&](Chunk *a, Chunk *b) {
+              glm::vec3 posA = glm::vec3(a->chunkPosition * CHUNK_SIZE) +
+                               glm::vec3(CHUNK_SIZE / 2.0f);
+              glm::vec3 posB = glm::vec3(b->chunkPosition * CHUNK_SIZE) +
+                               glm::vec3(CHUNK_SIZE / 2.0f);
+              float distA = glm::distance(posA, cameraPos);
+              float distB = glm::distance(posB, cameraPos);
+              return distA < distB;
+            });
+
   for (Chunk *c : visibleChunks) {
     if (c) {
       c->render(shader, viewProjection, 0); // Opaque
@@ -860,21 +873,23 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection) {
   }
 
   // Pass 2: Transparent
-  // We should probably disable Face Culling for water?
-  // Actually, water usually has backfacesCULLED if we only want surface.
-  // If we want to see underside of water surface, we need double-sided.
-  // Standard MC is single-sided (cull back).
-  // But we might want to disable Depth Write for transparency?
-  // For now, keep Depth Write ON to ensure surface looks solid enough.
-  // Or arguably OFF to blend particles? Liquid usually ON.
+  // SORT Back-to-Front for correct transparency blending
+  // We reuse the list but reverse it?
+  // Actually, we just iterate backwards if we sorted Front-to-Back above.
+  // Or just re-sort/reverse.
+  // Iterating backwards is cheapest.
 
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glDepthMask(GL_FALSE); // Disable depth write for transparent pass so
-                         // selection box shows
+  glDepthMask(GL_FALSE); // Disable depth write for transparent pass
 
-  for (Chunk *c : visibleChunks) {
+  // Iterate backwards (Far to Near)
+  for (auto it = visibleChunks.rbegin(); it != visibleChunks.rend(); ++it) {
+    Chunk *c = *it;
     if (c) {
+      // Dynamic Sort of Transparent Faces
+      // Distances are checked against cameraPos
+      c->sortAndUploadTransparent(cameraPos);
       c->render(shader, viewProjection, 1); // Transparent
     }
   }

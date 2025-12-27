@@ -737,10 +737,10 @@ int main() {
       dbg_frozenProjView = cullMatrix;
     }
 
-    dbg_renderedChunks = world.render(ourShader, cullMatrix);
+    dbg_renderedChunks = world.render(ourShader, cullMatrix, camera.Position);
     {
       PROFILE_SCOPE("Render Chunks");
-      dbg_renderedChunks = world.render(ourShader, cullMatrix);
+      dbg_renderedChunks = world.render(ourShader, cullMatrix, camera.Position);
     }
 
     if (dbg_wireframe)

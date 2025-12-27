@@ -62,7 +62,8 @@ public:
   long long currentTick = 0;
 
   // Returns number of chunks rendered
-  int render(Shader &shader, const glm::mat4 &viewProjection);
+  int render(Shader &shader, const glm::mat4 &viewProjection,
+             const glm::vec3 &cameraPos);
 
   // Raycast against all chunks (or optimization)
   // Returns true and fills info if hit
