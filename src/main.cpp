@@ -159,6 +159,7 @@ int main() {
     return -1;
   }
   glfwMakeContextCurrent(window);
+  glfwSwapInterval(0); // Disable VSync by default to match dbg_vsync = false
   glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
   // glfwSetCursorPosCallback(window, mouse_callback); // Disable callback
   // glfwSetScrollCallback(window, scroll_callback);
