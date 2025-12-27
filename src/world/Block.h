@@ -34,7 +34,10 @@ enum BlockType {
   DEAD_BUSH = 19,
   ROSE = 20,
   DRY_SHORT_GRASS = 21,
-  DRY_TALL_GRASS = 22
+  DRY_TALL_GRASS = 22,
+  OBSIDIAN = 23,
+  COBBLESTONE = 24,
+  WOOD_PLANKS = 25
 };
 
 class World; // Forward declaration
@@ -161,6 +164,13 @@ public:
         }
       }
     }
+  }
+
+  // Overload with metadata support for blocks that need it
+  virtual void getTextureUV(int faceDir, float &u, float &v, int x, int y,
+                            int z, uint8_t metadata, int layer = 0) const {
+    // Default implementation ignores metadata and calls the regular version
+    getTextureUV(faceDir, u, v, x, y, z, layer);
   }
 
   // Properties

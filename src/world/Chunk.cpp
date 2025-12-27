@@ -991,9 +991,10 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
           int gz = chunkPosition.z * CHUNK_SIZE + z;
 
           float uMin, vMin;
-          cb.block->getTextureUV(0, uMin, vMin, gx, gy,
-                                 gz); // Face 0 default, with randomization
-          float uMax = uMin + 0.25f;  // Assumption: Tiles are 0.25
+          cb.block->getTextureUV(
+              0, uMin, vMin, gx, gy, gz,
+              cb.metadata);          // Face 0 default, with randomization
+          float uMax = uMin + 0.25f; // Assumption: Tiles are 0.25
           float vMax = vMin + 0.25f;
 
           float r, g, b;
@@ -1227,16 +1228,16 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
     if ((block->getId() == WATER || block->getId() == LAVA) && faceDir == 4) {
       // Check if flowing
       if (metadata > 0) {
-        block->getTextureUV(0, uMin, vMin, gx, gy, gz,
+        block->getTextureUV(0, uMin, vMin, gx, gy, gz, metadata,
                             layer); // Use Side Texture
       } else {
-        block->getTextureUV(faceDir, uMin, vMin, gx, gy, gz, layer);
+        block->getTextureUV(faceDir, uMin, vMin, gx, gy, gz, metadata, layer);
       }
     } else {
-      block->getTextureUV(faceDir, uMin, vMin, gx, gy, gz, layer);
+      block->getTextureUV(faceDir, uMin, vMin, gx, gy, gz, metadata, layer);
     }
   } else {
-    block->getTextureUV(faceDir, uMin, vMin, 0, 0, 0, layer);
+    block->getTextureUV(faceDir, uMin, vMin, 0, 0, 0, metadata, layer);
   }
 
   float fx = (float)x, fy = (float)y, fz = (float)z;

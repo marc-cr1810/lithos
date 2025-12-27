@@ -74,17 +74,17 @@ int dbg_renderedChunks = 0;
 // Helper
 const char *GetBlockName(int type) {
   switch (type) {
-  case 0:
+  case AIR:
     return "AIR";
-  case 1:
+  case DIRT:
     return "DIRT";
-  case 2:
+  case GRASS:
     return "GRASS";
-  case 3:
+  case STONE:
     return "STONE";
-  case 4:
+  case WOOD:
     return "WOOD";
-  case 5:
+  case LEAVES:
     return "LEAVES";
   case COAL_ORE:
     return "Coal Ore";
@@ -100,6 +100,32 @@ const char *GetBlockName(int type) {
     return "Sand";
   case GRAVEL:
     return "Gravel";
+  case SNOW:
+    return "Snow";
+  case ICE:
+    return "Ice";
+  case CACTUS:
+    return "Cactus";
+  case PINE_WOOD:
+    return "Pine Wood";
+  case PINE_LEAVES:
+    return "Pine Leaves";
+  case TALL_GRASS:
+    return "Tall Grass";
+  case DEAD_BUSH:
+    return "Dead Bush";
+  case ROSE:
+    return "Rose";
+  case DRY_SHORT_GRASS:
+    return "Dry Short Grass";
+  case DRY_TALL_GRASS:
+    return "Dry Tall Grass";
+  case OBSIDIAN:
+    return "Obsidian";
+  case COBBLESTONE:
+    return "Cobblestone";
+  case WOOD_PLANKS:
+    return "Wood Planks";
   default:
     return "Unknown";
   }
@@ -536,18 +562,30 @@ int main() {
       if (ImGui::CollapsingHeader("Creative Menu",
                                   ImGuiTreeNodeFlags_DefaultOpen)) {
         // Grid of blocks
-        int buttonsPerRow = 4;
-        for (int i = 1; i <= 10; ++i) { // 1 to 10 are valid blocks
-          if (i > 1 && (i - 1) % buttonsPerRow != 0)
+        int buttonsPerRow = 5;
+        // All blocks except AIR (0)
+        int blocks[] = {DIRT,           GRASS,       STONE,
+                        WOOD,           LEAVES,      COAL_ORE,
+                        IRON_ORE,       GLOWSTONE,   WATER,
+                        LAVA,           SAND,        GRAVEL,
+                        SNOW,           ICE,         CACTUS,
+                        PINE_WOOD,      PINE_LEAVES, TALL_GRASS,
+                        DEAD_BUSH,      ROSE,        DRY_SHORT_GRASS,
+                        DRY_TALL_GRASS, OBSIDIAN,    COBBLESTONE,
+                        WOOD_PLANKS};
+        int numBlocks = sizeof(blocks) / sizeof(blocks[0]);
+
+        for (int i = 0; i < numBlocks; ++i) {
+          if (i > 0 && i % buttonsPerRow != 0)
             ImGui::SameLine();
 
-          std::string label = GetBlockName(i);
+          std::string label = GetBlockName(blocks[i]);
           if (ImGui::Button((label + "##btn").c_str(), ImVec2(60, 60))) {
-            selectedBlock = (BlockType)i;
+            selectedBlock = (BlockType)blocks[i];
           }
 
           // Highlight selected
-          if ((int)selectedBlock == i) {
+          if ((int)selectedBlock == blocks[i]) {
             ImGui::GetWindowDrawList()->AddRect(
                 ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
                 IM_COL32(255, 255, 0, 255), 3.0f);
@@ -822,7 +860,7 @@ int main() {
     }
     lastRightMouse = currentRightMouse;
 
-    // Inventory Selection
+    // Inventory Selection (Hotbar)
     if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS)
       selectedBlock = DIRT;
     if (glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS)
@@ -832,13 +870,17 @@ int main() {
     if (glfwGetKey(window, GLFW_KEY_4) == GLFW_PRESS)
       selectedBlock = WOOD;
     if (glfwGetKey(window, GLFW_KEY_5) == GLFW_PRESS)
-      selectedBlock = LEAVES;
+      selectedBlock = WOOD_PLANKS;
     if (glfwGetKey(window, GLFW_KEY_6) == GLFW_PRESS)
-      selectedBlock = COAL_ORE;
+      selectedBlock = COBBLESTONE;
     if (glfwGetKey(window, GLFW_KEY_7) == GLFW_PRESS)
-      selectedBlock = IRON_ORE;
+      selectedBlock = OBSIDIAN;
     if (glfwGetKey(window, GLFW_KEY_8) == GLFW_PRESS)
+      selectedBlock = SAND;
+    if (glfwGetKey(window, GLFW_KEY_9) == GLFW_PRESS)
       selectedBlock = GLOWSTONE;
+    if (glfwGetKey(window, GLFW_KEY_0) == GLFW_PRESS)
+      selectedBlock = WATER;
 
     // Draw Crosshair
     float aspect = (float)SCR_WIDTH / (float)SCR_HEIGHT;

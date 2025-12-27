@@ -3,6 +3,7 @@
 #include "blocks/FallingBlock.h"
 #include "blocks/LightBlock.h"
 #include "blocks/LiquidBlock.h"
+#include "blocks/MetadataBlock.h"
 #include "blocks/PlantBlock.h"
 #include "blocks/SolidBlock.h"
 
@@ -130,6 +131,22 @@ BlockRegistry::BlockRegistry() {
   Block *dryTall = new PlantBlock(BlockType::DRY_TALL_GRASS, "Dry Tall Grass");
   dryTall->setTexture("tall_dry_grass");
   registerBlock(dryTall);
+
+  // New blocks
+  Block *obsidian = new SolidBlock(BlockType::OBSIDIAN, "Obsidian");
+  obsidian->setTexture("obsidian");
+  registerBlock(obsidian);
+
+  Block *cobblestone = new SolidBlock(BlockType::COBBLESTONE, "Cobblestone");
+  cobblestone->setTexture("cobblestone");
+  registerBlock(cobblestone);
+
+  // Wood planks with metadata support: 0 = oak, 1 = spruce
+  MetadataBlock *woodPlanks =
+      new MetadataBlock(BlockType::WOOD_PLANKS, "Wood Planks");
+  woodPlanks->setTextureForMetadata(0, "oak_planks");
+  woodPlanks->setTextureForMetadata(1, "spruce_planks");
+  registerBlock((Block *)woodPlanks);
 }
 
 void BlockRegistry::registerBlock(Block *block) {
