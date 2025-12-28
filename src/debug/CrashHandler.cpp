@@ -63,9 +63,10 @@ long __stdcall CrashHandler::WindowsExceptionFilter(
   report << "Exception Address: 0x"
          << exceptionInfo->ExceptionRecord->ExceptionAddress << "\n";
 
-  report << "\nStack trace generation disabled due to compilation issues with "
-            "DbgHelp.h\n";
-  report << "Please check the Exception Address in your debugger/map file.\n";
+  report << "\nStack trace generation disabled due to persistent compilation "
+            "conflicts with DbgHelp.h.\n";
+  report << "The Exception Address can be used with a debugger or map file to "
+            "locate the crash.\n";
 
   WriteCrashReport(report.str());
 
