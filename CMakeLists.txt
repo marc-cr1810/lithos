@@ -111,7 +111,9 @@ add_executable(lithos
     src/world/blocks/LiquidBlock.cpp
     src/world/BlockRegistry.cpp
     src/ecs/Systems.cpp
+    src/ecs/Systems.cpp
     src/debug/Profiler.cpp
+    src/debug/CrashHandler.cpp
     
     # ImGui
     ${imgui_SOURCE_DIR}/imgui.cpp
@@ -134,6 +136,10 @@ target_link_libraries(lithos PRIVATE
     ${GLEW_TARGET}
     EnTT::EnTT
 )
+
+if(WIN32)
+    target_link_libraries(lithos PRIVATE Dbghelp)
+endif()
 
 target_compile_definitions(lithos PRIVATE USE_GLEW GLEW_NO_GLU)
 

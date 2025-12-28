@@ -137,7 +137,11 @@ const char *GetBlockName(int type) {
   }
 }
 
+#include "debug/CrashHandler.h"
+
 int main() {
+  CrashHandler::Init();
+
   // glfw: initialize and configure
   // ------------------------------
   glfwInit();

@@ -31,4 +31,4 @@ run_release: release
 	$(PYTHON_CMD) run_game.py release
 
 clean:
-	rm -rf build build_release
+	rm -rf build
