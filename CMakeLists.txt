@@ -89,6 +89,12 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_definitions(-DMINCERAFT_DEBUG)
 endif()
 
+# MSVC Optimizations for Release
+if(MSVC AND CMAKE_BUILD_TYPE STREQUAL "Release")
+    add_compile_options(/O2 /Ob2 /Oi /Ot /Oy /GL)
+    add_link_options(/LTCG)
+endif()
+
 add_executable(lithos 
     src/main.cpp 
     src/render/Shader.cpp 
