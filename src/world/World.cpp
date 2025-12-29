@@ -1005,13 +1005,23 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection,
   glDepthMask(GL_FALSE); // Disable depth write for transparent pass
 
   // Iterate backwards (Far to Near)
-  for (auto it = visibleChunks.rbegin(); it != visibleChunks.rend(); ++it) {
-    Chunk *c = *it;
-    if (c) {
-      // Dynamic Sort of Transparent Faces
-      // Distances are checked against cameraPos
-      c->sortAndUploadTransparent(cameraPos);
-      c->render(shader, viewProjection, 1); // Transparent
+  {
+    PROFILE_SCOPE("Transp Sort");
+    for (auto it = visibleChunks.rbegin(); it != visibleChunks.rend(); ++it) {
+      Chunk *c = *it;
+      if (c) {
+        c->sortAndUploadTransparent(cameraPos);
+      }
+    }
+  }
+
+  {
+    PROFILE_SCOPE("Transp Draw");
+    for (auto it = visibleChunks.rbegin(); it != visibleChunks.rend(); ++it) {
+      Chunk *c = *it;
+      if (c) {
+        c->render(shader, viewProjection, 1); // Transparent
+      }
     }
   }
   glDepthMask(GL_TRUE); // Restore depth write

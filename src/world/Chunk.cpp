@@ -1537,66 +1537,74 @@ void Chunk::uploadMesh(const std::vector<float> &data, int opaqueCount) {
 }
 
 void Chunk::sortAndUploadTransparent(const glm::vec3 &cameraPos) {
-  if (transparentVertices.empty() || VAO == 0)
+  if (vertexCountTransparent == 0)
+    return;
+  if (VAO == 0)
     return;
 
+  // Throttle: Only resort if camera moved significantly or never sorted
+  if (glm::distance(cameraPos, m_lastSortCameraPos) < 1.0f) {
+    return;
+  }
+  m_lastSortCameraPos = cameraPos;
+
+  int floatsPerVertex = 14; // As defined in uploadMesh
+  int vertsPerFace = 6;
+  int numFloatsPerFace = floatsPerVertex * vertsPerFace;
+
+  // transparentVertices stores FULL FACES consecutively.
+  int numFaces = transparentVertices.size() / numFloatsPerFace;
+  if (numFaces == 0)
+    return; // Should be covered by count check
+
   // Structure to hold quad info
-  struct QuadInfo {
-    int index; // Index of the quad (0 to N-1)
+  struct FaceInfo {
+    int index; // Index of the face (0 to N-1)
     float distSq;
   };
 
-  int floatsPerVertex = 14;
-  int vertsPerQuad = 6;
-  int floatsPerQuad = vertsPerQuad * floatsPerVertex;
-  int quadCount = transparentVertices.size() / floatsPerQuad;
-
-  std::vector<QuadInfo> quads(quadCount);
+  std::vector<FaceInfo> faces(numFaces);
 
   // Calculate distances
-  for (int i = 0; i < quadCount; ++i) {
-    quads[i].index = i;
-    float *qData = &transparentVertices[i * floatsPerQuad];
+  for (int i = 0; i < numFaces; ++i) {
+    faces[i].index = i;
+    float *faceData = &transparentVertices[i * numFloatsPerFace];
 
     // Calculate centroid (average of 6 vertices)
     glm::vec3 centroid(0.0f);
-    for (int v = 0; v < 6; ++v) {
-      centroid.x += qData[v * floatsPerVertex + 0];
-      centroid.y += qData[v * floatsPerVertex + 1];
-      centroid.z += qData[v * floatsPerVertex + 2];
+    for (int v = 0; v < vertsPerFace; ++v) {
+      centroid.x += faceData[v * floatsPerVertex + 0];
+      centroid.y += faceData[v * floatsPerVertex + 1];
+      centroid.z += faceData[v * floatsPerVertex + 2];
     }
-    centroid /= 6.0f;
+    centroid /= (float)vertsPerFace;
 
     // Transform centroid to world space
-    // Chunk vertices are LOCAL to the chunk?
-    // Let's check generateGeometry...
-    // "glm::translate(glm::mat4(1.0f), glm::vec3(chunkPosition.x *
-    // CHUNK_SIZE...))" in render() So vertices are LOCAL (0..16).
     glm::vec3 worldCentroid =
         centroid + glm::vec3(chunkPosition.x * CHUNK_SIZE,
                              chunkPosition.y * CHUNK_SIZE,
                              chunkPosition.z * CHUNK_SIZE);
 
-    quads[i].distSq = glm::distance2(worldCentroid, cameraPos);
+    faces[i].distSq = glm::distance2(worldCentroid, cameraPos);
   }
 
   // Sort Back-to-Front (Far to Near) -> Descending Distance
   std::sort(
-      quads.begin(), quads.end(),
-      [](const QuadInfo &a, const QuadInfo &b) { return a.distSq > b.distSq; });
+      faces.begin(), faces.end(),
+      [](const FaceInfo &a, const FaceInfo &b) { return a.distSq > b.distSq; });
 
   // Reconstruct sorted buffer
   std::vector<float> sortedData;
   sortedData.reserve(transparentVertices.size());
 
-  for (const auto &q : quads) {
-    int offset = q.index * floatsPerQuad;
+  for (const auto &f : faces) {
+    int offset = f.index * numFloatsPerFace;
     sortedData.insert(sortedData.end(), transparentVertices.begin() + offset,
-                      transparentVertices.begin() + offset + floatsPerQuad);
+                      transparentVertices.begin() + offset + numFloatsPerFace);
   }
 
   // Upload to GPU (SubData)
-  // Offset = opaque vertex count * stride bytes
+  // Offset = opaque vertex count * floats per vertex * sizeof(float)
   glBindVertexArray(VAO);
   glBindBuffer(GL_ARRAY_BUFFER, VBO);
   glBufferSubData(GL_ARRAY_BUFFER,
@@ -1611,6 +1619,9 @@ void Chunk::updateMesh() {
   std::vector<float> newVertices = generateGeometry(opaqueCount);
   uploadMesh(newVertices, opaqueCount);
   meshDirty = false;
+
+  // Force resort on next render
+  m_lastSortCameraPos = glm::vec3(-99999.0f);
 }
 
 void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,

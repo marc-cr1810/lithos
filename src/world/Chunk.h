@@ -82,6 +82,7 @@ private:
   int vertexCount;
   int vertexCountTransparent;
   std::vector<float> transparentVertices; // CPU-side copy for sorting
+  glm::vec3 m_lastSortCameraPos = glm::vec3(-99999.0f); // Initialize far away
 
 public:
   void sortAndUploadTransparent(const glm::vec3 &cameraPos);
