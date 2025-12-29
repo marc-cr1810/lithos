@@ -428,7 +428,8 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             Block::RenderShape shape = mask[u][v].block->getRenderShape();
             if (shape == Block::RenderShape::CROSS ||
                 shape == Block::RenderShape::SLAB_BOTTOM ||
-                shape == Block::RenderShape::STAIRS)
+                shape == Block::RenderShape::STAIRS ||
+                shape == Block::RenderShape::MODEL)
               continue;
 
             MaskInfo current = mask[u][v];
@@ -1300,10 +1301,166 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             } else if (meta == 2) {
               bZ2 = 0.5f;
             } else {
-              bZ1 = 0.5f;
+              addFaceQuad(4, bX1, 0, bZ1, bX2, 0.5f, bZ2); // Exposed Base Top
             }
+          }
+        } else if (shape == Block::RenderShape::MODEL) {
+          const Model *model = cb.block->getModel();
+          if (model) {
+            // Pre-calculate Max Light for fallback (Rotated elements or
+            // internal)
+            uint8_t maxSky = cb.skyLight;
+            uint8_t maxBlock = cb.blockLight;
 
-            addFaceQuad(4, bX1, 0, bZ1, bX2, 0.5f, bZ2); // Exposed Base Top
+            auto checkMax = [&](int nx, int ny, int nz) {
+              if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE &&
+                  nz >= 0 && nz < CHUNK_SIZE) {
+                maxSky = std::max(maxSky, blocks[nx][ny][nz].skyLight);
+                maxBlock = std::max(maxBlock, blocks[nx][ny][nz].blockLight);
+              } else if (world) {
+                int gnx = chunkPosition.x * CHUNK_SIZE + nx;
+                int gny = chunkPosition.y * CHUNK_SIZE + ny;
+                int gnz = chunkPosition.z * CHUNK_SIZE + nz;
+                ChunkBlock wb = world->getBlock(gnx, gny, gnz);
+                maxSky = std::max(maxSky, wb.skyLight);
+                maxBlock = std::max(maxBlock, wb.blockLight);
+              }
+            };
+
+            // Check 6 neighbors
+            checkMax(x + 1, y, z);
+            checkMax(x - 1, y, z);
+            checkMax(x, y + 1, z);
+            checkMax(x, y - 1, z);
+            checkMax(x, y, z + 1);
+            checkMax(x, y, z - 1);
+
+            for (const auto &elem : model->elements) {
+              glm::vec3 minP = elem.from;
+              glm::vec3 maxP = elem.to;
+
+              auto transform = [&](glm::vec3 p) -> glm::vec3 {
+                if (elem.hasRotation) {
+                  glm::vec3 local = p - elem.rotation.origin;
+                  float rad = glm::radians(elem.rotation.angle);
+                  float s = sin(rad), c = cos(rad);
+                  float nx = local.x, ny = local.y, nz = local.z;
+                  if (elem.rotation.axis == 'x') {
+                    ny = local.y * c - local.z * s;
+                    nz = local.y * s + local.z * c;
+                  } else if (elem.rotation.axis == 'y') {
+                    nx = local.x * c + local.z * s;
+                    nz = -local.x * s + local.z * c;
+                  } else if (elem.rotation.axis == 'z') {
+                    nx = local.x * c - local.y * s;
+                    ny = local.x * s + local.y * c;
+                  }
+                  return elem.rotation.origin + glm::vec3(nx, ny, nz);
+                }
+                return p;
+              };
+
+              auto getFaceLight = [&](int faceIdx) -> std::pair<float, float> {
+                if (elem.hasRotation) {
+                  return {pow((float)maxSky / 15.0f, 0.8f),
+                          pow((float)maxBlock / 15.0f, 0.8f)};
+                }
+                int nx = x, ny = y, nz = z;
+                if (faceIdx == 0)
+                  nz++;
+                else if (faceIdx == 1)
+                  nz--;
+                else if (faceIdx == 2)
+                  nx--;
+                else if (faceIdx == 3)
+                  nx++;
+                else if (faceIdx == 4)
+                  ny++;
+                else if (faceIdx == 5)
+                  ny--;
+
+                uint8_t s = cb.skyLight, b = cb.blockLight;
+                if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE &&
+                    nz >= 0 && nz < CHUNK_SIZE) {
+                  s = blocks[nx][ny][nz].skyLight;
+                  b = blocks[nx][ny][nz].blockLight;
+                } else if (world) {
+                  int gnx = chunkPosition.x * CHUNK_SIZE + nx;
+                  int gny = chunkPosition.y * CHUNK_SIZE + ny;
+                  int gnz = chunkPosition.z * CHUNK_SIZE + nz;
+                  ChunkBlock wb = world->getBlock(gnx, gny, gnz);
+                  s = wb.skyLight;
+                  b = wb.blockLight;
+                }
+                return {pow((float)s / 15.0f, 0.8f),
+                        pow((float)b / 15.0f, 0.8f)};
+              };
+
+              for (const auto &[faceIdx, faceProp] : elem.faces) {
+                glm::vec3 p0, p1, p2, p3;
+                if (faceIdx == 0) { // Z+
+                  p0 = glm::vec3(minP.x, minP.y, maxP.z);
+                  p1 = glm::vec3(maxP.x, minP.y, maxP.z);
+                  p2 = glm::vec3(maxP.x, maxP.y, maxP.z);
+                  p3 = glm::vec3(minP.x, maxP.y, maxP.z);
+                } else if (faceIdx == 1) { // Z-
+                  p0 = glm::vec3(maxP.x, minP.y, minP.z);
+                  p1 = glm::vec3(minP.x, minP.y, minP.z);
+                  p2 = glm::vec3(minP.x, maxP.y, minP.z);
+                  p3 = glm::vec3(maxP.x, maxP.y, minP.z);
+                } else if (faceIdx == 2) { // X-
+                  p0 = glm::vec3(minP.x, minP.y, minP.z);
+                  p1 = glm::vec3(minP.x, minP.y, maxP.z);
+                  p2 = glm::vec3(minP.x, maxP.y, maxP.z);
+                  p3 = glm::vec3(minP.x, maxP.y, minP.z);
+                } else if (faceIdx == 3) { // X+
+                  p0 = glm::vec3(maxP.x, minP.y, maxP.z);
+                  p1 = glm::vec3(maxP.x, minP.y, minP.z);
+                  p2 = glm::vec3(maxP.x, maxP.y, minP.z);
+                  p3 = glm::vec3(maxP.x, maxP.y, maxP.z);
+                } else if (faceIdx == 4) { // Y+
+                  p0 = glm::vec3(minP.x, maxP.y, maxP.z);
+                  p1 = glm::vec3(maxP.x, maxP.y, maxP.z);
+                  p2 = glm::vec3(maxP.x, maxP.y, minP.z);
+                  p3 = glm::vec3(minP.x, maxP.y, minP.z);
+                } else { // Y-
+                  p0 = glm::vec3(minP.x, minP.y, minP.z);
+                  p1 = glm::vec3(maxP.x, minP.y, minP.z);
+                  p2 = glm::vec3(maxP.x, minP.y, maxP.z);
+                  p3 = glm::vec3(minP.x, minP.y, maxP.z);
+                }
+
+                auto finalP0 = transform(p0) + glm::vec3(fx, fy, fz);
+                auto finalP1 = transform(p1) + glm::vec3(fx, fy, fz);
+                auto finalP2 = transform(p2) + glm::vec3(fx, fy, fz);
+                auto finalP3 = transform(p3) + glm::vec3(fx, fy, fz);
+
+                float uMin, vMin;
+                cb.block->getModelTextureUV(faceProp.texture, uMin, vMin);
+
+                float localU1 = faceProp.uv[0];
+                float localV1 = 1.0f - faceProp.uv[1];
+                float localU2 = faceProp.uv[2];
+                float localV2 = 1.0f - faceProp.uv[3];
+
+                std::pair<float, float> lights = getFaceLight(faceIdx);
+                float l1 = lights.first, l2 = lights.second;
+
+                pushVert(finalP0.x, finalP0.y, finalP0.z, localU1, localV2,
+                         uMin, vMin, 0.0f, l1, l2);
+                pushVert(finalP1.x, finalP1.y, finalP1.z, localU2, localV2,
+                         uMin, vMin, 0.0f, l1, l2);
+                pushVert(finalP2.x, finalP2.y, finalP2.z, localU2, localV1,
+                         uMin, vMin, 0.0f, l1, l2);
+
+                pushVert(finalP0.x, finalP0.y, finalP0.z, localU1, localV2,
+                         uMin, vMin, 0.0f, l1, l2);
+                pushVert(finalP2.x, finalP2.y, finalP2.z, localU2, localV1,
+                         uMin, vMin, 0.0f, l1, l2);
+                pushVert(finalP3.x, finalP3.y, finalP3.z, localU1, localV1,
+                         uMin, vMin, 0.0f, l1, l2);
+              }
+            }
           }
         }
       }
@@ -1497,14 +1654,14 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
     // Use Flow Texture (Face 0) for Top Face (4) if flowing (meta > 0)
     // Actually, user wants flow texture on top if it is flowing.
     // If metadata > 0, it is flowing. Source (0) is still?
-    // Actually source blocks can flow too if they have velocity, but in this
-    // simplicity: Any liquid that has flow vector should probably use flow
-    // texture? Let's stick to user request: "flowing water... should have
-    // flowing texture". If metadata > 0 (decaying flow), definitely flowing. If
-    // metadata == 0 (source), might be still unless it's a source block flowing
-    // into a hole? Let's check neighbors to see if it's flowing. Simpler: If
-    // meta > 0, use flow. If meta == 0, use still. BUT user said "direction in
-    // which they are flowing".
+    // Actually source blocks can flow too if they have velocity, but in
+    // this simplicity: Any liquid that has flow vector should probably use
+    // flow texture? Let's stick to user request: "flowing water... should
+    // have flowing texture". If metadata > 0 (decaying flow), definitely
+    // flowing. If metadata == 0 (source), might be still unless it's a
+    // source block flowing into a hole? Let's check neighbors to see if
+    // it's flowing. Simpler: If meta > 0, use flow. If meta == 0, use
+    // still. BUT user said "direction in which they are flowing".
     if ((block->getId() == WATER || block->getId() == LAVA) && faceDir == 4) {
       // Check if flowing
       if (metadata > 0) {
@@ -1574,9 +1731,9 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
   if ((block->getId() == WATER || block->getId() == LAVA) && faceDir == 4) {
     // Calculate Flow Vector
     // Check neighbors (using World if available, else cache?)
-    // We are in addFace, called from generateGeometry, where we don't have easy
-    // random access to world without locking/etc. But we have 'world' pointer
-    // and coords.
+    // We are in addFace, called from generateGeometry, where we don't have
+    // easy random access to world without locking/etc. But we have 'world'
+    // pointer and coords.
     if (world) {
       float dx = 0.0f;
       float dz = 0.0f;
@@ -1632,8 +1789,8 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
         // Normalize to 0..2PI or just use sin/cos
         // Texture Default Alignment: Assuming Flow Texture points UP/NORTH?
         // Standard minecraft water flow texture usually has lines going
-        // vertically? If vertical lines = Z axis? Need to experiment or check
-        // defaults. Let's assume standard UV orientation.
+        // vertically? If vertical lines = Z axis? Need to experiment or
+        // check defaults. Let's assume standard UV orientation.
       }
     }
   }
@@ -1869,10 +2026,10 @@ void Chunk::calculateSunlight() {
             blocks[x][y][z].skyLight = currentLight;
 
             // Queue for spreading if not full brightness?
-            // Actually, if we attenuate, we might want to queue it to spread
-            // the darkness/light? The spreadLight function handles outward
-            // spread. The column is the source. Note: skyQueue is not
-            // accessible here. This line is commented out to maintain
+            // Actually, if we attenuate, we might want to queue it to
+            // spread the darkness/light? The spreadLight function handles
+            // outward spread. The column is the source. Note: skyQueue is
+            // not accessible here. This line is commented out to maintain
             // syntactical correctness. if(currentLight > 0) {
             //     skyQueue.push(glm::ivec3(x, y, z));
             // }
@@ -1936,7 +2093,8 @@ void Chunk::spreadLight() {
   }
 
   // 2. Seed from Neighbor Chunks
-  // Neighbors: Left(-X), Right(+X), Back(-Z), Front(+Z), Bottom(-Y), Top(+Y)
+  // Neighbors: Left(-X), Right(+X), Back(-Z), Front(+Z), Bottom(-Y),
+  // Top(+Y)
   struct NeighPtr {
     int ni;
     int ox, oy, oz;
@@ -1946,11 +2104,11 @@ void Chunk::spreadLight() {
       {DIR_LEFT, CHUNK_SIZE - 1, 0, 0, 0},
       {DIR_RIGHT, 0, 0, 0, 0},
       {DIR_BACK, 0, 0, CHUNK_SIZE - 1,
-       2}, // Back is Z- (Wait, in GreedyMesh faceDir=1 was Z- and called
-           // Back?) Let's standardise: Z- (Back) -> neighbors[DIR_BACK] Z+
-           // (Front) -> neighbors[DIR_FRONT] X- (Left) -> neighbors[DIR_LEFT]
-           // X+ (Right) -> neighbors[DIR_RIGHT]
-           // Y- (Bottom) -> neighbors[DIR_BOTTOM]
+       2}, // Back is Z- (Wait, in GreedyMesh faceDir=1 was Z- and
+           // called Back?) Let's standardise: Z- (Back) ->
+           // neighbors[DIR_BACK] Z+ (Front) -> neighbors[DIR_FRONT] X-
+           // (Left) -> neighbors[DIR_LEFT] X+ (Right) ->
+           // neighbors[DIR_RIGHT] Y- (Bottom) -> neighbors[DIR_BOTTOM]
            // Y+ (Top) -> neighbors[DIR_TOP]
       {DIR_FRONT, 0, 0, 0, 2},
       {DIR_BOTTOM, 0, CHUNK_SIZE - 1, 0, 1},

@@ -107,6 +107,8 @@ BlockRegistry::BlockRegistry() {
   pine->setTexture("spruce_log");
   pine->setTexture(4, "spruce_log_top");
   pine->setTexture(5, "spruce_log_top");
+  pine->setRenderShape(Block::RenderShape::MODEL);
+  pine->setModel("assets/models/block/spruce_log.json");
   registerBlock(pine);
 
   Block *pineLeaves = new PlantBlock(BlockType::PINE_LEAVES, "Pine Leaves");

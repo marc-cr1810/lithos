@@ -8,6 +8,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "../render/Model.h"
+#include "../render/ModelLoader.h"
 #include "../render/TextureAtlas.h" // Include full definition for resolveUVs
 
 // Keep enum for IDs, useful for generation and serialization
@@ -84,6 +86,13 @@ public:
   }
 
   // Resolve UVs from Atlas
+  void setModel(const std::string &path) {
+    customModel = ModelLoader::loadModel(path);
+  }
+
+  const Model *getModel() const { return customModel.get(); }
+
+  // Resolve UVs from Atlas
   virtual void resolveUVs(const TextureAtlas &atlas) {
     for (int i = 0; i < 6; ++i) {
       if (textureNames[i].empty())
@@ -120,6 +129,23 @@ public:
           if (atlas.GetTextureUV(variantName, u, v)) {
             overlayVariants[i].push_back({u, v});
           }
+        }
+      }
+    }
+
+    // Resolve Model Textures
+    if (customModel) {
+      for (const auto &[key, texParams] : customModel->textures) {
+        // texParams is string like "block/spruce_log"
+        std::string name = texParams;
+        size_t lastSlash = name.find_last_of("/\\");
+        if (lastSlash != std::string::npos) {
+          name = name.substr(lastSlash + 1);
+        }
+
+        float u, v;
+        if (atlas.GetTextureUV(name, u, v)) {
+          modelTextureUVs[key] = {u, v};
         }
       }
     }
@@ -175,6 +201,28 @@ public:
     getTextureUV(faceDir, u, v, x, y, z, layer);
   }
 
+  // Model Texture UV Lookup
+  void getModelTextureUV(const std::string &key, float &u, float &v) const {
+    // Key might be "#0", or just "0"?
+    // Blockbench: "texture": "#0"
+    // Model Textures map: "0" -> "path"
+    // So valid key in map is "0".
+    // We should strip '#' if present.
+    std::string cleanKey = key;
+    if (!cleanKey.empty() && cleanKey[0] == '#') {
+      cleanKey = cleanKey.substr(1);
+    }
+
+    auto it = modelTextureUVs.find(cleanKey);
+    if (it != modelTextureUVs.end()) {
+      u = it->second.first;
+      v = it->second.second;
+    } else {
+      u = 0;
+      v = 0;
+    }
+  }
+
   // Properties
   virtual bool isSolid() const { return true; }           // Collision
   virtual bool isSelectable() const { return isSolid(); } // Selection/Raycast
@@ -185,8 +233,9 @@ public:
   enum class RenderLayer { OPAQUE, CUTOUT, TRANSPARENT };
   virtual RenderLayer getRenderLayer() const { return RenderLayer::OPAQUE; }
 
-  enum class RenderShape { CUBE, CROSS, SLAB_BOTTOM, STAIRS };
-  virtual RenderShape getRenderShape() const { return RenderShape::CUBE; }
+  enum class RenderShape { CUBE, CROSS, SLAB_BOTTOM, STAIRS, MODEL };
+  virtual RenderShape getRenderShape() const { return renderShape; }
+  void setRenderShape(RenderShape shape) { renderShape = shape; }
 
   // Events
   virtual void onPlace(World &world, int x, int y, int z) const {}
@@ -224,6 +273,12 @@ protected:
   // Overlay Support
   std::string overlayTextureNames[6];
   std::vector<std::pair<float, float>> overlayVariants[6];
+
+  // Custom Model
+  std::shared_ptr<Model> customModel;
+  std::unordered_map<std::string, std::pair<float, float>> modelTextureUVs;
+
+  RenderShape renderShape = RenderShape::CUBE;
 };
 
 // Singleton blocks

@@ -76,6 +76,14 @@ else()
     set(GLEW_TARGET GLEW::GLEW)
 endif()
 
+# nlohmann_json
+FetchContent_Declare(
+    json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.11.2
+)
+FetchContent_MakeAvailable(json)
+
 # ImGui
 FetchContent_Declare(
     imgui
@@ -101,6 +109,7 @@ add_executable(lithos
     src/render/Camera.cpp
     src/render/Texture.cpp
     src/render/TextureAtlas.cpp
+    src/render/ModelLoader.cpp
     src/world/Chunk.cpp
     src/world/Player.cpp
     src/world/WorldGenerator.cpp
@@ -135,6 +144,7 @@ target_link_libraries(lithos PRIVATE
     glfw
     ${GLEW_TARGET}
     EnTT::EnTT
+    nlohmann_json::nlohmann_json
 )
 
 if(WIN32)
