@@ -13,7 +13,9 @@ class World;
 
 const int CHUNK_SIZE = 32;
 
-class Chunk {
+#include <memory>
+
+class Chunk : public std::enable_shared_from_this<Chunk> {
 public:
   Chunk();
   ~Chunk();

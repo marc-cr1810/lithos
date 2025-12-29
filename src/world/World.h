@@ -86,7 +86,7 @@ public:
   // Generator will just use addChunk/getChunk.
 
 private:
-  std::unordered_map<std::tuple<int, int, int>, std::unique_ptr<Chunk>,
+  std::unordered_map<std::tuple<int, int, int>, std::shared_ptr<Chunk>,
                      key_hash>
       chunks;
   mutable std::mutex worldMutex;
@@ -97,12 +97,15 @@ private:
   std::condition_variable condition;
 
   std::mutex queueMutex;
-  std::deque<Chunk *> meshQueue;         // Low priority (chunk generation)
-  std::deque<Chunk *> meshQueueHighPrio; // High priority (block breaks)
-  std::unordered_set<Chunk *> meshSet;   // For deduplication across both queues
+  std::deque<std::shared_ptr<Chunk>>
+      meshQueue; // Low priority (chunk generation)
+  std::deque<std::shared_ptr<Chunk>>
+      meshQueueHighPrio;               // High priority (block breaks)
+  std::unordered_set<Chunk *> meshSet; // For deduplication across both queues
 
   std::mutex uploadMutex;
-  std::vector<std::tuple<Chunk *, std::vector<float>, int>> uploadQueue;
+  std::vector<std::tuple<std::shared_ptr<Chunk>, std::vector<float>, int>>
+      uploadQueue;
 
   void WorkerLoop();
 

@@ -95,7 +95,7 @@ World::~World() {
 
 void World::WorkerLoop() {
   while (true) {
-    Chunk *c = nullptr;
+    std::shared_ptr<Chunk> c = nullptr;
     {
       std::unique_lock<std::mutex> lock(queueMutex);
       condition.wait(lock, [this] {
@@ -109,11 +109,11 @@ void World::WorkerLoop() {
       if (!meshQueueHighPrio.empty()) {
         c = meshQueueHighPrio.front();
         meshQueueHighPrio.pop_front();
-        meshSet.erase(c);
+        meshSet.erase(c.get());
       } else if (!meshQueue.empty()) {
         c = meshQueue.front();
         meshQueue.pop_front();
-        meshSet.erase(c);
+        meshSet.erase(c.get());
       }
     }
 
@@ -149,7 +149,8 @@ void World::Tick() {
 }
 
 void World::Update() {
-  std::vector<std::tuple<Chunk *, std::vector<float>, int>> toUpload;
+  std::vector<std::tuple<std::shared_ptr<Chunk>, std::vector<float>, int>>
+      toUpload;
   {
     std::lock_guard<std::mutex> lock(uploadMutex);
     if (!uploadQueue.empty()) {
@@ -195,19 +196,21 @@ void World::updateBlocks() {
 
 void World::QueueMeshUpdate(Chunk *c, bool priority) {
   if (c) {
-    std::lock_guard<std::mutex> lock(queueMutex);
-    if (meshSet.find(c) == meshSet.end()) {
-      // Add to appropriate queue based on priority
-      if (priority)
-        meshQueueHighPrio.push_back(c);
-      else
-        meshQueue.push_back(c);
-      meshSet.insert(c);
-      condition.notify_one();
+    try {
+      std::shared_ptr<Chunk> ptr = c->shared_from_this();
+      std::lock_guard<std::mutex> lock(queueMutex);
+      if (meshSet.find(c) == meshSet.end()) {
+        // Add to appropriate queue based on priority
+        if (priority)
+          meshQueueHighPrio.push_back(ptr);
+        else
+          meshQueue.push_back(ptr);
+        meshSet.insert(c);
+        condition.notify_one();
+      }
+    } catch (const std::bad_weak_ptr &e) {
+      LOG_ERROR("Attempted to queue Chunk not managed by shared_ptr");
     }
-    // If already queued, we don't re-add (deduplication)
-    // High priority requests for already-queued chunks are handled
-    // by workers checking high-priority queue first
   }
 }
 
@@ -268,7 +271,7 @@ void World::GenerationWorkerLoop() {
     }
 
     // 2. Create Chunk
-    auto newChunk = std::make_unique<Chunk>();
+    auto newChunk = std::make_shared<Chunk>();
     newChunk->chunkPosition = glm::ivec3(x, y, z);
     newChunk->setWorld(this);
 
@@ -511,12 +514,12 @@ void World::unloadChunks(const glm::vec3 &playerPos, int renderDistance) {
     auto [x, y, z] = key;
 
     // Get chunk before erasing
-    Chunk *chunkToUnload = nullptr;
+    std::shared_ptr<Chunk> chunkToUnload = nullptr;
     {
       std::lock_guard<std::mutex> lock(worldMutex);
       auto it = chunks.find(key);
       if (it != chunks.end()) {
-        chunkToUnload = it->second.get();
+        chunkToUnload = it->second;
       }
     }
 
@@ -541,7 +544,7 @@ void World::unloadChunks(const glm::vec3 &playerPos, int renderDistance) {
       // Remove from mesh queue if present
       {
         std::lock_guard<std::mutex> lock(queueMutex);
-        meshSet.erase(chunkToUnload);
+        meshSet.erase(chunkToUnload.get());
         // Note: Can't easily remove from deque, but meshSet prevents processing
       }
 
@@ -576,7 +579,7 @@ void World::addChunk(int x, int y, int z) {
   std::unique_lock<std::mutex> lock(worldMutex);
   auto key = std::make_tuple(x, y, z);
   if (chunks.find(key) == chunks.end()) {
-    auto newChunk = std::make_unique<Chunk>();
+    auto newChunk = std::make_shared<Chunk>();
     newChunk->chunkPosition = glm::ivec3(x, y, z);
     newChunk->setWorld(this);
     chunks[key] = std::move(newChunk);

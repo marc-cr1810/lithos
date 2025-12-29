@@ -75,22 +75,64 @@ long __stdcall CrashHandler::WindowsExceptionFilter(
 }
 
 #else
+#include <cstdio> // for snprintf (risky but better than stringstream)
+#include <cstring>
+#include <fcntl.h>
+
 void CrashHandler::LinuxSignalHandler(int signal) {
-  std::stringstream report;
-  report << "Signal Received: " << signal << "\n";
+  time_t now = time(nullptr);
+  struct tm tstruct;
+  localtime_r(&now, &tstruct);
 
-  void *array[20];
-  int size = backtrace(array, 20);
-  char **messages = backtrace_symbols(array, size);
+  char filename[64];
+  strftime(filename, sizeof(filename), "crash_report_%Y%m%d_%H%M%S.txt",
+           &tstruct);
 
-  report << "\nStack Trace:\n";
-  for (int i = 0; i < size && messages != NULL; ++i) {
-    report << messages[i] << "\n";
+  int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+  if (fd >= 0) {
+    const char *header = "CRASH REPORT\n============\nTime: ";
+    write(fd, header, strlen(header));
+
+    char timeBuf[64];
+    strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S\n", &tstruct);
+    write(fd, timeBuf, strlen(timeBuf));
+
+    const char *sigMsg = "Signal Received: ";
+    write(fd, sigMsg, strlen(sigMsg));
+
+    char sigNum[16];
+    // Simple integer to string conversion
+    int n = signal;
+    int i = 0;
+    if (n == 0)
+      sigNum[i++] = '0';
+    else {
+      char temp[16];
+      int j = 0;
+      while (n > 0) {
+        temp[j++] = (n % 10) + '0';
+        n /= 10;
+      }
+      while (j > 0)
+        sigNum[i++] = temp[--j];
+    }
+    sigNum[i++] = '\n';
+    write(fd, sigNum, i);
+
+    const char *stHeader = "\nStack Trace:\n";
+    write(fd, stHeader, strlen(stHeader));
+
+    void *array[50];
+    int size = backtrace(array, 50);
+    backtrace_symbols_fd(array, size, fd);
+
+    close(fd);
   }
-  free(messages);
 
-  WriteCrashReport(report.str());
+  // Use Logger as requested. Caution: Not async-signal-safe, risking deadlock
+  // if crash was in logging/allocator.
+  LOG_CRITICAL("Crash detected! Report written to {}", filename);
 
-  exit(1);
+  _exit(1);
 }
 #endif
