@@ -66,7 +66,7 @@ public:
 
   // Returns number of chunks rendered
   int render(Shader &shader, const glm::mat4 &viewProjection,
-             const glm::vec3 &cameraPos);
+             const glm::vec3 &cameraPos, int renderDistance);
 
   // Raycast against all chunks (or optimization)
   // Returns true and fills info if hit

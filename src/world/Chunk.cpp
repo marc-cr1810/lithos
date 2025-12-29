@@ -246,12 +246,19 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                   // Solids (unless full height? No, safer to render)
                   bool isLiquid =
                       (b.block->getId() == WATER || b.block->getId() == LAVA);
+                  bool isLeaves = (b.block->getId() == LEAVES ||
+                                   b.block->getId() == PINE_LEAVES);
+
                   if (isLiquid && faceDir == 4) {
                     // Only occlude if neighbor is also Liquid (same type)
                     // If neighbor is Stone, we still want to render Top of
                     // Water because water might be low.
                     if (nb.block == b.block)
                       occluded = true;
+                  }
+                  // Optimization for Leaves: Cull internal faces
+                  else if (isLeaves && nb.block == b.block) {
+                    occluded = true;
                   } else {
                     if (nb.block == b.block || nb.isOpaque())
                       occluded = true;
@@ -294,9 +301,17 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                   if (!b.isOpaque()) {
                     bool isLiquid =
                         (b.block->getId() == WATER || b.block->getId() == LAVA);
+                    bool isLeaves = (b.block->getId() == LEAVES ||
+                                     b.block->getId() == PINE_LEAVES);
+
                     if (isLiquid && faceDir == 4) {
                       if (nb.block == b.block)
                         occluded = true;
+                    }
+                    // Optimization: Cull faces between identical leaves (Hollow
+                    // Trees) Reduces vertex count for forests significantly
+                    else if (isLeaves && nb.block == b.block) {
+                      occluded = true;
                     } else {
                       if (nb.block == b.block || nb.isOpaque())
                         occluded = true;
@@ -438,12 +453,17 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             // lighting/height
             bool isLiquid = (current.block->getId() == WATER ||
                              current.block->getId() == LAVA);
+            // Optimization: Allow greedy meshing for source liquids (flat)
+            // Flowing liquids (metadata > 0) should remain individual for
+            // proper stepping/heights
+            bool allowGreedy = !isLiquid || (current.metadata == 0);
 
             int w = 1, h = 1;
-            while (u + w < CHUNK_SIZE && mask[u + w][v] == current && !isLiquid)
+            while (u + w < CHUNK_SIZE && mask[u + w][v] == current &&
+                   allowGreedy)
               w++;
             bool canExtend = true;
-            while (v + h < CHUNK_SIZE && canExtend && !isLiquid) {
+            while (v + h < CHUNK_SIZE && canExtend && allowGreedy) {
               for (int k = 0; k < w; ++k)
                 if (mask[u + k][v + h] != current) {
                   canExtend = false;
@@ -1923,23 +1943,54 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
 
 bool Chunk::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist,
                     glm::ivec3 &outputPos, glm::ivec3 &outputPrePos) {
+  // 1. Quick AABB Check
+  glm::vec3 min = glm::vec3(chunkPosition * CHUNK_SIZE);
+  glm::vec3 max = min + glm::vec3(CHUNK_SIZE);
+
+  float tMin = 0.0f;
+  float tMax = maxDist;
+
+  for (int i = 0; i < 3; ++i) {
+    float invD = 1.0f / direction[i];
+    float t0 = (min[i] - origin[i]) * invD;
+    float t1 = (max[i] - origin[i]) * invD;
+    if (invD < 0.0f)
+      std::swap(t0, t1);
+    tMin = t0 > tMin ? t0 : tMin;
+    tMax = t1 < tMax ? t1 : tMax;
+    if (tMax <= tMin)
+      return false;
+  }
+
+  // If we are here, ray intersects chunk AABB.
+  // Move origin to local space
+  glm::vec3 localOrigin = origin - min;
+
+  // Use a more efficient stepping or valid range relative to intersection entry
+  float startDist = std::max(0.0f, tMin);
+  float endDist = std::min(maxDist, tMax);
+
+  // Only iterate the segment inside the chunk
+  // Step size 0.05f is still a bit coarse/inefficient but better than nothing
+  // Better: DDA, but keeping logic comparable for now to minimize regression
+  // risk Just Clamp range
+
   float step = 0.05f;
-  // Convert world origin to local chunk origin
-  glm::vec3 localOrigin = origin - glm::vec3(chunkPosition * CHUNK_SIZE);
-  glm::vec3 pos = localOrigin;
+  glm::vec3 pos = localOrigin + direction * startDist;
   glm::vec3 lastPos = pos;
 
-  for (float d = 0.0f; d < maxDist; d += step) {
-    pos += direction * step;
+  // Safety nudge to ensure we are inside if starting exactly on face
+  if (tMin > 0)
+    pos += direction * 0.001f;
 
+  for (float d = startDist; d < endDist; d += step) {
     int x = (int)floor(pos.x);
     int y = (int)floor(pos.y);
     int z = (int)floor(pos.z);
 
-    // Check bounds
+    // Check bounds (Strict check)
     if (x >= 0 && x < CHUNK_SIZE && y >= 0 && y < CHUNK_SIZE && z >= 0 &&
         z < CHUNK_SIZE) {
-      // Use isSelectable() to allow picking flora but ignore Water
       if (blocks[x][y][z].isSelectable()) {
         outputPos = glm::ivec3(x, y, z);
         outputPrePos = glm::ivec3((int)floor(lastPos.x), (int)floor(lastPos.y),
@@ -1949,6 +2000,7 @@ bool Chunk::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist,
     }
 
     lastPos = pos;
+    pos += direction * step;
   }
   return false;
 }

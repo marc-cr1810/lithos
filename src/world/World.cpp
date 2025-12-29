@@ -151,11 +151,26 @@ void World::Tick() {
 void World::Update() {
   std::vector<std::tuple<std::shared_ptr<Chunk>, std::vector<float>, int>>
       toUpload;
+
+  // Throttle uploads to prevent main thread stalls
+  // 32^3 chunks are heavy (~100k+ vertices potentially), so we limit to a few
+  // per frame
+  const int MAX_UPLOADS = 4;
+
   {
     std::lock_guard<std::mutex> lock(uploadMutex);
     if (!uploadQueue.empty()) {
-      toUpload = std::move(uploadQueue);
-      uploadQueue.clear();
+      int count = std::min((int)uploadQueue.size(), MAX_UPLOADS);
+
+      // Move 'count' items to local list
+      toUpload.reserve(count);
+      for (int i = 0; i < count; ++i) {
+        toUpload.push_back(std::move(uploadQueue[i]));
+      }
+
+      // Remove from queue (erasing from front is O(N) for vector but N is small
+      // here)
+      uploadQueue.erase(uploadQueue.begin(), uploadQueue.begin() + count);
     }
   }
 
@@ -866,7 +881,7 @@ void World::setBlock(int x, int y, int z, BlockType type) {
 }
 
 int World::render(Shader &shader, const glm::mat4 &viewProjection,
-                  const glm::vec3 &cameraPos) {
+                  const glm::vec3 &cameraPos, int renderDistInput) {
   // Collect Visible Chunks under lock
   std::vector<Chunk *> visibleChunks;
   visibleChunks.reserve(chunks.size());
@@ -877,23 +892,53 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection,
     // Frustum Culling
     auto planes = extractPlanes(viewProjection);
 
-    for (auto &pair : chunks) {
-      Chunk *c = pair.second.get();
-      // Culling
-      glm::vec3 min = glm::vec3(c->chunkPosition.x * CHUNK_SIZE,
-                                c->chunkPosition.y * CHUNK_SIZE,
-                                c->chunkPosition.z * CHUNK_SIZE);
-      glm::vec3 max = min + glm::vec3(CHUNK_SIZE);
+    // Optimization: Grid Iteration + Column Culling
+    int cx = (int)floor(cameraPos.x / CHUNK_SIZE);
+    int cz = (int)floor(cameraPos.z / CHUNK_SIZE);
+    int renderDist = renderDistInput + 1; // +1 buffer
 
-      bool visible = isAABBInFrustum(min, max, planes);
+    // Vertical range usually 0..7 for 256 height
+    int minY = 0;
+    int maxY = 256 / CHUNK_SIZE;
 
-      if (c->meshDirty) {
-        QueueMeshUpdate(c, visible); // Priority if visible
-        c->meshDirty = false;
-      }
+    for (int x = cx - renderDist; x <= cx + renderDist; ++x) {
+      for (int z = cz - renderDist; z <= cz + renderDist; ++z) {
+        // 1. Cull Column First
+        // Column AABB: (x*32, 0, z*32) to (x*32+32, 256, z*32+32)
+        glm::vec3 colMin(x * CHUNK_SIZE, 0, z * CHUNK_SIZE);
+        glm::vec3 colMax(colMin.x + CHUNK_SIZE, 256, colMin.z + CHUNK_SIZE);
 
-      if (visible) {
-        visibleChunks.push_back(c);
+        if (!isAABBInFrustum(colMin, colMax, planes)) {
+          continue; // Skip whole column
+        }
+
+        // 2. Iterate Chunks in Column
+        for (int y = minY; y < maxY; ++y) {
+          auto it = chunks.find(std::make_tuple(x, y, z));
+          if (it == chunks.end())
+            continue;
+
+          Chunk *c = it->second.get();
+
+          // 3. Cull Chunk (Standard) - optional if column passed but safer
+          // We can reuse the column check results or just do a quick check?
+          // The column check is coarse. Frustum might cut top half.
+          // So we still need chunk culling.
+
+          glm::vec3 min(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE);
+          glm::vec3 max = min + glm::vec3(CHUNK_SIZE);
+
+          bool visible = isAABBInFrustum(min, max, planes);
+
+          if (c->meshDirty) {
+            QueueMeshUpdate(c, visible);
+            c->meshDirty = false;
+          }
+
+          if (visible) {
+            visibleChunks.push_back(c);
+          }
+        }
       }
     }
   }
@@ -967,6 +1012,18 @@ bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist,
     // Transform origin for chunk is handled inside Chunk::raycast now? No, I
     // updated it to do the subtraction. So we just pass global origin.
 
+    // Optimization: Check distance to chunk center first
+    glm::vec3 chunkCenter =
+        glm::vec3(c->chunkPosition * CHUNK_SIZE) + glm::vec3(CHUNK_SIZE / 2.0f);
+    glm::vec3 diff = origin - chunkCenter;
+    float distToCenterSq = glm::dot(diff, diff); // Squared distance
+    // Radius of chunk is approx sqrt(3)*CHUNK_SIZE/2.
+    // Safe cull radius: maxDist + ChunkRadius
+    float cullDist = maxDist + (CHUNK_SIZE * 0.866f) + 2.0f;
+
+    if (distToCenterSq > cullDist * cullDist)
+      continue;
+
     if (c->raycast(origin, direction, maxDist, hitPos, prePos)) {
       // Calculate distance to hitPos (global)
       // hitPos is block coord (int). Center? Corner?
@@ -982,7 +1039,8 @@ bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist,
 
       // So we must convert back.
       glm::ivec3 globalHit = hitPos + c->chunkPosition * CHUNK_SIZE;
-      glm::ivec3 globalPre = prePos + c->chunkPosition * CHUNK_SIZE;
+      glm::ivec3 globalPre =
+          prePos + c->chunkPosition * CHUNK_SIZE; // Use local prePos
 
       // Distance check
       // Use center of block for crude distance?
@@ -993,7 +1051,8 @@ bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist,
       // roughly known. But Chunk::raycast doesn't return 'd'.
 
       // We can calculate distance from origin to center of block.
-      glm::vec3 blockCenter = glm::vec3(globalHit) + glm::vec3(0.5f);
+      glm::vec3 blockCenter =
+          glm::vec3(globalHit) + glm::vec3(0.5f); // +0.5 to center
       float dist = glm::distance(origin, blockCenter);
 
       if (dist < closestDist) {

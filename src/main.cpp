@@ -855,10 +855,12 @@ int main(int argc, char *argv[]) {
       dbg_frozenProjView = cullMatrix;
     }
 
-    dbg_renderedChunks = world.render(ourShader, cullMatrix, camera.Position);
+    dbg_renderedChunks = world.render(ourShader, cullMatrix, camera.Position,
+                                      dbg_renderDistance);
     {
       PROFILE_SCOPE("Render Chunks");
-      dbg_renderedChunks = world.render(ourShader, cullMatrix, camera.Position);
+      dbg_renderedChunks = world.render(ourShader, cullMatrix, camera.Position,
+                                        dbg_renderDistance);
     }
 
     if (dbg_wireframe)
