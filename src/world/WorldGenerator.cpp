@@ -100,6 +100,60 @@ Biome WorldGenerator::GetBiome(int x, int z) {
   return BIOME_FOREST;
 }
 
+int WorldGenerator::GetStrataBlock(int x, int y, int z) {
+  // Stylized stone layers
+  // Primary: Stone, with horizontal layers of variants for visual interest
+
+  int seedS = (seed * 777) % 65536;
+  float nx = (float)x + (float)seedS;
+  float ny = (float)y;
+  float nz = (float)z + (float)seedS;
+
+  // 2D noise for layer undulation (wavy boundaries)
+  float layerWave = glm::perlin(glm::vec2(nx * 0.02f, nz * 0.02f));
+  int adjustedY = y + (int)(layerWave * 5.0f);
+
+  // Secondary noise for layer type variation
+  float typeNoise = glm::perlin(glm::vec2(nx * 0.01f, nz * 0.01f));
+
+  // Horizontal layers with some variation
+  // Deep layers
+  if (adjustedY < 12) {
+    if (typeNoise > 0.3f)
+      return GRANITE;
+    else if (typeNoise < -0.3f)
+      return BASALT;
+    else
+      return DIORITE;
+  }
+  // Stone layer
+  else if (adjustedY < 20) {
+    return STONE;
+  }
+  // Mid variant layer
+  else if (adjustedY < 25) {
+    if (typeNoise > 0.2f)
+      return ANDESITE;
+    else
+      return TUFF;
+  }
+  // Stone layer
+  else if (adjustedY < 35) {
+    return STONE;
+  }
+  // Upper variant layer
+  else if (adjustedY < 40) {
+    if (typeNoise > 0.0f)
+      return SANDSTONE;
+    else
+      return DIORITE;
+  }
+  // Stone layer (most common near surface)
+  else {
+    return STONE;
+  }
+}
+
 void WorldGenerator::GenerateChunk(Chunk &chunk) {
   glm::ivec3 pos = chunk.chunkPosition;
 
@@ -112,28 +166,49 @@ void WorldGenerator::GenerateChunk(Chunk &chunk) {
       // Get Height from single source of truth
       int height = GetHeight(gx, gz);
 
-      // Get Biome
-      Biome biome = GetBiome(gx, gz);
+      // Get Climate Data
+      float temp = GetTemperature(gx, gz);
+      float humidity = GetHumidity(gx, gz);
 
-      // Determine Surface Block based on Biome
+      // Climate-Based Surface Block Selection
       BlockType surfaceBlock = GRASS;
       BlockType subsurfaceBlock = DIRT;
 
-      switch (biome) {
-      case BIOME_DESERT:
-        surfaceBlock = SAND;
-        subsurfaceBlock = SAND;
-        break;
-      case BIOME_TUNDRA:
-        surfaceBlock = SNOW;
-        subsurfaceBlock = DIRT;
-        break;
-      case BIOME_FOREST:
-      case BIOME_PLAINS:
-      default:
-        surfaceBlock = GRASS;
-        subsurfaceBlock = DIRT;
-        break;
+      // Hot climate
+      if (temp > 0.3f) {
+        if (humidity < -0.2f) {
+          // Hot + Dry = Desert
+          surfaceBlock = SAND;
+          subsurfaceBlock = SAND;
+        } else {
+          // Hot + Wet/Medium = Savanna/Jungle
+          surfaceBlock = GRASS;
+          subsurfaceBlock = DIRT;
+        }
+      }
+      // Cold climate
+      else if (temp < -0.3f) {
+        if (humidity > 0.2f) {
+          // Cold + Wet = Taiga (Podzol)
+          surfaceBlock = PODZOL;
+          subsurfaceBlock = DIRT;
+        } else {
+          // Cold + Dry = Tundra
+          surfaceBlock = SNOW;
+          subsurfaceBlock = DIRT;
+        }
+      }
+      // Temperate climate
+      else {
+        if (humidity > 0.4f) {
+          // Temperate + Very Wet = Swamp (Mud)
+          surfaceBlock = MUD;
+          subsurfaceBlock = DIRT;
+        } else {
+          // Temperate = Plains/Forest
+          surfaceBlock = GRASS;
+          subsurfaceBlock = DIRT;
+        }
       }
 
       // Calculate Beach Noise for this column
@@ -172,18 +247,19 @@ void WorldGenerator::GenerateChunk(Chunk &chunk) {
             else
               type = subsurfaceBlock;
           } else {
-            // Deep Underground
-            type = STONE;
+            // Deep Underground - Use Strata
+            type = (BlockType)GetStrataBlock(gx, gy, gz);
           }
         }
 
         // Bedrock
         if (gy == 0)
-          type = STONE;
+          type = (BlockType)GetStrataBlock(gx, gy, gz);
 
         // Water Fill
         if (type == AIR && gy <= 60) {
-          if (biome == BIOME_TUNDRA && gy == 60)
+          // Ice forms in cold climates
+          if (temp < -0.3f && gy == 60)
             type = ICE;
           else
             type = WATER;
@@ -247,7 +323,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk) {
           if (gy > 0) {
             int chance = 100 - (gy * 20);
             if ((rand() % 100) < chance)
-              type = STONE;
+              type = (BlockType)GetStrataBlock(gx, gy, gz);
           }
         }
 

@@ -41,7 +41,15 @@ enum BlockType {
   COBBLESTONE = 24,
   WOOD_PLANKS = 25,
   STONE_SLAB = 26,
-  WOOD_STAIRS = 27
+  WOOD_STAIRS = 27,
+  ANDESITE = 28,
+  BASALT = 29,
+  DIORITE = 30,
+  GRANITE = 31,
+  MUD = 32,
+  PODZOL = 33,
+  SANDSTONE = 34,
+  TUFF = 35
 };
 
 class World; // Forward declaration

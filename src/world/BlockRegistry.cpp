@@ -193,6 +193,53 @@ BlockRegistry::BlockRegistry() {
   woodStairs->setTexture("oak_planks");
   registerBlock(woodStairs);
 
+  // Geological Blocks
+  Block *andesite = new SolidBlock(BlockType::ANDESITE, "Andesite");
+  andesite->setResourceId("lithos:andesite");
+  andesite->setTexture("andesite");
+  registerBlock(andesite);
+
+  Block *basalt = new SolidBlock(BlockType::BASALT, "Basalt");
+  basalt->setResourceId("lithos:basalt");
+  basalt->setTexture("basalt_side");
+  basalt->setTexture(4, "basalt_top");
+  basalt->setTexture(5, "basalt_top");
+  registerBlock(basalt);
+
+  Block *diorite = new SolidBlock(BlockType::DIORITE, "Diorite");
+  diorite->setResourceId("lithos:diorite");
+  diorite->setTexture("diorite");
+  registerBlock(diorite);
+
+  Block *granite = new SolidBlock(BlockType::GRANITE, "Granite");
+  granite->setResourceId("lithos:granite");
+  granite->setTexture("granite");
+  registerBlock(granite);
+
+  Block *mud = new SolidBlock(BlockType::MUD, "Mud");
+  mud->setResourceId("lithos:mud");
+  mud->setTexture("mud");
+  registerBlock(mud);
+
+  Block *podzol = new SolidBlock(BlockType::PODZOL, "Podzol");
+  podzol->setResourceId("lithos:podzol");
+  podzol->setTexture("podzol_side");
+  podzol->setTexture(4, "podzol_top");
+  podzol->setTexture(5, "dirt");
+  registerBlock(podzol);
+
+  Block *sandstone = new SolidBlock(BlockType::SANDSTONE, "Sandstone");
+  sandstone->setResourceId("lithos:sandstone");
+  sandstone->setTexture("sandstone"); // Side
+  sandstone->setTexture(4, "sandstone_top");
+  sandstone->setTexture(5, "sandstone_bottom");
+  registerBlock(sandstone);
+
+  Block *tuff = new SolidBlock(BlockType::TUFF, "Tuff");
+  tuff->setResourceId("lithos:tuff");
+  tuff->setTexture("tuff");
+  registerBlock(tuff);
+
   // Dynamic Model Loading
   for (auto &pair : blocks) {
     Block *block = pair.second;

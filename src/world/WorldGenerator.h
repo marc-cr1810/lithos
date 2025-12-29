@@ -26,6 +26,7 @@ public:
   Biome GetBiome(int x, int z);
 
 private:
+  int GetStrataBlock(int x, int y, int z);
   std::vector<WorldDecorator *> decorators;
   int seed;
 };
