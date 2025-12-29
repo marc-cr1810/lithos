@@ -141,7 +141,7 @@ public:
       for (const auto &[key, texParams] : customModel->textures) {
         // texParams is string like "block/spruce_log"
         std::string name = texParams;
-        size_t lastSlash = name.find_last_of("/\\");
+        size_t lastSlash = name.find_last_of("/\\:");
         if (lastSlash != std::string::npos) {
           name = name.substr(lastSlash + 1);
         }
