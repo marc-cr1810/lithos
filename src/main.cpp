@@ -517,10 +517,12 @@ int main(int argc, char *argv[]) {
     ImGui::NewFrame();
 
     tickAccumulator += deltaTime;
-    while (tickAccumulator >= TICK_INTERVAL) {
-      PROFILE_SCOPE("World Tick");
-      world.Tick();
-      tickAccumulator -= TICK_INTERVAL;
+    {
+      PROFILE_SCOPE("Physics Tick");
+      while (tickAccumulator >= TICK_INTERVAL) {
+        world.Tick();
+        tickAccumulator -= TICK_INTERVAL;
+      }
     }
 
     // World Update (Mesh Uploads)
@@ -533,7 +535,7 @@ int main(int argc, char *argv[]) {
     static float lodTimer = 0.0f;
     lodTimer += deltaTime;
     if (lodTimer > 0.5f) {
-      PROFILE_SCOPE("Chunk Loading");
+      PROFILE_SCOPE("Chunk Manager");
       lodTimer = 0.0f;
       glm::mat4 projection =
           glm::perspective(glm::radians(camera.Zoom),
@@ -544,24 +546,21 @@ int main(int argc, char *argv[]) {
     }
 
     // Calculate Sun Brightness
-    // Simple Sine wave day/night cycle
-    // Cycle length: 2400 seconds
-    // Factor = 2*PI / 2400 = PI / 1200
+    // ...
     const float cycleFactor = 3.14159265f / 1200.0f;
-    // Calculate Sun Brightness
-    // Simple Sine wave day/night cycle
-    // Cycle length: 2400 seconds
-    // Factor = 2*PI / 2400 = PI / 1200
 
     sunStrength = (sin(globalTime * cycleFactor) + 1.0f) * 0.5f;
-    // Clamp minimum brightness so it's not pitch black (moonlight)
     sunStrength = std::max(0.05f, sunStrength);
 
     // Interaction (Raycast)
-    hit = world.raycast(camera.Position, camera.Front, 5.0f, hitPos, prePos);
+    {
+      PROFILE_SCOPE("Raycast");
+      hit = world.raycast(camera.Position, camera.Front, 5.0f, hitPos, prePos);
+    }
 
     // Debug Window
     if (isDebugMode) {
+      PROFILE_SCOPE("Debug UI Build");
       ImGui::Begin("Debug Info");
 
       if (ImGui::CollapsingHeader("Stats", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -789,7 +788,6 @@ int main(int argc, char *argv[]) {
 
     // Render
     // ------
-
     // Water Tint Logic
     bool inWater = false;
     ChunkBlock camBlock = world.getBlock((int)floor(camera.Position.x),
@@ -801,6 +799,16 @@ int main(int argc, char *argv[]) {
     glm::vec3 skyColor = glm::vec3(0.2f, 0.3f, 0.3f) * sunStrength;
     glm::vec3 fogCol = glm::vec3(0.5f, 0.6f, 0.7f) * sunStrength;
     float fDist = dbg_fogDist;
+
+    {
+      PROFILE_SCOPE("Screen Clear");
+      if (inWater) {
+        glClearColor(0.1f, 0.1f, 0.3f, 1.0f);
+      } else {
+        glClearColor(0.5f, 0.8f, 1.0f, 1.0f); // Sky Blue
+      }
+      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    }
     bool uFog = dbg_useFog;
 
     if (inWater) {
@@ -855,8 +863,6 @@ int main(int argc, char *argv[]) {
       dbg_frozenProjView = cullMatrix;
     }
 
-    dbg_renderedChunks = world.render(ourShader, cullMatrix, camera.Position,
-                                      dbg_renderDistance);
     {
       PROFILE_SCOPE("Render Chunks");
       dbg_renderedChunks = world.render(ourShader, cullMatrix, camera.Position,
@@ -867,6 +873,7 @@ int main(int argc, char *argv[]) {
       glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
     if (dbg_chunkBorders) {
+      PROFILE_SCOPE("Debug Borders");
       world.renderDebugBorders(ourShader, projection * view);
     }
 
@@ -1043,8 +1050,12 @@ int main(int argc, char *argv[]) {
     // etc.)
     // -------------------------------------------------------------------------------
     // Render ImGui
-    ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    // ImGui Render
+    {
+      PROFILE_SCOPE("ImGui Render");
+      ImGui::Render();
+      ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    }
 
     // Update and Render additional Platform Windows
     // (Platform functions may change the current OpenGL context, so we
@@ -1064,7 +1075,10 @@ int main(int argc, char *argv[]) {
       PROFILE_SCOPE("Swap Buffers");
       glfwSwapBuffers(window);
     }
-    glfwPollEvents();
+    {
+      PROFILE_SCOPE("Poll Events");
+      glfwPollEvents();
+    }
   }
 
   // optional: de-allocate all resources once they've outlived their purpose:

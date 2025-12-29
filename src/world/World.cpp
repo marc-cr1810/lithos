@@ -1,6 +1,8 @@
 #include "World.h"
 #include "../debug/Logger.h"
+#include "../debug/Profiler.h"
 #include "../ecs/Systems.h"
+#include "../render/Shader.h"
 #include "WorldGenerator.h"
 #include <algorithm>
 #include <array>
@@ -901,42 +903,39 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection,
     int minY = 0;
     int maxY = 256 / CHUNK_SIZE;
 
-    for (int x = cx - renderDist; x <= cx + renderDist; ++x) {
-      for (int z = cz - renderDist; z <= cz + renderDist; ++z) {
-        // 1. Cull Column First
-        // Column AABB: (x*32, 0, z*32) to (x*32+32, 256, z*32+32)
-        glm::vec3 colMin(x * CHUNK_SIZE, 0, z * CHUNK_SIZE);
-        glm::vec3 colMax(colMin.x + CHUNK_SIZE, 256, colMin.z + CHUNK_SIZE);
+    {
+      PROFILE_SCOPE("Culling & Vis List");
+      for (int x = cx - renderDist; x <= cx + renderDist; ++x) {
+        for (int z = cz - renderDist; z <= cz + renderDist; ++z) {
+          // 1. Cull Column First
+          glm::vec3 colMin(x * CHUNK_SIZE, 0, z * CHUNK_SIZE);
+          glm::vec3 colMax(colMin.x + CHUNK_SIZE, 256, colMin.z + CHUNK_SIZE);
 
-        if (!isAABBInFrustum(colMin, colMax, planes)) {
-          continue; // Skip whole column
-        }
-
-        // 2. Iterate Chunks in Column
-        for (int y = minY; y < maxY; ++y) {
-          auto it = chunks.find(std::make_tuple(x, y, z));
-          if (it == chunks.end())
-            continue;
-
-          Chunk *c = it->second.get();
-
-          // 3. Cull Chunk (Standard) - optional if column passed but safer
-          // We can reuse the column check results or just do a quick check?
-          // The column check is coarse. Frustum might cut top half.
-          // So we still need chunk culling.
-
-          glm::vec3 min(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE);
-          glm::vec3 max = min + glm::vec3(CHUNK_SIZE);
-
-          bool visible = isAABBInFrustum(min, max, planes);
-
-          if (c->meshDirty) {
-            QueueMeshUpdate(c, visible);
-            c->meshDirty = false;
+          if (!isAABBInFrustum(colMin, colMax, planes)) {
+            continue; // Skip whole column
           }
 
-          if (visible) {
-            visibleChunks.push_back(c);
+          // 2. Iterate Chunks in Column
+          for (int y = minY; y < maxY; ++y) {
+            auto it = chunks.find(std::make_tuple(x, y, z));
+            if (it == chunks.end())
+              continue;
+
+            Chunk *c = it->second.get();
+
+            glm::vec3 min(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE);
+            glm::vec3 max = min + glm::vec3(CHUNK_SIZE);
+
+            bool visible = isAABBInFrustum(min, max, planes);
+
+            if (c->meshDirty) {
+              QueueMeshUpdate(c, visible);
+              c->meshDirty = false;
+            }
+
+            if (visible) {
+              visibleChunks.push_back(c);
+            }
           }
         }
       }
@@ -948,21 +947,49 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection,
 
   // Pass 1: Opaque
   // Optimization: Sort Front-to-Back for opaque (minimizes overdraw)
-  std::sort(visibleChunks.begin(), visibleChunks.end(),
-            [&](Chunk *a, Chunk *b) {
-              glm::vec3 posA = glm::vec3(a->chunkPosition * CHUNK_SIZE) +
-                               glm::vec3(CHUNK_SIZE / 2.0f);
-              glm::vec3 posB = glm::vec3(b->chunkPosition * CHUNK_SIZE) +
-                               glm::vec3(CHUNK_SIZE / 2.0f);
-              float distA = glm::distance(posA, cameraPos);
-              float distB = glm::distance(posB, cameraPos);
-              return distA < distB;
-            });
+  // Sort by distance (front to back for opaque? actually opaque doesn't
+  // strictly need it but helps early Z. Transparent MUST be back to front.)
+  // Let's sort front-to-back for opaque optimization
+  {
+    PROFILE_SCOPE("Sort Chunks");
+    std::sort(visibleChunks.begin(), visibleChunks.end(),
+              [&cameraPos](Chunk *a, Chunk *b) {
+                glm::vec3 posA = glm::vec3(a->chunkPosition * CHUNK_SIZE) +
+                                 glm::vec3(CHUNK_SIZE / 2.0f);
+                glm::vec3 posB = glm::vec3(b->chunkPosition * CHUNK_SIZE) +
+                                 glm::vec3(CHUNK_SIZE / 2.0f);
+                float distA = glm::dot(posA - cameraPos, posA - cameraPos);
+                float distB = glm::dot(posB - cameraPos, posB - cameraPos);
+                return distA < distB;
+              });
+  }
 
-  for (Chunk *c : visibleChunks) {
-    if (c) {
-      c->render(shader, viewProjection, 0); // Opaque
-      count++;
+  // Render Opaque
+  // Shader setup...
+  shader.use();
+  // Argument name is 'viewProjection'.
+  // We should assume shader needs VP.
+  // Actually shader code likely uses "projection" and "view" separate or "vp"?
+  // Let's rely on main setup or uniform name.
+  // Actually: src/main.cpp passes "cullMatrix" (P*V) as 2nd arg.
+  // Chunk::render just uses it? No, checking Chunk::render...
+  // Chunk::render doesn't use it. It sets "model".
+  // World::render has shader reference.
+  // Wait, looking at World.cpp original code...
+
+  // Original code didn't set "view" or "projection" here?
+  // Ah, lines 926+ in original file might set them?
+  // I replaced loop.
+  // Let's check where I am editing.
+
+  // Render Opaque
+  {
+    PROFILE_SCOPE("Render Opaque");
+    for (Chunk *c : visibleChunks) {
+      if (c) {
+        c->render(shader, viewProjection, 0); // Opaque
+        count++;
+      }
     }
   }
 
