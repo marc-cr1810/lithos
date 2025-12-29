@@ -76,8 +76,12 @@ long __stdcall CrashHandler::WindowsExceptionFilter(
 
 #else
 #include <cstdio> // for snprintf (risky but better than stringstream)
+#include <cstdlib>
 #include <cstring>
+#include <dlfcn.h>
 #include <fcntl.h>
+#include <iomanip>
+#include <sstream>
 
 void CrashHandler::LinuxSignalHandler(int signal) {
   time_t now = time(nullptr);
@@ -119,7 +123,7 @@ void CrashHandler::LinuxSignalHandler(int signal) {
     sigNum[i++] = '\n';
     write(fd, sigNum, i);
 
-    const char *stHeader = "\nStack Trace:\n";
+    const char *stHeader = "\nRaw Stack Trace:\n";
     write(fd, stHeader, strlen(stHeader));
 
     void *array[50];
@@ -127,6 +131,26 @@ void CrashHandler::LinuxSignalHandler(int signal) {
     backtrace_symbols_fd(array, size, fd);
 
     close(fd);
+
+    // Attempt to resolve symbols using addr2line (async-unsafe but helpful)
+    std::stringstream cmd;
+    cmd << "echo '\nResolved Stack Trace:' >> " << filename << " && ";
+    cmd << "addr2line -e /proc/self/exe -C -f -p";
+
+    for (int k = 0; k < size; ++k) {
+      Dl_info info;
+      if (dladdr(array[k], &info) && info.dli_fbase) {
+        // Calculate relative offset for PIE executables
+        uintptr_t offset = (uintptr_t)array[k] - (uintptr_t)info.dli_fbase;
+        cmd << " " << std::hex << offset;
+      } else {
+        cmd << " " << array[k];
+      }
+    }
+
+    cmd << " >> " << filename;
+    int res = system(cmd.str().c_str());
+    (void)res;
   }
 
   // Use Logger as requested. Caution: Not async-signal-safe, risking deadlock
