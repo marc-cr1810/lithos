@@ -1,4 +1,5 @@
 #include "TextureAtlas.h"
+#include "../debug/Logger.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring> // for memcpy
@@ -26,12 +27,11 @@ TextureAtlas::~TextureAtlas() {}
 
 void TextureAtlas::Load(const std::string &directory) {
   if (!fs::exists(directory)) {
-    std::cerr << "TextureAtlas Error: Directory not found " << directory
-              << std::endl;
+    LOG_RESOURCE_ERROR("TextureAtlas Error: Directory not found {}", directory);
     return;
   }
 
-  std::cout << "Loading textures from " << directory << "..." << std::endl;
+  LOG_RESOURCE_INFO("Loading textures from {}...", directory);
 
   for (const auto &entry : fs::directory_iterator(directory)) {
     if (entry.path().extension() == ".png") {
@@ -126,14 +126,14 @@ void TextureAtlas::Load(const std::string &directory) {
 
         stbi_image_free(img);
       } else {
-        std::cerr << "Failed to load texture: " << filename
-                  << " Reason: " << stbi_failure_reason() << std::endl;
+        LOG_RESOURCE_ERROR("Failed to load texture: {} Reason: {}", filename,
+                           stbi_failure_reason());
       }
     }
   }
 
-  std::cout << "Texture Atlas Loaded. " << textures.size()
-            << " textures packed." << std::endl;
+  LOG_RESOURCE_INFO("Texture Atlas Loaded. {} textures packed.",
+                    textures.size());
 }
 
 void TextureAtlas::PackTexture(const std::string &name, unsigned char *imgData,
@@ -159,7 +159,7 @@ void TextureAtlas::PackTexture(const std::string &name, unsigned char *imgData,
     nextSlotY++;
   }
   if (nextSlotY * slotSize >= height) {
-    std::cerr << "Texture Atlas Full! Cannot pack " << name << std::endl;
+    LOG_RESOURCE_ERROR("Texture Atlas Full! Cannot pack {}", name);
     return;
   }
 

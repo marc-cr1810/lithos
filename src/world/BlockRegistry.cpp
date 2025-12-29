@@ -8,6 +8,7 @@
 #include "blocks/SlabBlock.h"
 #include "blocks/SolidBlock.h"
 #include "blocks/StairBlock.h"
+#include "debug/Logger.h"
 #include <filesystem>
 #include <iostream>
 
@@ -205,13 +206,15 @@ BlockRegistry::BlockRegistry() {
       // Check for JSON
       std::string modelPath = "assets/models/block/" + path + ".json";
       if (std::filesystem::exists(modelPath)) {
-        std::cout << "Loading custom model for " << resId << " -> " << modelPath
-                  << std::endl;
+        LOG_RESOURCE_INFO("Loading custom model for {} -> {}", resId,
+                          modelPath);
         block->setRenderShape(Block::RenderShape::MODEL);
         block->setModel(modelPath);
       }
     }
   }
+
+  LOG_INFO("BlockRegistry initialized. Registered {} blocks.", blocks.size());
 }
 
 void BlockRegistry::registerBlock(Block *block) {

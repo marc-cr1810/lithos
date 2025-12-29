@@ -1,20 +1,23 @@
+
 #include "ModelLoader.h"
+#include "../debug/Logger.h"
 #include <fstream>
-#include <iostream>
 #include <nlohmann/json.hpp>
+#include <sstream>
 
 using json = nlohmann::json;
 
 std::unordered_map<std::string, std::shared_ptr<Model>> ModelLoader::cache;
 
 std::shared_ptr<Model> ModelLoader::loadModel(const std::string &path) {
+  LOG_RENDER_INFO("Loading Model: {}", path);
   if (cache.find(path) != cache.end()) {
     return cache[path];
   }
 
   std::ifstream f(path);
   if (!f.is_open()) {
-    std::cerr << "Failed to open model file: " << path << std::endl;
+    LOG_RENDER_ERROR("Failed to open model file: {}", path);
     return nullptr;
   }
 
@@ -22,8 +25,7 @@ std::shared_ptr<Model> ModelLoader::loadModel(const std::string &path) {
   try {
     f >> j;
   } catch (const std::exception &e) {
-    std::cerr << "JSON parsing error in " << path << ": " << e.what()
-              << std::endl;
+    LOG_RENDER_ERROR("JSON parsing error in {}: {}", path, e.what());
     return nullptr;
   }
 

@@ -1,7 +1,8 @@
-#include <algorithm>
-#include <atomic>
 #include <chrono>
+#include <cstdlib>
+#include <ctime>
 #include <iostream>
+#include <random>
 #include <thread>
 #include <vector>
 
@@ -138,8 +139,10 @@ const char *GetBlockName(int type) {
 }
 
 #include "debug/CrashHandler.h"
+#include "debug/Logger.h"
 
 int main() {
+  Logger::Init();
   CrashHandler::Init();
 
   // glfw: initialize and configure
@@ -158,7 +161,7 @@ int main() {
   GLFWwindow *window =
       glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Lithos", NULL, NULL);
   if (window == NULL) {
-    std::cout << "Failed to create GLFW window" << std::endl;
+    LOG_ERROR("Failed to create GLFW window");
     glfwTerminate();
     return -1;
   }
@@ -176,7 +179,7 @@ int main() {
 #ifdef USE_GLEW
   glewExperimental = GL_TRUE;
   if (glewInit() != GLEW_OK) {
-    std::cout << "Failed to initialize GLEW" << std::endl;
+    LOG_ERROR("Failed to initialize GLEW");
     return -1;
   }
 #endif
@@ -228,7 +231,7 @@ int main() {
   // load texture
   // Generate Procedural Atlas using TextureAtlas class
   // Output Atlas size to debug
-  std::cout << "Generating Texture Atlas..." << std::endl;
+  LOG_RESOURCE_INFO("Generating Texture Atlas...");
   TextureAtlas atlas(1024, 1024,
                      16); // Increased size to 1024x1024 to fit all textures
   atlas.Load("assets/textures/block");
@@ -247,8 +250,16 @@ int main() {
   float vScale = 16.0f / atlas.GetHeight();
   ourShader.setVec2("uvScale", uScale, vScale);
 
+  // Initialize Random Seed
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_int_distribution<> distr(0, 100000);
+  int worldSeed = distr(gen);
+
+  LOG_INFO("Starting Game Loop... World Seed: {}", worldSeed);
+
   // World generation
-  World world;
+  World world(worldSeed);
 
   // ECS Registry
   entt::registry registry;
@@ -290,7 +301,7 @@ int main() {
   int retry = 0;
   const int MAX_RETRIES = 500; // 5 seconds approx
 
-  std::cout << "Generating Spawn Area..." << std::endl;
+  LOG_WORLD_INFO("Generating Spawn Area...");
 
   while (!foundGround && retry < MAX_RETRIES) {
     // Drive World Generation
@@ -328,7 +339,7 @@ int main() {
         if (b.isActive()) {
           spawnY = (float)y + 2.5f;
           foundGround = true;
-          std::cout << "Spawn Ground Found at Y=" << y << std::endl;
+          LOG_WORLD_INFO("Spawn Ground Found at Y={}", y);
           break;
         }
       } else {
@@ -343,8 +354,7 @@ int main() {
   }
 
   if (!foundGround) {
-    std::cout << "Spawn Ground NOT Found (Timeout). Using Air Drop."
-              << std::endl;
+    LOG_WORLD_WARN("Spawn Ground NOT Found (Timeout). Using Air Drop.");
   }
   // Debug Title
   // std::string title = "Minceraft - SpawnY: " + std::to_string(spawnY) +

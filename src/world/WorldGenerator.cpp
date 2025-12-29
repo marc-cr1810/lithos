@@ -1,4 +1,5 @@
 #include "WorldGenerator.h"
+#include "../debug/Logger.h"
 #include "Block.h"
 #include "Chunk.h"
 #include <glm/glm.hpp>

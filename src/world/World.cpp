@@ -1,4 +1,5 @@
 #include "World.h"
+#include "../debug/Logger.h"
 #include "../ecs/Systems.h"
 #include "WorldGenerator.h"
 #include <algorithm>
@@ -50,11 +51,8 @@ bool isAABBInFrustum(const glm::vec3 &min, const glm::vec3 &max,
   return true;
 }
 
-World::World() : shutdown(false) {
-  // Random Seed
-  std::srand(std::time(nullptr));
-  worldSeed = std::rand();
-  std::cout << "World Seed: " << worldSeed << std::endl;
+World::World(int seed) : shutdown(false), worldSeed(seed) {
+  LOG_WORLD_INFO("World initialized with Seed: {}", worldSeed);
 
   // Start Mesh Threads
   int numMeshThreads = std::thread::hardware_concurrency();

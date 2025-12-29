@@ -1,3 +1,7 @@
+
+# Crash Reports
+crash_report_*.txt
+
 # Build directories
 build/
 bin/
@@ -21,3 +25,8 @@ lib/
 # Generated artifacts
 minceraft
 imgui.ini
+
+# Logs
+log/
+logs/
+*.log

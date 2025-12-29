@@ -8,6 +8,7 @@
 #endif
 
 #include "CrashHandler.h"
+#include "Logger.h"
 #include <ctime>
 #include <fstream>
 #include <iostream>
@@ -28,7 +29,7 @@ void CrashHandler::Init() {
   sigaction(SIGFPE, &sa, NULL);
   sigaction(SIGILL, &sa, NULL);
 #endif
-  std::cout << "Crash Handler Initialized." << std::endl;
+  LOG_INFO("Crash Handler Initialized.");
 }
 
 void CrashHandler::WriteCrashReport(const std::string &report) {
@@ -48,9 +49,9 @@ void CrashHandler::WriteCrashReport(const std::string &report) {
     file << report << "\n";
     file.close();
 
-    std::cerr << "Crash Report written to " << filename << std::endl;
+    LOG_ERROR("Crash Report written to {}", filename);
   } else {
-    std::cerr << "Failed to write crash report." << std::endl;
+    LOG_ERROR("Failed to write crash report.");
   }
 }
 

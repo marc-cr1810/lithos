@@ -1,4 +1,6 @@
 #include "Shader.h"
+#include "../debug/Logger.h"
+#include <fstream>
 
 Shader::Shader(const char *vertexPath, const char *fragmentPath) {
   // 1. Retrieve the vertex/fragment source code from filePath
@@ -29,8 +31,7 @@ Shader::Shader(const char *vertexPath, const char *fragmentPath) {
     vertexCode = vShaderStream.str();
     fragmentCode = fShaderStream.str();
   } catch (std::ifstream::failure &e) {
-    std::cout << "ERROR::SHADER::FILE_NOT_SUCCESFULLY_READ: " << e.what()
-              << std::endl;
+    LOG_RENDER_ERROR("ERROR::SHADER::FILE_NOT_SUCCESFULLY_READ: {}", e.what());
   }
 
   const char *vShaderCode = vertexCode.c_str();
@@ -62,6 +63,9 @@ Shader::Shader(const char *vertexPath, const char *fragmentPath) {
   // necessary
   glDeleteShader(vertex);
   glDeleteShader(fragment);
+
+  LOG_RENDER_INFO("Shader Compiled: Vert='{}', Frag='{}'", vertexPath,
+                  fragmentPath);
 }
 
 void Shader::use() { glUseProgram(ID); }
@@ -104,21 +108,19 @@ void Shader::checkCompileErrors(unsigned int shader, std::string type) {
     glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
     if (!success) {
       glGetShaderInfoLog(shader, 1024, NULL, infoLog);
-      std::cout
-          << "ERROR::SHADER_COMPILATION_ERROR of type: " << type << "\n"
-          << infoLog
-          << "\n -- --------------------------------------------------- -- "
-          << std::endl;
+      LOG_RENDER_ERROR(
+          "ERROR::SHADER_COMPILATION_ERROR of type: {}\n{}\n -- "
+          "--------------------------------------------------- -- ",
+          type, infoLog);
     }
   } else {
     glGetProgramiv(shader, GL_LINK_STATUS, &success);
     if (!success) {
       glGetProgramInfoLog(shader, 1024, NULL, infoLog);
-      std::cout
-          << "ERROR::PROGRAM_LINKING_ERROR of type: " << type << "\n"
-          << infoLog
-          << "\n -- --------------------------------------------------- -- "
-          << std::endl;
+      LOG_RENDER_ERROR(
+          "ERROR::PROGRAM_LINKING_ERROR of type: {}\n{}\n -- "
+          "--------------------------------------------------- -- ",
+          type, infoLog);
     }
   }
 }

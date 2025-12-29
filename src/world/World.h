@@ -43,7 +43,7 @@ struct BlockUpdate {
 
 class World {
 public:
-  World();
+  World(int seed);
   ~World();
 
   void addChunk(int x, int y, int z); // Chunk coords

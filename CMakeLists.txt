@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.16)
 project(lithos VERSION 1.0.0 LANGUAGES CXX C)
 
+# MSVC Warning Suppressions
+if(MSVC)
+    add_compile_definitions(_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)
+    add_compile_definitions(_SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS)
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -92,10 +98,20 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(imgui)
 
+# spdlog
+FetchContent_Declare(
+    spdlog
+    GIT_REPOSITORY https://github.com/gabime/spdlog.git
+    GIT_TAG v1.12.0
+)
+FetchContent_MakeAvailable(spdlog)
+
 # Debug Macro
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_definitions(-DMINCERAFT_DEBUG)
 endif()
+
+
 
 # MSVC Optimizations for Release
 if(MSVC AND CMAKE_BUILD_TYPE STREQUAL "Release")
@@ -120,9 +136,9 @@ add_executable(lithos
     src/world/blocks/LiquidBlock.cpp
     src/world/BlockRegistry.cpp
     src/ecs/Systems.cpp
-    src/ecs/Systems.cpp
     src/debug/Profiler.cpp
     src/debug/CrashHandler.cpp
+    src/debug/Logger.cpp
     
     # ImGui
     ${imgui_SOURCE_DIR}/imgui.cpp
@@ -135,6 +151,7 @@ add_executable(lithos
 )
 
 target_include_directories(lithos PRIVATE 
+    ${CMAKE_SOURCE_DIR}/src
     ${imgui_SOURCE_DIR} 
     ${imgui_SOURCE_DIR}/backends
 )
@@ -145,6 +162,7 @@ target_link_libraries(lithos PRIVATE
     ${GLEW_TARGET}
     EnTT::EnTT
     nlohmann_json::nlohmann_json
+    spdlog::spdlog
 )
 
 if(WIN32)
