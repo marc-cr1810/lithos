@@ -229,7 +229,9 @@ public:
   // Properties
   virtual bool isSolid() const { return true; }           // Collision
   virtual bool isSelectable() const { return isSolid(); } // Selection/Raycast
-  virtual bool isOpaque() const { return true; } // Visualization/Light Blocking
+  virtual bool isOpaque() const {
+    return isOpaque_;
+  } // Visualization/Light Blocking
   virtual uint8_t getEmission() const { return 0; } // Light source
   virtual bool isActive() const { return true; }    // Replaces != AIR check
 
@@ -260,10 +262,13 @@ public:
     return true; // Default behavior
   }
 
+  void setOpaque(bool o) { isOpaque_ = o; }
+
 protected:
   uint8_t id;
   std::string name;
   std::string resourceId;
+  bool isOpaque_ = true;
 
   std::string textureNames[6];
   float uMin[6];

@@ -111,6 +111,7 @@ BlockRegistry::BlockRegistry() {
   Block *ice = new SolidBlock(BlockType::ICE, "Ice");
   ice->setResourceId("lithos:ice");
   ice->setTexture("ice");
+  ice->setOpaque(false);
   registerBlock(ice);
 
   // Flora & Structures
@@ -119,6 +120,7 @@ BlockRegistry::BlockRegistry() {
   cactus->setTexture("cactus_side");
   cactus->setTexture(4, "cactus_top");
   cactus->setTexture(5, "cactus_bottom");
+  cactus->setOpaque(false);
   registerBlock(cactus);
 
   Block *pine = new SolidBlock(BlockType::PINE_WOOD, "Spruce Log");

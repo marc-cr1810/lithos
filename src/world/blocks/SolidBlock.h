@@ -7,12 +7,6 @@ class SolidBlock : public Block {
 public:
   SolidBlock(uint8_t id, const std::string &name) : Block(id, name) {}
 
-  bool isOpaque() const override {
-    if (id == BlockType::ICE)
-      return false;
-    return true;
-  }
-
   RenderLayer getRenderLayer() const override {
     if (id == BlockType::ICE)
       return RenderLayer::TRANSPARENT;
