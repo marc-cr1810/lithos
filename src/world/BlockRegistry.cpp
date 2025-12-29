@@ -8,6 +8,8 @@
 #include "blocks/SlabBlock.h"
 #include "blocks/SolidBlock.h"
 #include "blocks/StairBlock.h"
+#include <filesystem>
+#include <iostream>
 
 BlockRegistry &BlockRegistry::getInstance() {
   static BlockRegistry instance;
@@ -19,13 +21,16 @@ BlockRegistry::BlockRegistry() {
   defaultBlock = new AirBlock();
   blocks[BlockType::AIR] = defaultBlock;
 
-  registerBlock(new AirBlock());
+  registerBlock(new AirBlock()); // Air doesn't strictly need ID if it's
+                                 // default? Or "lithos:air"
 
   Block *dirt = new SolidBlock(BlockType::DIRT, "Dirt");
+  dirt->setResourceId("lithos:dirt");
   dirt->setTexture("dirt");
   registerBlock(dirt);
 
   Block *grass = new SolidBlock(BlockType::GRASS, "Grass");
+  grass->setResourceId("lithos:grass");
   grass->setTexture("dirt"); // Default/Bottom
   grass->setTexture(4, "grass_block_top");
   grass->setTexture(0, "grass_block_side");
@@ -39,32 +44,39 @@ BlockRegistry::BlockRegistry() {
   registerBlock(grass);
 
   Block *stone = new SolidBlock(BlockType::STONE, "Stone");
+  stone->setResourceId("lithos:stone");
   stone->setTexture("stone");
   registerBlock(stone);
 
-  Block *wood = new SolidBlock(BlockType::WOOD, "Wood");
+  Block *wood = new SolidBlock(BlockType::WOOD, "Oak Log");
+  wood->setResourceId("lithos:oak_log");
   wood->setTexture("oak_log");
   wood->setTexture(4, "oak_log_top");
   wood->setTexture(5, "oak_log_top");
   registerBlock(wood);
 
-  Block *leaves = new PlantBlock(BlockType::LEAVES, "Leaves");
+  Block *leaves = new PlantBlock(BlockType::LEAVES, "Oak Leaves");
+  leaves->setResourceId("lithos:oak_leaves");
   leaves->setTexture("oak_leaves");
   registerBlock(leaves);
 
   Block *coal = new SolidBlock(BlockType::COAL_ORE, "Coal Ore");
+  coal->setResourceId("lithos:coal_ore");
   coal->setTexture("coal_ore");
   registerBlock(coal);
 
   Block *iron = new SolidBlock(BlockType::IRON_ORE, "Iron Ore");
+  iron->setResourceId("lithos:iron_ore");
   iron->setTexture("iron_ore");
   registerBlock(iron);
 
   Block *glow = new LightBlock(BlockType::GLOWSTONE, "Glowstone", 15);
+  glow->setResourceId("lithos:glowstone");
   glow->setTexture("glowstone");
   registerBlock(glow);
 
   Block *water = new LiquidBlock(BlockType::WATER, "Water");
+  water->setResourceId("lithos:water");
   water->setTexture("water_still");
   water->setTexture(0, "water_flow");
   water->setTexture(1, "water_flow");
@@ -73,6 +85,7 @@ BlockRegistry::BlockRegistry() {
   registerBlock(water);
 
   Block *lava = new LiquidBlock(BlockType::LAVA, "Lava");
+  lava->setResourceId("lithos:lava");
   lava->setTexture("lava_still");
   lava->setTexture(0, "lava_flow");
   lava->setTexture(1, "lava_flow");
@@ -81,85 +94,122 @@ BlockRegistry::BlockRegistry() {
   registerBlock(lava);
 
   Block *sand = new FallingBlock(BlockType::SAND, "Sand");
+  sand->setResourceId("lithos:sand");
   sand->setTexture("sand");
   registerBlock(sand);
 
   Block *gravel = new FallingBlock(BlockType::GRAVEL, "Gravel");
+  gravel->setResourceId("lithos:gravel");
   gravel->setTexture("gravel");
   registerBlock(gravel);
 
   Block *snow = new SolidBlock(BlockType::SNOW, "Snow");
+  snow->setResourceId("lithos:snow");
   snow->setTexture("snow");
   registerBlock(snow);
 
   Block *ice = new SolidBlock(BlockType::ICE, "Ice");
+  ice->setResourceId("lithos:ice");
   ice->setTexture("ice");
   registerBlock(ice);
 
   // Flora & Structures
   Block *cactus = new SolidBlock(BlockType::CACTUS, "Cactus");
+  cactus->setResourceId("lithos:cactus");
   cactus->setTexture("cactus_side");
   cactus->setTexture(4, "cactus_top");
-  cactus->setTexture(5, "cactus_bottom"); // Bottom
+  cactus->setTexture(5, "cactus_bottom");
   registerBlock(cactus);
 
-  Block *pine = new SolidBlock(BlockType::PINE_WOOD, "Pine Wood");
+  Block *pine = new SolidBlock(BlockType::PINE_WOOD, "Spruce Log");
+  pine->setResourceId("lithos:spruce_log");
   pine->setTexture("spruce_log");
   pine->setTexture(4, "spruce_log_top");
   pine->setTexture(5, "spruce_log_top");
-  pine->setRenderShape(Block::RenderShape::MODEL);
-  pine->setModel("assets/models/block/spruce_log.json");
+  // Model loading will handle the rest if file exists
   registerBlock(pine);
 
-  Block *pineLeaves = new PlantBlock(BlockType::PINE_LEAVES, "Pine Leaves");
+  Block *pineLeaves = new PlantBlock(BlockType::PINE_LEAVES, "Spruce Leaves");
+  pineLeaves->setResourceId("lithos:spruce_leaves");
   pineLeaves->setTexture("spruce_leaves");
   registerBlock(pineLeaves);
 
   Block *tallGrass = new PlantBlock(BlockType::TALL_GRASS, "Tall Grass");
+  tallGrass->setResourceId("lithos:tall_grass");
   tallGrass->setTexture("short_grass");
   registerBlock(tallGrass);
 
   Block *deadBush = new PlantBlock(BlockType::DEAD_BUSH, "Dead Bush");
+  deadBush->setResourceId("lithos:dead_bush");
   deadBush->setTexture("dead_bush");
   registerBlock(deadBush);
 
   Block *rose = new PlantBlock(BlockType::ROSE, "Rose");
+  rose->setResourceId("lithos:rose");
   rose->setTexture("poppy");
   registerBlock(rose);
 
   Block *dryShort =
       new PlantBlock(BlockType::DRY_SHORT_GRASS, "Dry Short Grass");
+  dryShort->setResourceId("lithos:dry_short_grass");
   dryShort->setTexture("short_dry_grass");
   registerBlock(dryShort);
 
   Block *dryTall = new PlantBlock(BlockType::DRY_TALL_GRASS, "Dry Tall Grass");
+  dryTall->setResourceId("lithos:dry_tall_grass");
   dryTall->setTexture("tall_dry_grass");
   registerBlock(dryTall);
 
   // New blocks
   Block *obsidian = new SolidBlock(BlockType::OBSIDIAN, "Obsidian");
+  obsidian->setResourceId("lithos:obsidian");
   obsidian->setTexture("obsidian");
   registerBlock(obsidian);
 
   Block *cobblestone = new SolidBlock(BlockType::COBBLESTONE, "Cobblestone");
+  cobblestone->setResourceId("lithos:cobblestone");
   cobblestone->setTexture("cobblestone");
   registerBlock(cobblestone);
 
   // Wood planks with metadata support: 0 = oak, 1 = spruce
   MetadataBlock *woodPlanks =
       new MetadataBlock(BlockType::WOOD_PLANKS, "Wood Planks");
+  woodPlanks->setResourceId("lithos:planks"); // Or separate
   woodPlanks->setTextureForMetadata(0, "oak_planks");
   woodPlanks->setTextureForMetadata(1, "spruce_planks");
   registerBlock((Block *)woodPlanks);
 
   // Custom Mesh Blocks
   Block *stoneSlab = new SlabBlock(BlockType::STONE_SLAB, "Stone Slab");
+  stoneSlab->setResourceId("lithos:stone_slab");
   stoneSlab->setTexture("stone");
   registerBlock(stoneSlab);
 
-  Block *woodStairs = new StairBlock(BlockType::WOOD_STAIRS, "Wood Stairs");
+  Block *woodStairs = new StairBlock(BlockType::WOOD_STAIRS, "Oak Stairs");
+  woodStairs->setResourceId("lithos:oak_stairs");
   woodStairs->setTexture("oak_planks");
   registerBlock(woodStairs);
+
+  // Dynamic Model Loading
+  for (auto &pair : blocks) {
+    Block *block = pair.second;
+    std::string resId = block->getResourceId();
+    if (resId.empty())
+      continue;
+
+    size_t colon = resId.find(':');
+    if (colon != std::string::npos) {
+      std::string path = resId.substr(colon + 1);
+      // Check for JSON
+      std::string modelPath = "assets/models/block/" + path + ".json";
+      if (std::filesystem::exists(modelPath)) {
+        std::cout << "Loading custom model for " << resId << " -> " << modelPath
+                  << std::endl;
+        block->setRenderShape(Block::RenderShape::MODEL);
+        block->setModel(modelPath);
+      }
+    }
+  }
 }
 
 void BlockRegistry::registerBlock(Block *block) {

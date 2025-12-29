@@ -62,6 +62,9 @@ public:
   uint8_t getId() const { return id; }
   const std::string &getName() const { return name; }
 
+  void setResourceId(const std::string &resId) { resourceId = resId; }
+  const std::string &getResourceId() const { return resourceId; }
+
   // Texture Configuration
   void setTexture(const std::string &texName) {
     for (int i = 0; i < 6; ++i)
@@ -260,6 +263,7 @@ public:
 protected:
   uint8_t id;
   std::string name;
+  std::string resourceId;
 
   std::string textureNames[6];
   float uMin[6];
