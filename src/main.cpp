@@ -506,7 +506,6 @@ int main(int argc, char *argv[]) {
 
       // Update Animations
       if (atlas.Update(deltaTime * dbg_timeSpeed)) {
-        PROFILE_SCOPE("Texture Anims");
         atlas.UpdateTextureGPU(blockTexture.ID);
       }
     }
@@ -560,7 +559,6 @@ int main(int argc, char *argv[]) {
 
     // Debug Window
     if (isDebugMode) {
-      PROFILE_SCOPE("Debug UI Build");
       ImGui::Begin("Debug Info");
 
       if (ImGui::CollapsingHeader("Stats", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -800,15 +798,12 @@ int main(int argc, char *argv[]) {
     glm::vec3 fogCol = glm::vec3(0.5f, 0.6f, 0.7f) * sunStrength;
     float fDist = dbg_fogDist;
 
-    {
-      PROFILE_SCOPE("Screen Clear");
-      if (inWater) {
-        glClearColor(0.1f, 0.1f, 0.3f, 1.0f);
-      } else {
-        glClearColor(0.5f, 0.8f, 1.0f, 1.0f); // Sky Blue
-      }
-      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    if (inWater) {
+      glClearColor(0.1f, 0.1f, 0.3f, 1.0f);
+    } else {
+      glClearColor(0.5f, 0.8f, 1.0f, 1.0f); // Sky Blue
     }
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     bool uFog = dbg_useFog;
 
     if (inWater) {
@@ -873,7 +868,6 @@ int main(int argc, char *argv[]) {
       glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
     if (dbg_chunkBorders) {
-      PROFILE_SCOPE("Debug Borders");
       world.renderDebugBorders(ourShader, projection * view);
     }
 
@@ -1051,11 +1045,8 @@ int main(int argc, char *argv[]) {
     // -------------------------------------------------------------------------------
     // Render ImGui
     // ImGui Render
-    {
-      PROFILE_SCOPE("ImGui Render");
-      ImGui::Render();
-      ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-    }
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
     // Update and Render additional Platform Windows
     // (Platform functions may change the current OpenGL context, so we
@@ -1075,10 +1066,7 @@ int main(int argc, char *argv[]) {
       PROFILE_SCOPE("Swap Buffers");
       glfwSwapBuffers(window);
     }
-    {
-      PROFILE_SCOPE("Poll Events");
-      glfwPollEvents();
-    }
+    glfwPollEvents();
   }
 
   // optional: de-allocate all resources once they've outlived their purpose:
