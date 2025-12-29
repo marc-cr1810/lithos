@@ -49,6 +49,14 @@ if(NOT glm_FOUND)
     FetchContent_MakeAvailable(glm)
 endif()
 
+# Argparse
+FetchContent_Declare(
+  argparse
+  GIT_REPOSITORY https://github.com/p-ranav/argparse.git
+  GIT_TAG v3.0
+)
+FetchContent_MakeAvailable(argparse)
+
 # EnTT
 FetchContent_Declare(
     entt
@@ -163,6 +171,7 @@ target_link_libraries(lithos PRIVATE
     EnTT::EnTT
     nlohmann_json::nlohmann_json
     spdlog::spdlog
+    argparse::argparse
 )
 
 if(WIN32)

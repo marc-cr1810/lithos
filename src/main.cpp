@@ -1,3 +1,4 @@
+#include <argparse/argparse.hpp>
 #include <chrono>
 #include <cstdlib>
 #include <ctime>
@@ -141,7 +142,51 @@ const char *GetBlockName(int type) {
 #include "debug/CrashHandler.h"
 #include "debug/Logger.h"
 
-int main() {
+int main(int argc, char *argv[]) {
+  argparse::ArgumentParser program("Lithos");
+
+  program.add_argument("--width")
+      .help("Window width")
+      .default_value(1280)
+      .scan<'i', int>();
+
+  program.add_argument("--height")
+      .help("Window height")
+      .default_value(720)
+      .scan<'i', int>();
+
+  program.add_argument("--vsync")
+      .help("Enable Vertical Sync")
+      .default_value(false)
+      .implicit_value(true);
+
+  program.add_argument("--render-distance")
+      .help("Chunk render distance")
+      .default_value(8)
+      .scan<'i', int>();
+
+  program.add_argument("--fov")
+      .help("Camera Field of View")
+      .default_value(45.0f)
+      .scan<'g', float>();
+
+  program.add_argument("--seed").help("World generation seed").scan<'i', int>();
+
+  try {
+    program.parse_args(argc, argv);
+  } catch (const std::runtime_error &err) {
+    std::cerr << err.what() << std::endl;
+    std::cerr << program;
+    std::exit(1);
+  }
+
+  // Update globals if needed, or pass to window creation
+  SCR_WIDTH = program.get<int>("--width");
+  SCR_HEIGHT = program.get<int>("--height");
+  dbg_vsync = program.get<bool>("--vsync");
+  dbg_renderDistance = program.get<int>("--render-distance");
+  camera.Zoom = program.get<float>("--fov");
+
   Logger::Init();
   CrashHandler::Init();
 
@@ -166,7 +211,8 @@ int main() {
     return -1;
   }
   glfwMakeContextCurrent(window);
-  glfwSwapInterval(0); // Disable VSync by default to match dbg_vsync = false
+  glfwSwapInterval(
+      dbg_vsync ? 1 : 0); // Disable VSync by default to match dbg_vsync = false
   glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
   // glfwSetCursorPosCallback(window, mouse_callback); // Disable callback
   // glfwSetScrollCallback(window, scroll_callback);
@@ -251,10 +297,15 @@ int main() {
   ourShader.setVec2("uvScale", uScale, vScale);
 
   // Initialize Random Seed
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_int_distribution<> distr(0, 100000);
-  int worldSeed = distr(gen);
+  int worldSeed;
+  if (program.present<int>("--seed")) {
+    worldSeed = program.get<int>("--seed");
+  } else {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> distr(0, 100000);
+    worldSeed = distr(gen);
+  }
 
   LOG_INFO("Starting Game Loop... World Seed: {}", worldSeed);
 
