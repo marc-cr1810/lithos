@@ -349,7 +349,7 @@ int main(int argc, char *argv[]) {
   int retry = 0;
   const int MAX_RETRIES = 1000; // Increased timeout
 
-  LOG_WORLD_INFO("Generating Spawn Area... (Radius 2 Chunks)");
+  LOG_WORLD_INFO("Generating Spawn Area... (Radius 12 Chunks)");
 
   while (!foundGround && retry < MAX_RETRIES) {
     // Drive World Generation
@@ -360,7 +360,7 @@ int main(int argc, char *argv[]) {
                          (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
 
     // Force load radius around spawn
-    world.loadChunks(glm::vec3(spawnX, 100, spawnZ), 5, projection * view);
+    world.loadChunks(glm::vec3(spawnX, 100, spawnZ), 12, projection * view);
     world.Update();
 
     // Check if the center column's chunk is loaded
