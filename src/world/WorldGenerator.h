@@ -15,11 +15,14 @@ enum Biome {
   BIOME_PLAINS
 };
 
+class ChunkColumn;
+
 class WorldGenerator {
 public:
   WorldGenerator(int seed);
   ~WorldGenerator();
-  void GenerateChunk(Chunk &chunk);
+  void GenerateColumn(ChunkColumn &column, int cx, int cz);
+  void GenerateChunk(Chunk &chunk, const ChunkColumn &column);
   int GetHeight(int x, int z); // Converted to Instance Method
   float GetTemperature(int x, int z);
   float GetHumidity(int x, int z);

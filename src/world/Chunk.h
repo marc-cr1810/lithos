@@ -11,7 +11,7 @@
 
 class World;
 
-const int CHUNK_SIZE = 16;
+const int CHUNK_SIZE = 32;
 
 class Chunk {
 public:

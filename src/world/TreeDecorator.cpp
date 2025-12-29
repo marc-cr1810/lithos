@@ -91,7 +91,10 @@ static void GenerateCactus(Chunk &chunk, int x, int y, int z) {
   }
 }
 
-void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator) {
+#include "ChunkColumn.h"
+
+void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
+                             const ChunkColumn &column) {
   glm::ivec3 pos = chunk.chunkPosition;
 
   for (int x = 0; x < CHUNK_SIZE; ++x) {
@@ -99,15 +102,16 @@ void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator) {
       int gx = pos.x * CHUNK_SIZE + x;
       int gz = pos.z * CHUNK_SIZE + z;
 
-      int height = generator.GetHeight(gx, gz);
+      int height = column.getHeight(x, z);
       int localY = height - pos.y * CHUNK_SIZE;
 
       if (localY >= 0 && localY < CHUNK_SIZE) {
         // Padding check
-        if (x < 2 || x > 13 || z < 2 || z > 13 || localY > CHUNK_SIZE - 10)
+        if (x < 2 || x > CHUNK_SIZE - 3 || z < 2 || z > CHUNK_SIZE - 3 ||
+            localY > CHUNK_SIZE - 10)
           continue;
 
-        Biome biome = generator.GetBiome(gx, gz);
+        Biome biome = column.getBiome(x, z);
         if (height < 60)
           continue;
 

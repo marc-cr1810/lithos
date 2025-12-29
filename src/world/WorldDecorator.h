@@ -5,11 +5,11 @@
 
 class WorldGenerator;
 
-class WorldDecorator
-{
+class WorldDecorator {
 public:
-    virtual ~WorldDecorator() {}
-    virtual void Decorate(Chunk& chunk, WorldGenerator& generator) = 0;
+  virtual ~WorldDecorator() {}
+  virtual void Decorate(Chunk &chunk, WorldGenerator &generator,
+                        const struct ChunkColumn &column) = 0;
 };
 
 #endif

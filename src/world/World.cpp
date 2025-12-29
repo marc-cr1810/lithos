@@ -223,8 +223,8 @@ void World::GenerationWorkerLoop() {
         break;
 
       if (!genQueue.empty()) {
-        coord = genQueue.front();
-        genQueue.pop_front();
+        coord = genQueue.top().coord;
+        genQueue.pop();
       } else
         continue;
     }
@@ -244,13 +244,36 @@ void World::GenerationWorkerLoop() {
       }
     }
 
-    // 1. Create Chunk
+    // 1. Ensure Column Exists
+    ChunkColumn *column = nullptr;
+
+    // Optimization: Try to find existing column first
+    {
+      std::lock_guard<std::mutex> lock(columnMutex);
+      auto it = columns.find({x, z});
+      if (it != columns.end()) {
+        column = it->second.get();
+      }
+    }
+
+    // If not found, generate it
+    if (!column) {
+      auto newCol = std::make_unique<ChunkColumn>();
+      generator.GenerateColumn(*newCol, x, z);
+
+      std::lock_guard<std::mutex> lock(columnMutex);
+      // Insert or get existing (if race happened)
+      auto result = columns.emplace(std::make_pair(x, z), std::move(newCol));
+      column = result.first->second.get();
+    }
+
+    // 2. Create Chunk
     auto newChunk = std::make_unique<Chunk>();
     newChunk->chunkPosition = glm::ivec3(x, y, z);
     newChunk->setWorld(this);
 
-    // 2. Generate Blocks
-    generator.GenerateChunk(*newChunk);
+    // 3. Generate Blocks using Column
+    generator.GenerateChunk(*newChunk, *column);
 
     // 3. Add to World (This links neighbors)
     {
@@ -364,22 +387,38 @@ void World::loadChunks(const glm::vec3 &playerPos, int renderDistance,
         if (distSq <= renderDistSq) {
           float distance = std::sqrt((float)distSq);
 
+          // Column Visibility Check
+          // Check if the entire column AABB is in frustum (0 to 160 height
+          // approx)
+          bool columnVisible = false;
+          glm::vec3 colMin(x * CHUNK_SIZE, 0, z * CHUNK_SIZE);
+          glm::vec3 colMax = colMin + glm::vec3(CHUNK_SIZE, 5 * CHUNK_SIZE,
+                                                CHUNK_SIZE); // Height ~160
+
+          if (isAABBInFrustum(colMin, colMax, planes)) {
+            columnVisible = true;
+          }
+
+          // Base Priority for Column (Purely Distance based)
+          float basePriority = 10000.0f / (distance + 0.1f);
+
+          if (columnVisible) {
+            basePriority *= 2.0f; // Boost visible columns
+          }
+
+          if (distance < 3.0f) {
+            basePriority *= 5.0f; // Urgent boost for spawn/player range
+          }
+
           for (int y = 0; y < 5; ++y) {
-            // Calculate priority score
-            float priority = 1000.0f / (distance + 1.0f); // Closer = higher
+            float priority = basePriority;
 
-            // Check if in frustum
-            glm::vec3 min =
-                glm::vec3(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE);
-            glm::vec3 max = min + glm::vec3(CHUNK_SIZE);
-            if (isAABBInFrustum(min, max, planes)) {
-              priority *= 2.0f; // Double priority if visible
-            }
-
-            // Boost ground-level chunks
-            if (y <= 2) {
-              priority *= 1.5f;
-            }
+            // Minor adjustments to order within the column (Surface first, then
+            // others) This ensures they are grouped but critical ones processed
+            // first
+            int distToSurface = std::abs(y - 2); // Assume Y=2 is center
+            priority -= (float)distToSurface *
+                        0.1f; // Tiny penalty for being away from center
 
             loadQueue.push_back({x, y, z, priority});
           }
@@ -404,6 +443,8 @@ void World::loadChunks(const glm::vec3 &playerPos, int renderDistance,
   const int MAX_CHUNKS_PER_FRAME = 80;
   int chunksProcessed = 0;
 
+  std::vector<std::tuple<int, int, int>> urgentBatch;
+
   while (chunksProcessed < MAX_CHUNKS_PER_FRAME &&
          queueIndex < loadQueue.size()) {
     const auto &req = loadQueue[queueIndex];
@@ -423,12 +464,9 @@ void World::loadChunks(const glm::vec3 &playerPos, int renderDistance,
       if (generatingChunks.find(key) == generatingChunks.end()) {
         generatingChunks.insert(key);
 
-        // High priority chunks go to front
-        if (req.priority > 100.0f) {
-          genQueue.push_front(key);
-        } else {
-          genQueue.push_back(key);
-        }
+        // Just push to priority queue, it handles the sorting!
+        genQueue.push({key, req.priority});
+
         genCondition.notify_one();
       }
     }
@@ -617,17 +655,27 @@ ChunkBlock World::getBlock(int x, int y, int z) const {
     return ChunkBlock{BlockRegistry::getInstance().getBlock(AIR), 15, 0};
   }
 
+  // Local Calc
   int lx = x - cx * CHUNK_SIZE;
   int ly = y - cy * CHUNK_SIZE;
   int lz = z - cz * CHUNK_SIZE;
-  if (lx < 0)
-    lx += CHUNK_SIZE;
-  if (ly < 0)
-    ly += CHUNK_SIZE;
-  if (lz < 0)
-    lz += CHUNK_SIZE;
 
   return c->getBlock(lx, ly, lz);
+}
+
+int World::getHeight(int x, int z) const {
+  int cx = floorDiv(x, CHUNK_SIZE);
+  int cz = floorDiv(z, CHUNK_SIZE);
+
+  std::lock_guard<std::mutex> lock(const_cast<std::mutex &>(columnMutex));
+
+  auto it = columns.find({cx, cz});
+  if (it != columns.end()) {
+    int lx = x - cx * CHUNK_SIZE;
+    int lz = z - cz * CHUNK_SIZE;
+    return it->second->getHeight(lx, lz);
+  }
+  return 0; // Default
 }
 
 uint8_t World::getSkyLight(int x, int y, int z) {

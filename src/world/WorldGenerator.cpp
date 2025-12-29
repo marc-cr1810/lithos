@@ -154,7 +154,20 @@ int WorldGenerator::GetStrataBlock(int x, int y, int z) {
   }
 }
 
-void WorldGenerator::GenerateChunk(Chunk &chunk) {
+#include "ChunkColumn.h"
+
+void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
+  for (int x = 0; x < CHUNK_SIZE; ++x) {
+    for (int z = 0; z < CHUNK_SIZE; ++z) {
+      int gx = cx * CHUNK_SIZE + x;
+      int gz = cz * CHUNK_SIZE + z;
+      column.heightMap[x][z] = GetHeight(gx, gz);
+      column.biomeMap[x][z] = GetBiome(gx, gz);
+    }
+  }
+}
+
+void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
   glm::ivec3 pos = chunk.chunkPosition;
 
   for (int x = 0; x < CHUNK_SIZE; ++x) {
@@ -163,10 +176,14 @@ void WorldGenerator::GenerateChunk(Chunk &chunk) {
       int gx = pos.x * CHUNK_SIZE + x;
       int gz = pos.z * CHUNK_SIZE + z;
 
-      // Get Height from single source of truth
-      int height = GetHeight(gx, gz);
+      // Get Height from column
+      int height = column.heightMap[x][z];
 
-      // Get Climate Data
+      // Get Climate Data from column or recalculate (Biome is stored,
+      // temp/humidity not yet) For now, let's just get Biome from column if we
+      // used it, but here code uses temp/humidity directly. Optimally we'd
+      // store temp/humidity in column too, but user asked for heightmap.
+      // Re-calculating temp/humidity is cheap (low frequency noise).
       float temp = GetTemperature(gx, gz);
       float humidity = GetHumidity(gx, gz);
 
@@ -222,9 +239,44 @@ void WorldGenerator::GenerateChunk(Chunk &chunk) {
       int beachHeightLimit = 60 + (int)(beachNoise * 4.0f); // 60 to 64
       BlockType beachBlock = (beachNoise > 0.4f) ? GRAVEL : SAND;
 
+      // Hoisted Strata Noise (Calculate once per column)
+      int strataSeed = (seed * 777) % 65536;
+      float snx = (float)gx + (float)strataSeed;
+      float snz = (float)gz + (float)strataSeed;
+      float strataLayerWave = glm::perlin(glm::vec2(snx * 0.02f, snz * 0.02f));
+      float strataTypeNoise = glm::perlin(glm::vec2(snx * 0.01f, snz * 0.01f));
+
       for (int y = 0; y < CHUNK_SIZE; ++y) {
         int gy = pos.y * CHUNK_SIZE + y;
         BlockType type = AIR;
+
+        // Helper Lambda for Strata Logic using pre-calced noise
+        auto getStrataBlock = [&](int yVal) -> BlockType {
+          int adjustedY = yVal + (int)(strataLayerWave * 5.0f);
+          if (adjustedY < 12) {
+            if (strataTypeNoise > 0.3f)
+              return GRANITE;
+            else if (strataTypeNoise < -0.3f)
+              return BASALT;
+            else
+              return DIORITE;
+          } else if (adjustedY < 20)
+            return STONE;
+          else if (adjustedY < 25) {
+            if (strataTypeNoise > 0.2f)
+              return ANDESITE;
+            else
+              return TUFF;
+          } else if (adjustedY < 35)
+            return STONE;
+          else if (adjustedY < 40) {
+            if (strataTypeNoise > 0.0f)
+              return SANDSTONE;
+            else
+              return DIORITE;
+          }
+          return STONE; // Default
+        };
 
         // 1. Terrain Shape
         if (gy <= height) {
@@ -248,13 +300,14 @@ void WorldGenerator::GenerateChunk(Chunk &chunk) {
               type = subsurfaceBlock;
           } else {
             // Deep Underground - Use Strata
-            type = (BlockType)GetStrataBlock(gx, gy, gz);
+            type = getStrataBlock(gy);
           }
         }
 
         // Bedrock
         if (gy == 0)
-          type = (BlockType)GetStrataBlock(gx, gy, gz);
+          type = getStrataBlock(gy); // Or just BEDROCK if implemented, but
+                                     // strict logic was Strata
 
         // Water Fill
         if (type == AIR && gy <= 60) {
@@ -266,7 +319,9 @@ void WorldGenerator::GenerateChunk(Chunk &chunk) {
         }
 
         // 2. Carve Caves (Ridged Noise / Noodle Caves)
-        if (type != WATER) {
+        // Optimization: Only try to carve if the block is solid (Not Air, Not
+        // Water)
+        if (type != WATER && type != AIR) {
           bool isUnderwater = (height <= 60);
           bool preserveCrust = false;
 
@@ -289,6 +344,12 @@ void WorldGenerator::GenerateChunk(Chunk &chunk) {
 
             // Use slightly lower frequency for fatter caves? 0.04 -> 0.03
             float n1 = glm::perlin(glm::vec3(cx, cy, cz) * 0.03f);
+
+            // Optimization: Check first noise threshold roughly before
+            // calculating second noise? Use n1 to determine if calculation of
+            // n2 is worth it? Not easily possible with current logic (abs(n1) <
+            // threshold(n2)).
+
             float n2 =
                 glm::perlin(glm::vec3(cx, cy, cz) * 0.01f + glm::vec3(100.0f));
 
@@ -323,7 +384,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk) {
           if (gy > 0) {
             int chance = 100 - (gy * 20);
             if ((rand() % 100) < chance)
-              type = (BlockType)GetStrataBlock(gx, gy, gz);
+              type = getStrataBlock(gy);
           }
         }
 
@@ -343,6 +404,6 @@ void WorldGenerator::GenerateChunk(Chunk &chunk) {
 
   // Apply Decorators
   for (auto d : decorators) {
-    d->Decorate(chunk, *this);
+    d->Decorate(chunk, *this, column);
   }
 }

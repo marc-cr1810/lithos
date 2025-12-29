@@ -3,10 +3,10 @@
 
 #include "WorldDecorator.h"
 
-class TreeDecorator : public WorldDecorator
-{
+class TreeDecorator : public WorldDecorator {
 public:
-    void Decorate(Chunk& chunk, WorldGenerator& generator) override;
+  virtual void Decorate(Chunk &chunk, WorldGenerator &generator,
+                        const struct ChunkColumn &column) override;
 };
 
 #endif

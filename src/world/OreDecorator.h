@@ -3,13 +3,14 @@
 
 #include "WorldDecorator.h"
 
-class OreDecorator : public WorldDecorator
-{
+class OreDecorator : public WorldDecorator {
 public:
-    void Decorate(Chunk& chunk, WorldGenerator& generator) override;
+  virtual void Decorate(Chunk &chunk, WorldGenerator &generator,
+                        const struct ChunkColumn &column) override;
 
 private:
-    void GenerateOre(Chunk& chunk, int startX, int startY, int startZ, BlockType oreType);
+  void GenerateOre(Chunk &chunk, int startX, int startY, int startZ,
+                   BlockType oreType);
 };
 
 #endif

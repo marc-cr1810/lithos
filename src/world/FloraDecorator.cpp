@@ -4,7 +4,10 @@
 #include <cstdlib>
 #include <glm/glm.hpp>
 
-void FloraDecorator::Decorate(Chunk &chunk, WorldGenerator &generator) {
+#include "ChunkColumn.h"
+
+void FloraDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
+                              const ChunkColumn &column) {
   glm::ivec3 pos = chunk.chunkPosition;
 
   for (int x = 0; x < CHUNK_SIZE; ++x) {
@@ -12,11 +15,11 @@ void FloraDecorator::Decorate(Chunk &chunk, WorldGenerator &generator) {
       int gx = pos.x * CHUNK_SIZE + x;
       int gz = pos.z * CHUNK_SIZE + z;
 
-      int height = generator.GetHeight(gx, gz);
+      int height = column.getHeight(x, z);
       int localY = height - pos.y * CHUNK_SIZE;
 
       if (localY >= 0 && localY < CHUNK_SIZE - 1) { // Ensure space above
-        Biome biome = generator.GetBiome(gx, gz);
+        Biome biome = column.getBiome(x, z);
         if (height < 60)
           continue; // Not underwater
 

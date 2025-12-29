@@ -17,6 +17,7 @@
 #include "../render/Shader.h"
 #include "Block.h"
 #include "Chunk.h"
+#include "ChunkColumn.h"
 
 // Hash function for std::tuple
 // Hash function for std::tuple
@@ -54,6 +55,8 @@ public:
   int worldSeed;
   ChunkBlock getBlock(int x, int y, int z) const;
   void setBlock(int x, int y, int z, BlockType type);
+  // Get terrain height from column (cached)
+  int getHeight(int x, int z) const;
 
   // Updates
   void scheduleBlockUpdate(int x, int y, int z, int delay);
@@ -104,11 +107,34 @@ private:
   void WorkerLoop();
 
   // Generation Thread Pool
+  // Generation Thread Pool
+  struct GenTask {
+    std::tuple<int, int, int> coord;
+    float priority;
+
+    bool operator<(const GenTask &other) const {
+      return priority < other.priority; // Max-heap: Higher priority first
+    }
+  };
+
   std::mutex genMutex;
   std::condition_variable genCondition;
   std::vector<std::thread> genThreads;
-  std::deque<std::tuple<int, int, int>> genQueue;
+
+  std::priority_queue<GenTask> genQueue;
+
   std::unordered_set<std::tuple<int, int, int>, key_hash> generatingChunks;
+
+  struct key_hash_pair {
+    std::size_t operator()(const std::pair<int, int> &k) const {
+      return std::hash<int>{}(k.first) ^ (std::hash<int>{}(k.second) << 1);
+    }
+  };
+
+  std::unordered_map<std::pair<int, int>, std::unique_ptr<ChunkColumn>,
+                     key_hash_pair>
+      columns;
+  std::mutex columnMutex;
 
   void GenerationWorkerLoop();
 

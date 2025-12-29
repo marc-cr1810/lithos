@@ -1968,47 +1968,59 @@ void Chunk::calculateSunlight() {
       int gx = chunkPosition.x * CHUNK_SIZE + x;
       int gz = chunkPosition.z * CHUNK_SIZE + z;
 
-      bool exposedToSky = true;
+      // 2a. Determine if column start has access to sky
+      // gx and gz are already declared above
 
-      // Optimization: Use neighbors[DIR_TOP] to walk up
-      Chunk *current = this;
-      int incomingLight = 15;
-      bool topNeighborMissing = false;
+      bool exposedToSky = false; // Default false
+      int incomingLight = 0;
 
-      // Walk up using neighbors
-      while (current) {
-        if (current->neighbors[DIR_TOP]) {
-          current = current->neighbors[DIR_TOP];
-          // Check column in upper chunk (Bottom-Up)
-          bool blocked = false;
-          for (int ly = 0; ly < CHUNK_SIZE; ++ly) {
-            ChunkBlock b = current->getBlock(x, ly, z);
-            if (b.isOpaque()) {
-              exposedToSky = false;
-              blocked = true;
-              incomingLight = 0;
-              break;
-            } else if (b.getType() == WATER) {
-              incomingLight -= 2;
-              if (incomingLight <= 0) {
-                incomingLight = 0;
-              }
-            }
-          }
-          if (blocked || incomingLight <= 0)
-            break;
-        } else {
-          // We reached the top loaded chunk.
-          // If we are below the world surface, we shouldn't assume sky.
-          // The world surface is roughly Y=64 (Chunk 4).
-          // If current chunk Y < 4, and we have no neighbor above, we are
-          // likely underground waiting for load.
-          if (current->chunkPosition.y < 4) {
-            exposedToSky = false;
-            incomingLight = 0;
-          }
-          break;
+      // FIX: Use World Heightmap to determine Sky Exposure independently of
+      // neighbors
+      if (world) {
+        int h = world->getHeight(gx, gz);
+        // Check top block of this column (y=31)
+        // Global Y of top block:
+        int topGY = chunkPosition.y * CHUNK_SIZE + (CHUNK_SIZE - 1);
+
+        if (topGY > h) {
+          exposedToSky = true;
+          incomingLight = 15;
         }
+      }
+
+      // Fallback/Neighbor Logic
+      if (!exposedToSky) {
+        Chunk *current = this;
+
+        // Check neighbors[DIR_TOP]
+        if (current->neighbors[DIR_TOP]) {
+          Chunk *n = current->neighbors[DIR_TOP];
+
+          // Only check bottom face of neighbor for light
+          // We can't easily iterate neighbor columns without locking or
+          // overhead, but we can check the *bottom* block of the neighbor.
+          // Neighbor(x, 0, z)
+
+          int nLight = n->getSkyLight(
+              x, 0, z); // This might be stale if neighbor not updated?
+          // But if neighbor is above heightmap, it should be 15.
+
+          if (nLight == 15) {
+            exposedToSky = true;
+            incomingLight = 15;
+          } else {
+            incomingLight = nLight;
+            if (incomingLight > 0)
+              exposedToSky = true;
+          }
+        }
+      }
+
+      // Fallback for "High Enough" if heightmap failed or N/A
+      if (!exposedToSky &&
+          chunkPosition.y >= 6) { // Increased from 4 to 6 (y=192) to be safe?
+        exposedToSky = true;
+        incomingLight = 15;
       }
 
       if (exposedToSky) {
