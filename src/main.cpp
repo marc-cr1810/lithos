@@ -721,7 +721,9 @@ int main(int argc, char *argv[]) {
 
       ImGui::Separator();
       // FOV
-      ImGui::SliderFloat("FOV", &camera.Zoom, 1.0f, 120.0f);
+      if (ImGui::SliderFloat("FOV", &camComp.zoom, 1.0f, 120.0f)) {
+        camera.Zoom = camComp.zoom; // Immediate update for this frame
+      }
 
       // VSync
       if (ImGui::Checkbox("VSync", &dbg_vsync)) {
@@ -992,6 +994,39 @@ int main(int argc, char *argv[]) {
       }
 
       lastLeftMouse = currentLeftMouse;
+
+      // Placement (Right Click)
+      bool currentRightMouse =
+          glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+      if (currentRightMouse && !lastRightMouse && !mouseCaptured) {
+        // Prevent placing block inside player
+        // Simple AABB check
+        float playerWidth = 0.6f;
+        float playerHeight = 1.8f;
+        glm::vec3 pMin =
+            camera.Position - glm::vec3(0.0f, 1.6f, 0.0f) -
+            glm::vec3(playerWidth / 2.0f, 0.0f, playerWidth / 2.0f);
+        glm::vec3 pMax =
+            pMin + glm::vec3(playerWidth, playerHeight, playerWidth);
+
+        // Block AABB
+        glm::vec3 bMin((float)prePos.x, (float)prePos.y, (float)prePos.z);
+        glm::vec3 bMax = bMin + glm::vec3(1.0f);
+
+        bool collision = (pMin.x <= bMax.x && pMax.x >= bMin.x) &&
+                         (pMin.y <= bMax.y && pMax.y >= bMin.y) &&
+                         (pMin.z <= bMax.z && pMax.z >= bMin.z);
+
+        if (!collision ||
+            !BlockRegistry::getInstance().getBlock(selectedBlock)->isSolid()) {
+          world.setBlock(prePos.x, prePos.y, prePos.z, selectedBlock);
+          if (selectedBlockMetadata > 0) {
+            world.setMetadata(prePos.x, prePos.y, prePos.z,
+                              selectedBlockMetadata);
+          }
+        }
+      }
+      lastRightMouse = currentRightMouse;
 
       // Draw Selection Wireframe
       float gap = 0.001f;
