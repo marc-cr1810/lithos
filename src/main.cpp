@@ -351,88 +351,114 @@ int main(int argc, char *argv[]) {
 
   LOG_WORLD_INFO("Generating Spawn Area... (Radius 6 Chunks)");
 
-  while (!foundGround && retry < MAX_RETRIES) {
+  double loadingStartTime = glfwGetTime();
+  while (!foundGround && !glfwWindowShouldClose(window)) {
+    double currentTime = glfwGetTime();
+    if (currentTime - loadingStartTime > 60.0) {
+      LOG_WORLD_WARN("Spawn Ground NOT Found (Timeout). Using Air Drop.");
+      break;
+    }
+
+    glfwPollEvents();
+
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
     // Drive World Generation
-    // Use slightly larger render distance for spawn to valid neighbors
-    glm::mat4 view = camera.GetViewMatrix();
-    glm::mat4 projection =
-        glm::perspective(glm::radians(camera.Zoom),
-                         (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
-
-    static int loopCount = 0;
-    loopCount++;
-
-    // Force load radius around spawn (Throttled to avoid mutex starvation)
-    if (loopCount % 20 == 0 || loopCount == 1) {
+    static double lastLoadTime = 0;
+    if (currentTime - lastLoadTime > 0.1) {
+      glm::mat4 view = camera.GetViewMatrix();
+      glm::mat4 projection =
+          glm::perspective(glm::radians(camera.Zoom),
+                           (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
+      // Radius 6
       world.loadChunks(glm::vec3(spawnX, 100, spawnZ), 6, projection * view);
+      lastLoadTime = currentTime;
     }
     world.Update();
 
-    // Check if ALL chunks in radius are loaded
     int cx =
         (spawnX >= 0) ? (spawnX / CHUNK_SIZE) : ((spawnX + 1) / CHUNK_SIZE - 1);
     int cz =
         (spawnZ >= 0) ? (spawnZ / CHUNK_SIZE) : ((spawnZ + 1) / CHUNK_SIZE - 1);
 
+    int loadedCount = 0;
+    int totalChunksToCheck = 0;
     bool allLoaded = true;
+
     for (int rx = cx - 6; rx <= cx + 6; ++rx) {
       for (int rz = cz - 6; rz <= cz + 6; ++rz) {
         int dx = rx - cx;
         int dz = rz - cz;
-        if (dx * dx + dz * dz <= 36) { // Check circular radius only
-          if (world.getChunk(rx, 4, rz) == nullptr) { // Check surface level
+        if (dx * dx + dz * dz <= 36) {
+          totalChunksToCheck++;
+          if (world.getChunk(rx, 4, rz) != nullptr) {
+            loadedCount++;
+          } else {
             allLoaded = false;
-            goto check_done;
           }
         }
       }
     }
-  check_done:
 
-    if (!allLoaded) {
-      // Wait
-      std::this_thread::sleep_for(std::chrono::milliseconds(5));
-      // Don't increment main retry here, use separate timeout or just wait
-      // longer
-      static int loadWaitCount = 0;
-      loadWaitCount++;
+    // Render Status
+    int width, height;
+    glfwGetFramebufferSize(window, &width, &height);
+    glViewport(0, 0, width, height);
+    glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-      if (loadWaitCount % 100 == 0) {
-        int loadedCount = 0;
-        int expectedCount = (6 * 2 + 1) * (6 * 2 + 1);
-        for (int rx = cx - 6; rx <= cx + 6; ++rx) {
-          for (int rz = cz - 6; rz <= cz + 6; ++rz) {
-            if (world.getChunk(rx, 4, rz) != nullptr)
-              loadedCount++;
+    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
+                            ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(400, 150));
+    // Use a window with no title bar/resize for clean look
+    if (ImGui::Begin("Loading", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                         ImGuiWindowFlags_NoSavedSettings)) {
+      ImGui::Dummy(ImVec2(0.0f, 10.0f));
+      float windowWidth = ImGui::GetWindowSize().x;
+      float textWidth = ImGui::CalcTextSize("Generating World...").x;
+      ImGui::SetCursorPosX((windowWidth - textWidth) * 0.5f);
+      ImGui::Text("Generating World...");
+
+      ImGui::Dummy(ImVec2(0.0f, 10.0f));
+      ImGui::Separator();
+      ImGui::Dummy(ImVec2(0.0f, 10.0f));
+
+      ImGui::Text("Loading Chunks: %d / %d", loadedCount, totalChunksToCheck);
+      float progress = (totalChunksToCheck > 0)
+                           ? ((float)loadedCount / totalChunksToCheck)
+                           : 0.0f;
+      ImGui::ProgressBar(progress, ImVec2(-1.0f, 20.0f));
+    }
+    ImGui::End();
+
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+      GLFWwindow *backup_current_context = glfwGetCurrentContext();
+      ImGui::UpdatePlatformWindows();
+      ImGui::RenderPlatformWindowsDefault();
+      glfwMakeContextCurrent(backup_current_context);
+    }
+
+    glfwSwapBuffers(window);
+
+    if (allLoaded) {
+      // Search for ground
+      for (int y = 255; y > 0; --y) {
+        if (world.getChunk(cx, y / CHUNK_SIZE, cz) != nullptr) {
+          ChunkBlock b = world.getBlock(spawnX, y, spawnZ);
+          if (b.isActive()) {
+            spawnY = (float)y + 2.5f;
+            foundGround = true;
+            LOG_WORLD_INFO("Spawn Ground Found at Y={}", y);
+            break;
           }
         }
-        LOG_WORLD_INFO("Waiting for chunks... Loaded: {} / {} (Wait: {})",
-                       loadedCount, expectedCount, loadWaitCount);
       }
-
-      if (loadWaitCount > 12000) { // ~60 seconds timeout
-        LOG_WORLD_ERROR("Timed out waiting for spawn chunks to load!");
-        break; // Give up and air drop
-      }
-      continue;
-    }
-
-    // Search for ground
-    for (int y = 255; y > 0; --y) {
-      if (world.getChunk(cx, y / CHUNK_SIZE, cz) != nullptr) {
-        ChunkBlock b = world.getBlock(spawnX, y, spawnZ);
-        if (b.isActive()) {
-          spawnY = (float)y + 2.5f;
-          foundGround = true;
-          LOG_WORLD_INFO("Spawn Ground Found at Y={}", y);
-          break;
-        }
-      }
-    }
-
-    if (!foundGround) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(5));
-      retry++;
     }
   }
 
