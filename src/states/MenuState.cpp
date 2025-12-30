@@ -172,6 +172,11 @@ void MenuState::RenderUI(Application *app) {
                                0.0001f, 0.01f))
           changed = true;
         HelpMarker("Scale of underground strata variation.");
+        if (ImGui::SliderFloat("Biome Variation", &m_Config.biomeVariation,
+                               0.0f, 0.5f))
+          changed = true;
+        HelpMarker(
+            "Adds noise to break up smooth biome blobs. Higher = more varied.");
 
         if (changed)
           UpdatePreview();

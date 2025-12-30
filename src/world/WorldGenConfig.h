@@ -17,11 +17,13 @@ struct WorldGenConfig {
   int surfaceDepth = 4;
 
   // Noise Scales
-  float tempScale = 0.002f;
-  float humidityScale = 0.002f;
-  float landformScale = 0.0005f;
+  float tempScale = 0.003f;     // Balanced for moderate biome regions
+  float humidityScale = 0.003f; // Balanced for moderate biome regions
+  float landformScale =
+      0.0015f; // Increased for more terrain variety (mountains, oceans, etc.)
   float climateScale = 0.0001f;
   float geologicScale = 0.001f;
+  float biomeVariation = 0.25f; // Adds noise to break up smooth biome blobs
 
   // Key is landform name: "oceans", "plains", "hills", "mountains", "valleys"
   std::map<std::string, LandformConfigOverride> landformOverrides;

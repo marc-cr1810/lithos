@@ -276,6 +276,24 @@ Biome WorldGenerator::GetBiome(int x, int z) {
   float temp = GetTemperature(x, z);
   float humidity = GetHumidity(x, z);
 
+  // Add high-frequency variation noise to break up smooth blobs
+  if (config.biomeVariation > 0.0f) {
+    int seedV = (seed * 5555) % 65536;
+    float vx = (float)x + (float)seedV;
+    float vz = (float)z + (float)seedV;
+
+    // Use much higher frequency noise for variation (0.05 instead of 0.02)
+    float varNoise1 = glm::perlin(glm::vec2(vx, vz) * 0.05f);
+    float varNoise2 = glm::perlin(glm::vec2(vx * 1.3f, vz * 1.3f) * 0.08f);
+
+    // Combine two noise layers for more complex patterns
+    float combinedNoise = (varNoise1 + varNoise2 * 0.5f) / 1.5f;
+
+    // Apply much stronger variation - multiply by 2 to make it very noticeable
+    temp += combinedNoise * config.biomeVariation * 2.0f;
+    humidity += combinedNoise * config.biomeVariation * 1.6f;
+  }
+
   // Normalize logic slightly if needed, but perlin is approx -1 to 1
 
   if (temp > 0.3f) {
