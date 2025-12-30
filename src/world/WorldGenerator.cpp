@@ -13,51 +13,97 @@ WorldGenerator::WorldGenerator(int seed) : seed(seed) {
   decorators.push_back(new OreDecorator());
   decorators.push_back(new TreeDecorator());
   decorators.push_back(new FloraDecorator());
+
+  // Initialize landform presets
+  InitializeLandforms();
+
+  // Initialize cave generator
+  caveGenerator = new CaveGenerator(seed);
 }
 
 WorldGenerator::~WorldGenerator() {
   for (auto d : decorators)
     delete d;
   decorators.clear();
+
+  delete caveGenerator;
 }
 
 int WorldGenerator::GetHeight(int x, int z) {
-  // Fractal Brownian Motion (FBM)
-  // Summing multiple layers (octaves) of noise for natural terrain
+  // Get landform noise for blending
+  float landformNoise = GetLandformNoise(x, z);
 
   int seedX = (seed * 1337) % 65536;
   int seedZ = (seed * 9999) % 65536;
-
   float nx = (float)x + (float)seedX;
   float nz = (float)z + (float)seedZ;
 
-  // FBM Settings
-  int octaves = 5;
-  float amplitude = 1.0f;
-  float frequency = 0.012f; // Slightly broader base features
-  float persistence = 0.5f; // Amplitude decay
-  float lacunarity = 2.0f;  // Frequency growth
-
+  // Enhanced octave system with 8 octaves
+  const int numOctaves = 8;
   float noiseHeight = 0.0f;
-  float maxAmplitude = 0.0f;
+  float frequency = 0.0025f; // Sweet spot between variation and smoothness
 
-  for (int i = 0; i < octaves; ++i) {
-    float n = glm::perlin(glm::vec2(nx, nz) * frequency);
-    noiseHeight += n * amplitude;
+  // Blend between landforms for smooth transitions
+  LandformConfig *primary = nullptr;
+  LandformConfig *secondary = nullptr;
+  float blendFactor = 0.0f;
 
-    maxAmplitude += amplitude; // normalize factor if needed
-
-    amplitude *= persistence;
-    frequency *= lacunarity;
+  if (landformNoise < -0.3f) {
+    primary = &landforms["valleys"];
+    secondary = &landforms["plains"];
+    blendFactor = (landformNoise + 0.5f) / 0.2f; // -0.5 to -0.3
+  } else if (landformNoise < 0.1f) {
+    primary = &landforms["plains"];
+    secondary = &landforms["hills"];
+    blendFactor = (landformNoise + 0.3f) / 0.4f; // -0.3 to 0.1
+  } else if (landformNoise < 0.5f) {
+    primary = &landforms["hills"];
+    secondary = &landforms["mountains"];
+    blendFactor = (landformNoise - 0.1f) / 0.4f; // 0.1 to 0.5
+  } else {
+    primary = &landforms["mountains"];
+    secondary = &landforms["mountains"];
+    blendFactor = 0.0f;
   }
 
-  // Normalize to -1..1 range roughly (optional, but good for control)
-  noiseHeight /= 1.8f; // Estimation of max typical sum to keep similar scale
+  blendFactor = std::max(0.0f, std::min(1.0f, blendFactor));
 
-  // Map to height.
-  // Base 64. Variation increased to +/- 20 blocks for more drama (44 to 84
-  // range)
-  return (int)(64 + noiseHeight * 20);
+  for (int i = 0; i < numOctaves; ++i) {
+    float octaveValue = glm::perlin(glm::vec2(nx, nz) * frequency);
+
+    // Blend octave amplitudes between landforms
+    float blendedAmplitude =
+        primary->octaveAmplitudes[i] * (1.0f - blendFactor) +
+        secondary->octaveAmplitudes[i] * blendFactor;
+    float blendedThreshold =
+        primary->octaveThresholds[i] * (1.0f - blendFactor) +
+        secondary->octaveThresholds[i] * blendFactor;
+
+    if (octaveValue > blendedThreshold) {
+      noiseHeight += (octaveValue - blendedThreshold) * blendedAmplitude;
+    }
+
+    frequency *= 2.0f;
+  }
+
+  // Normalize by sum of blended amplitudes
+  float maxPossibleAmplitude = 0.0f;
+  for (int i = 0; i < numOctaves; ++i) {
+    float blendedAmp = primary->octaveAmplitudes[i] * (1.0f - blendFactor) +
+                       secondary->octaveAmplitudes[i] * blendFactor;
+    maxPossibleAmplitude += blendedAmp;
+  }
+  if (maxPossibleAmplitude > 0.0f) {
+    noiseHeight /= maxPossibleAmplitude;
+  }
+
+  // Blend base height and variation
+  float blendedBaseHeight = primary->baseHeight * (1.0f - blendFactor) +
+                            secondary->baseHeight * blendFactor;
+  float blendedVariation = primary->heightVariation * (1.0f - blendFactor) +
+                           secondary->heightVariation * blendFactor;
+
+  return (int)(blendedBaseHeight + noiseHeight * blendedVariation);
 }
 
 float WorldGenerator::GetTemperature(int x, int z) {
@@ -98,6 +144,87 @@ Biome WorldGenerator::GetBiome(int x, int z) {
   if (humidity < -0.3f)
     return BIOME_PLAINS;
   return BIOME_FOREST;
+}
+
+float WorldGenerator::GetLandformNoise(int x, int z) {
+  // Very low frequency for large landform regions
+  int seedL = (seed * 1111) % 65536;
+  float nx = (float)x + (float)seedL;
+  float nz = (float)z + (float)seedL;
+  return glm::perlin(glm::vec2(nx, nz) * 0.0005f);
+}
+
+float WorldGenerator::GetClimateNoise(int x, int z) {
+  // Low frequency for climate variation
+  int seedC = (seed * 2222) % 65536;
+  float nx = (float)x + (float)seedC;
+  float nz = (float)z + (float)seedC;
+  return glm::perlin(glm::vec2(nx, nz) * 0.0001f);
+}
+
+float WorldGenerator::GetGeologicNoise(int x, int z) {
+  // Medium frequency for rock type variation
+  int seedG = (seed * 3333) % 65536;
+  float nx = (float)x + (float)seedG;
+  float nz = (float)z + (float)seedG;
+  return glm::perlin(glm::vec2(nx, nz) * 0.001f);
+}
+
+std::string WorldGenerator::GetLandformType(int x, int z) {
+  float landformNoise = GetLandformNoise(x, z);
+
+  // Map noise value to landform types (used for biome/decoration logic)
+  if (landformNoise < -0.3f) {
+    return "valleys";
+  } else if (landformNoise < 0.1f) {
+    return "plains";
+  } else if (landformNoise < 0.5f) {
+    return "hills";
+  } else {
+    return "mountains";
+  }
+}
+
+void WorldGenerator::InitializeLandforms() {
+  // Plains - smooth, gentle terrain
+  LandformConfig plains;
+  plains.name = "plains";
+  plains.octaveAmplitudes = {0.55f,  0.28f,  0.14f,  0.07f,
+                             0.035f, 0.018f, 0.009f, 0.005f};
+  plains.octaveThresholds = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  plains.baseHeight = 64.0f;
+  plains.heightVariation = 12.0f;
+  landforms["plains"] = plains;
+
+  // Hills - moderate variation
+  LandformConfig hills;
+  hills.name = "hills";
+  hills.octaveAmplitudes = {0.45f, 0.38f, 0.28f,  0.2f,
+                            0.12f, 0.07f, 0.035f, 0.018f};
+  hills.octaveThresholds = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  hills.baseHeight = 68.0f;
+  hills.heightVariation = 25.0f;
+  landforms["hills"] = hills;
+
+  // Mountains - dramatic, rugged terrain
+  LandformConfig mountains;
+  mountains.name = "mountains";
+  mountains.octaveAmplitudes = {0.38f, 0.45f, 0.5f,  0.42f,
+                                0.28f, 0.2f,  0.14f, 0.07f};
+  mountains.octaveThresholds = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  mountains.baseHeight = 82.0f;
+  mountains.heightVariation = 60.0f;
+  landforms["mountains"] = mountains;
+
+  // Valleys - low, flat areas
+  LandformConfig valleys;
+  valleys.name = "valleys";
+  valleys.octaveAmplitudes = {0.65f,  0.22f,  0.11f,  0.055f,
+                              0.028f, 0.014f, 0.007f, 0.0035f};
+  valleys.octaveThresholds = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  valleys.baseHeight = 58.0f;
+  valleys.heightVariation = 7.0f;
+  landforms["valleys"] = valleys;
 }
 
 int WorldGenerator::GetStrataBlock(int x, int y, int z) {
@@ -318,14 +445,13 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
             type = WATER;
         }
 
-        // 2. Carve Caves (Ridged Noise / Noodle Caves)
-        // Optimization: Only try to carve if the block is solid (Not Air, Not
-        // Water)
+        // 2. Carve Caves using new CaveGenerator
+        // Only try to carve if the block is solid (Not Air, Not Water)
         if (type != WATER && type != AIR) {
           bool isUnderwater = (height <= 60);
           bool preserveCrust = false;
 
-          // Only preserve crust underwater to prevent ocean draining.
+          // Only preserve crust underwater to prevent ocean draining
           if (isUnderwater && gy > height - 3)
             preserveCrust = true;
 
@@ -334,50 +460,21 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
             preserveCrust = true;
 
           if (!preserveCrust) {
-            int caveOffX = (seed * 6789) % 65536;
-            int caveOffY = (seed * 4321) % 65536;
-            int caveOffZ = (seed * 1111) % 65536;
-
-            float cx = (float)gx + (float)caveOffX;
-            float cy = (float)gy + (float)caveOffY;
-            float cz = (float)gz + (float)caveOffZ;
-
-            // Use slightly lower frequency for fatter caves? 0.04 -> 0.03
-            float n1 = glm::perlin(glm::vec3(cx, cy, cz) * 0.03f);
-
-            // Optimization: Check first noise threshold roughly before
-            // calculating second noise? Use n1 to determine if calculation of
-            // n2 is worth it? Not easily possible with current logic (abs(n1) <
-            // threshold(n2)).
-
-            float n2 =
-                glm::perlin(glm::vec3(cx, cy, cz) * 0.01f + glm::vec3(100.0f));
-
-            // Density Mask: If n2 is too low, no caves here at all.
-            // Aggressive mask: Only generate where n2 > 0.0 (50% of world has
-            // no caves)
-            if (n2 < 0.0f) {
-              // No caves
-            } else {
-              // Variable width: Base 0.04, Max ~0.12 (Much thinner)
-              // Previous max was ~0.28 which was too massive.
-              float threshold = 0.04f + (n2 * 0.08f);
-              if (threshold < 0.02f)
-                threshold = 0.02f;
-
-              if (std::abs(n1) < threshold) {
-                // Cave Air or Lava?
-                if (gy <= 10)
-                  type = LAVA;
-                else
-                  type = AIR;
-              }
+            // Use new 3D cave generation and ravines
+            if (caveGenerator->IsCaveAt(gx, gy, gz, height) ||
+                caveGenerator->IsRavineAt(gx, gy, gz, height)) {
+              // Cave Air or Lava?
+              if (gy <= 10)
+                type = LAVA;
+              else
+                type = AIR;
             }
           }
         }
 
         // Bedrock Flattening (Roughness)
-        if (gy <= 4) {
+        // Only apply if the block hasn't been carved by a cave or ravine
+        if (gy <= 4 && type != AIR && type != LAVA) {
           // Bedrock floor is at 0.
           // Layer 1 has 80% bedrock, Layer 2 60%, etc.
           // gy=0 is handled above.

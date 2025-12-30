@@ -145,6 +145,7 @@ add_executable(lithos
     src/render/ModelLoader.cpp
     src/world/Chunk.cpp
     src/world/WorldGenerator.cpp
+    src/world/CaveGenerator.cpp
     src/world/TreeDecorator.cpp
     src/world/FloraDecorator.cpp
     src/world/OreDecorator.cpp

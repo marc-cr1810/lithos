@@ -1,0 +1,217 @@
+#include "Block.h"
+#include "Chunk.h"
+#include "WorldGenerator.h"
+#include <algorithm>
+#include <glm/glm.hpp>
+#include <glm/gtc/noise.hpp>
+#include <random>
+
+CaveGenerator::CaveGenerator(int seed)
+    : seed(seed), caveFrequency(0.015f), caveThreshold(0.55f) {}
+
+bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth) {
+  // Surface deterrent: instead of a hard cutoff, use a dynamic deterrent
+  // We want SOME caves to reach the surface, but not all.
+  float surfaceDeterrent = 0.0f;
+  float grandEntranceBonus = 0.0f; // Added for larger openings
+
+  if (y > maxDepth - 15) {
+    // 2D noise to decide where caves ARE allowed to reach the surface
+    // (entrances) Slightly lower frequency for larger "entrance regions" (0.015
+    // -> 0.012)
+    float entranceNoise =
+        glm::perlin(glm::vec2((float)x * 0.012f, (float)z * 0.012f));
+
+    // Broader entrance zones (0.4 -> 0.2)
+    if (entranceNoise < 0.2f) {
+      surfaceDeterrent = (float)(y - (maxDepth - 15)) * 0.1f;
+    } else {
+      // Within entrance zones, we also boost the cave size for grand entrances
+      grandEntranceBonus = (entranceNoise - 0.2f) * 0.3f; // Up to 0.24 bonus
+    }
+  }
+
+  // 3D Perlin noise for cave placement
+  int seedX = (seed * 7777) % 65536;
+  int seedY = (seed * 8888) % 65536;
+  int seedZ = (seed * 9999) % 65536;
+
+  glm::vec3 pos((float)(x + seedX), (float)(y + seedY), (float)(z + seedZ));
+
+  // Depth-based interconnectivity: more caves deeper
+  float depthFactor = 1.0f - ((float)y / (float)maxDepth);
+
+  // Layer 1: "Cheese" caves - Swiss cheese style, larger caverns
+  // Low frequency, creates large blob-like caves
+  float cheeseNoise = glm::perlin(pos * 0.01f);
+  float cheeseThreshold = 0.68f - (depthFactor * 0.12f) + surfaceDeterrent -
+                          grandEntranceBonus; // Apply bonus
+
+  // Minimum size filter: check nearby points to ensure cave is at least a few
+  // blocks wide This prevents tiny 1-2 block holes
+  bool isCheeseCave = false;
+  if (cheeseNoise > cheeseThreshold) {
+    // Sample a few nearby points to ensure this is part of a larger cave
+    float nearby1 = glm::perlin((pos + glm::vec3(2.0f, 0.0f, 0.0f)) * 0.01f);
+    float nearby2 = glm::perlin((pos + glm::vec3(0.0f, 2.0f, 0.0f)) * 0.01f);
+    float nearby3 = glm::perlin((pos + glm::vec3(0.0f, 0.0f, 2.0f)) * 0.01f);
+
+    // Only create cave if at least 2 out of 3 nearby points also pass threshold
+    int nearbyCount = 0;
+    if (nearby1 > cheeseThreshold)
+      nearbyCount++;
+    if (nearby2 > cheeseThreshold)
+      nearbyCount++;
+    if (nearby3 > cheeseThreshold)
+      nearbyCount++;
+
+    isCheeseCave = (nearbyCount >= 2);
+  }
+
+  // Layer 2: "Spaghetti" caves - Varied width winding tunnels
+  // Modular width: Use a low-freq noise to vary the thickness organically
+  // Lowered frequency slightly (0.012 -> 0.01) for smoother size transitions
+  float spaghettiSizeMod = glm::perlin(pos * 0.01f);
+  float spaghettiWidthBonus =
+      (spaghettiSizeMod * 0.045f); // Increased bonus (0.03 -> 0.045)
+
+  // Use ridged noise (abs) for tunnel-like structures
+  float spaghettiNoise1 = glm::perlin(pos * 0.03f);
+  float spaghettiNoise2 =
+      glm::perlin(pos * 0.03f + glm::vec3(100.0f, 100.0f, 100.0f));
+
+  // Increased base threshold (0.035 -> 0.05)
+  float spaghettiThreshold =
+      0.05f + (depthFactor * 0.025f) + spaghettiWidthBonus - surfaceDeterrent;
+
+  if (spaghettiThreshold < 0.005f)
+    spaghettiThreshold =
+        0.0f; // Effectively disable if too low (narrowed to nothing)
+
+  bool isSpaghettiCave = (std::abs(spaghettiNoise1) < spaghettiThreshold) &&
+                         (std::abs(spaghettiNoise2) < spaghettiThreshold);
+
+  // Combine cave types (cheese + spaghetti only)
+  return isCheeseCave || isSpaghettiCave;
+}
+
+bool CaveGenerator::IsRavineAt(int x, int y, int z, int surfaceHeight) {
+  // Ravines are surface features that cut deep into the ground
+  // Only generate ravines from surface down to a certain depth
+  if (y > surfaceHeight || y < surfaceHeight - 40) {
+    return false;
+  }
+
+  int seedX = (seed * 3333) % 65536;
+  int seedZ = (seed * 4444) % 65536;
+
+  glm::vec2 pos2D((float)(x + seedX), (float)(z + seedZ));
+
+  // Use 2D ridged noise to create long, winding ravines
+  float ravineNoise1 = glm::perlin(
+      pos2D * 0.006f); // Slightly lower frequency for longer ravines
+  float ravineNoise2 = glm::perlin(pos2D * 0.006f + glm::vec2(500.0f, 500.0f));
+
+  // Ravines are where noise is close to zero (ridged)
+  // Increased width slightly to make them more common (0.03 -> 0.05)
+  float ravinePathWidth = 0.05f;
+  bool isOnRavinePath = (std::abs(ravineNoise1) < ravinePathWidth) &&
+                        (std::abs(ravineNoise2) < ravinePathWidth);
+
+  if (!isOnRavinePath) {
+    return false;
+  }
+
+  // Depth profile: wider at top, narrower at bottom
+  float depthRatio = (float)(surfaceHeight - y) / 40.0f;
+  float widthAtDepth = 3.0f + (1.0f - depthRatio) * 5.0f; // 3-8 blocks wide
+
+  // Add some horizontal variation
+  float horizontalNoise =
+      glm::perlin(glm::vec3(pos2D * 0.05f, (float)y * 0.1f));
+
+  return std::abs(horizontalNoise) < (widthAtDepth / 10.0f);
+}
+
+void CaveGenerator::GenerateWormCave(Chunk &chunk, int startX, int startY,
+                                     int startZ, int maxDepth) {
+  // Don't start caves too close to surface
+  if (startY > maxDepth - 15) {
+    return;
+  }
+
+  std::mt19937 rng(seed + startX * 1000 + startY * 100 + startZ);
+  std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+  std::uniform_real_distribution<float> radiusDist(1.5f, 3.5f);
+  std::uniform_int_distribution<int> lengthDist(30, 80);
+
+  glm::vec3 pos(startX, startY, startZ);
+
+  // Initial direction with downward bias
+  glm::vec3 direction =
+      glm::normalize(glm::vec3(dist(rng),
+                               dist(rng) - 0.4f, // Bias downward
+                               dist(rng)));
+
+  float radius = radiusDist(rng);
+  int length = lengthDist(rng);
+  int taperStart = length - 15; // Start tapering near end
+
+  for (int i = 0; i < length; ++i) {
+    // Carve sphere at current position
+    CarveSphere(chunk, pos, radius);
+
+    // Move forward
+    pos += direction * 0.8f;
+
+    // Randomly adjust direction
+    direction +=
+        glm::vec3(dist(rng) * 0.15f, dist(rng) * 0.1f, dist(rng) * 0.15f);
+    direction = glm::normalize(direction);
+
+    // Natural tapering near end
+    if (i > taperStart) {
+      radius *= 0.92f;
+    }
+
+    // Stop if we go too high or too low
+    if (pos.y > maxDepth - 5 || pos.y < 5) {
+      break;
+    }
+
+    // Branching - more likely deeper down
+    float depthFactor = 1.0f - (pos.y / (float)maxDepth);
+    float branchChance = depthFactor * 0.08f; // Up to 8% chance deep down
+
+    std::uniform_real_distribution<float> branchDist(0.0f, 1.0f);
+    if (branchDist(rng) < branchChance && i > 10) {
+      // Create a branch
+      GenerateWormCave(chunk, (int)pos.x, (int)pos.y, (int)pos.z, maxDepth);
+    }
+  }
+}
+
+void CaveGenerator::CarveSphere(Chunk &chunk, glm::vec3 center, float radius) {
+  int minX = std::max(0, (int)(center.x - radius));
+  int maxX = std::min(CHUNK_SIZE - 1, (int)(center.x + radius));
+  int minY = std::max(0, (int)(center.y - radius));
+  int maxY = std::min(CHUNK_SIZE - 1, (int)(center.y + radius));
+  int minZ = std::max(0, (int)(center.z - radius));
+  int maxZ = std::min(CHUNK_SIZE - 1, (int)(center.z + radius));
+
+  for (int x = minX; x <= maxX; ++x) {
+    for (int y = minY; y <= maxY; ++y) {
+      for (int z = minZ; z <= maxZ; ++z) {
+        float dist = glm::distance(glm::vec3(x, y, z), center);
+        if (dist <= radius) {
+          // Only carve if it's a solid block (don't replace air/water)
+          ChunkBlock currentBlock = chunk.getBlock(x, y, z);
+          if (currentBlock.getType() != AIR &&
+              currentBlock.getType() != WATER) {
+            chunk.setBlock(x, y, z, AIR);
+          }
+        }
+      }
+    }
+  }
+}
