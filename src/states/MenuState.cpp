@@ -1,5 +1,6 @@
 #include "MenuState.h"
 #include "../core/Application.h"
+#include "../debug/Logger.h"
 #include "../world/WorldGenerator.h"
 #include "LoadingState.h"
 #include "backends/imgui_impl_glfw.h"
@@ -8,6 +9,8 @@
 #include <GLFW/glfw3.h>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 
 // Helper to display a little (?) mark which shows a tooltip when hovered.
 static void HelpMarker(const char *desc) {
@@ -771,6 +774,29 @@ void MenuState::RenderUI(Application *app) {
         ImGui::EndTabItem();
       }
 
+      // Presets Tab
+      if (ImGui::BeginTabItem("Presets")) {
+        ImGui::Dummy(ImVec2(0, 5));
+        ImGui::Text("Save or Load World Presets");
+        ImGui::Separator();
+
+        ImGui::InputText("Preset Name", m_ConfigName,
+                         IM_ARRAYSIZE(m_ConfigName));
+        HelpMarker("Name of the .json file to save or load.");
+
+        if (ImGui::Button("Save Preset", ImVec2(120, 0))) {
+          SaveConfig(m_ConfigName);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Load Preset", ImVec2(120, 0))) {
+          LoadConfig(m_ConfigName);
+        }
+
+        ImGui::Separator();
+        ImGui::Text("Presets are saved in the 'presets/' folder.");
+        ImGui::EndTabItem();
+      }
+
       ImGui::EndTabBar();
     }
   }
@@ -788,3 +814,45 @@ void MenuState::RenderUI(Application *app) {
 }
 
 void MenuState::Cleanup() {}
+
+void MenuState::SaveConfig(const std::string &name) {
+  namespace fs = std::filesystem;
+  fs::path presetsDir = "presets";
+  fs::path filePath = presetsDir / (name + ".json");
+
+  try {
+    fs::create_directories(presetsDir);
+  } catch (const fs::filesystem_error &e) {
+    LOG_ERROR("Failed to create presets directory: {}", e.what());
+    return;
+  }
+
+  std::ofstream file(filePath);
+  if (file.is_open()) {
+    json j = m_Config;
+    file << j.dump(4);
+    LOG_INFO("Saved world configuration to {}", filePath.string());
+  } else {
+    LOG_ERROR("Failed to save configuration to {}", filePath.string());
+  }
+}
+
+void MenuState::LoadConfig(const std::string &name) {
+  namespace fs = std::filesystem;
+  fs::path filePath = fs::path("presets") / (name + ".json");
+
+  std::ifstream file(filePath);
+  if (file.is_open()) {
+    try {
+      json j;
+      file >> j;
+      m_Config = j.get<WorldGenConfig>();
+      LOG_INFO("Loaded world configuration from {}", filePath.string());
+      UpdatePreview();
+    } catch (const std::exception &e) {
+      LOG_ERROR("JSON Load Error: {}", e.what());
+    }
+  } else {
+    LOG_ERROR("Failed to load configuration from {}", filePath.string());
+  }
+}

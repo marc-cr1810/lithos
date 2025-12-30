@@ -15,7 +15,12 @@ public:
   void Cleanup() override;
 
 private:
+  void UpdatePreview();
+  void SaveConfig(const std::string &name);
+  void LoadConfig(const std::string &name);
+
   WorldGenConfig m_Config;
+  char m_ConfigName[64] = "default_preset";
   char m_SeedBuffer[32];
   float m_PreviewData[128];
   float m_TempData[128];
@@ -38,6 +43,4 @@ private:
   bool m_ShowHills = false;
   bool m_ShowMountains = false;
   bool m_ShowBlended = true;
-
-  void UpdatePreview();
 };
