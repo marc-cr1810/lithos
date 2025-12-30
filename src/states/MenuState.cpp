@@ -257,10 +257,15 @@ void MenuState::RenderUI(Application *app) {
         // Draw terrain cross-section with biome colors
         ImDrawList *drawList = ImGui::GetWindowDrawList();
         ImVec2 plotPos = ImGui::GetCursorScreenPos();
-        ImVec2 plotSize(ImGui::GetContentRegionAvail().x - 10, 200.0f);
+        float fullWidth = ImGui::GetContentRegionAvail().x - 10;
+        float barWidth = 30.0f;
+        float spacing = 10.0f;
+        ImVec2 plotSize(fullWidth - barWidth - spacing, 200.0f);
+        ImVec2 barPos(plotPos.x + plotSize.x + spacing, plotPos.y);
+        ImVec2 barSize(barWidth, plotSize.y);
 
-        // Reserve space
-        ImGui::InvisibleButton("##biomeplot", plotSize);
+        // Reserve space for both
+        ImGui::InvisibleButton("##biomeplot", ImVec2(fullWidth, plotSize.y));
 
         // Check if mouse is hovering over the plot
         if (ImGui::IsItemHovered()) {
@@ -363,6 +368,71 @@ void MenuState::RenderUI(Application *app) {
         drawList->AddLine(ImVec2(plotPos.x, seaY),
                           ImVec2(plotPos.x + plotSize.x, seaY),
                           IM_COL32(50, 100, 200, 200), 2.0f);
+
+        // --- Draw Vertical Temperature Gradient Bar ---
+        drawList->AddRectFilled(
+            barPos, ImVec2(barPos.x + barSize.x, barPos.y + barSize.y),
+            IM_COL32(30, 30, 35, 255));
+
+        // Segments for the gradient
+        int segments = 20;
+        float segHeight = barSize.y / segments;
+        for (int i = 0; i < segments; i++) {
+          float relY0 = (float)i / segments;
+          float relY1 = (float)(i + 1) / segments;
+
+          // Map relY to world height (top-down)
+          float worldY0 = (1.0f - relY0) * m_Config.worldHeight;
+          float worldY1 = (1.0f - relY1) * m_Config.worldHeight;
+          float avgY = (worldY0 + worldY1) * 0.5f;
+
+          // Calculate temperature at this altitude (assuming base temp 0.0 for
+          // comparison)
+          float t = 0.0f;
+          if (avgY > m_Config.seaLevel) {
+            t -= (avgY - m_Config.seaLevel) * m_Config.temperatureLapseRate;
+          } else {
+            t += (m_Config.seaLevel - avgY) * m_Config.geothermalGradient;
+          }
+
+          // Temp to Color Mapping
+          ImU32 col;
+          if (t < -0.3f) {
+            col = IM_COL32(200, 220, 240, 255); // Tundra
+          } else if (t < 0.0f) {
+            float f = (t + 0.3f) / 0.3f;
+            col = IM_COL32(200 + f * (60 - 200), 220 + f * (140 - 220),
+                           240 + f * (60 - 240), 255);
+          } else if (t < 0.3f) {
+            float f = t / 0.3f;
+            col = IM_COL32(60 + f * (220 - 60), 140 + f * (200 - 140),
+                           60 + f * (120 - 60), 255);
+          } else {
+            float f = std::min(1.0f, (t - 0.3f) / 0.7f);
+            col = IM_COL32(220 + f * (255 - 220), 200 + f * (50 - 200),
+                           120 + f * (0 - 120), 255);
+          }
+
+          drawList->AddRectFilled(
+              ImVec2(barPos.x, barPos.y + i * segHeight),
+              ImVec2(barPos.x + barSize.x, barPos.y + (i + 1) * segHeight),
+              col);
+        }
+
+        // Sea Level Marker on the bar
+        float barSeaY =
+            barPos.y + barSize.y -
+            ((float)m_Config.seaLevel / (float)m_Config.worldHeight) *
+                barSize.y;
+        drawList->AddLine(ImVec2(barPos.x - 2, barSeaY),
+                          ImVec2(barPos.x + barSize.x + 2, barSeaY),
+                          IM_COL32(255, 255, 255, 255), 2.0f);
+
+        // Labels
+        drawList->AddText(ImVec2(barPos.x - 25, barPos.y),
+                          IM_COL32(200, 200, 200, 255), "High");
+        drawList->AddText(ImVec2(barPos.x - 25, barPos.y + barSize.y - 15),
+                          IM_COL32(200, 200, 200, 255), "Deep");
 
         // Legend
         ImGui::Text("Biome Colors:");
