@@ -18,10 +18,8 @@ void PhysicsSystem::Update(entt::registry &registry, float dt) {
       [&registry, dt](auto entity, auto &transform, auto &vel, auto &gravity) {
         bool applyGravity = true;
         if (registry.any_of<InputComponent>(entity)) {
-          auto &input = registry.get<InputComponent>(entity);
-          if (input.flyMode || input.noclip) {
-            applyGravity = false;
-          }
+          // Player/Input entities are handled by PlayerControlSystem completely
+          return;
         }
 
         if (applyGravity) {
@@ -142,7 +140,25 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
       return false;
     };
 
-    // --- PHASE 1: Resolve Y Collision (from PhysicsSystem gravity) ---
+    // --- PHASE 0: Apply Gravity and Physics (Since PhysicsSystem skips Player)
+    // ---
+    bool applyGravity = true;
+    if (input.flyMode || input.noclip) {
+      applyGravity = false;
+      // Drag in fly mode
+      vel.velocity.y *= 0.9f;
+      vel.velocity.x *= 0.9f;
+      vel.velocity.z *= 0.9f;
+    }
+
+    if (applyGravity) {
+      vel.velocity.y -= gravity.strength * dt;
+    }
+
+    // Apply Velocity to Position (Integration)
+    transform.position += vel.velocity * dt;
+
+    // --- PHASE 1: Resolve Y Collision ---
     if (!input.noclip && checkCollision(transform.position)) {
       if (vel.velocity.y < 0) {
         // Falling down into floor - Snap up

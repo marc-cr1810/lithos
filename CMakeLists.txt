@@ -138,6 +138,10 @@ endif()
 
 add_executable(lithos 
     src/main.cpp 
+    src/core/StateManager.cpp
+    src/core/Application.cpp
+    src/states/LoadingState.cpp
+    src/states/GameState.cpp
     src/render/Shader.cpp 
     src/render/Camera.cpp
     src/render/Texture.cpp
