@@ -20,7 +20,23 @@ private:
   float m_PreviewData[128];
   float m_TempData[128];
   float m_HumidData[128];
-  int m_BiomeData[128];
+  float m_BiomeData[128];
   float m_CaveProbData[128];
+
+  // Individual landform previews
+  float m_OceansData[128];
+  float m_ValleysData[128];
+  float m_PlainsData[128];
+  float m_HillsData[128];
+  float m_MountainsData[128];
+
+  // Visibility toggles for landforms
+  bool m_ShowOceans = false;
+  bool m_ShowValleys = false;
+  bool m_ShowPlains = false;
+  bool m_ShowHills = false;
+  bool m_ShowMountains = false;
+  bool m_ShowBlended = true;
+
   void UpdatePreview();
 };

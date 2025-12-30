@@ -69,7 +69,16 @@ public:
   float GetCaveProbability(int x, int z);
   int GetSeed() const { return seed; }
   const WorldGenConfig &GetConfig() const { return config; }
-  float GetRiverCarve(int x, int z);
+  // Returns 0.0 to 1.0 intensity of the river channel
+  float GetRiverCarveFactor(int x, int z);
+
+  // Get height for a specific landform without blending
+  int GetHeightForLandform(const std::string &name, int x, int z);
+
+  // Get the current landform blend at a position (primary, secondary, blend
+  // factor)
+  void GetLandformBlend(int x, int z, std::string &primary,
+                        std::string &secondary, float &blendFactor);
 
 private:
   BlockType GetStrataBlock(int x, int y, int z);

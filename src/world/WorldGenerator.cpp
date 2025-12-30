@@ -130,28 +130,130 @@ int WorldGenerator::GetHeight(int x, int z) {
 
   // River Carving
   if (config.enableRivers) {
-    baseFinalHeight -= (int)GetRiverCarve(x, z);
+    float carveFactor = GetRiverCarveFactor(x, z);
+    if (carveFactor > 0.0f) {
+      // Ensure it reaches sea level + some channel depth
+      float heightToSea = (float)(baseFinalHeight - config.seaLevel);
+      float dynamicDepth = std::max(config.riverDepth, heightToSea + 2.0f);
+      baseFinalHeight -= (int)(dynamicDepth * carveFactor);
+    }
   }
 
   return baseFinalHeight;
 }
 
-float WorldGenerator::GetRiverCarve(int x, int z) {
+float WorldGenerator::GetRiverCarveFactor(int x, int z) {
   if (!config.enableRivers)
     return 0.0f;
 
   int seedR = (seed * 1234) % 65536;
   float rx = (float)x + (float)seedR;
   float rz = (float)z + (float)seedR;
+
   float riverNoise = glm::perlin(glm::vec2(rx, rz) * config.riverScale);
   float riverVal = std::abs(riverNoise);
 
   if (riverVal < config.riverThreshold) {
     float t = riverVal / config.riverThreshold;
-    float carveFactor = 1.0f - (t * t); // Smooth curve
-    return config.riverDepth * carveFactor;
+    return 1.0f - (t * t);
   }
   return 0.0f;
+}
+
+int WorldGenerator::GetHeightForLandform(const std::string &name, int x,
+                                         int z) {
+  auto it = landforms.find(name);
+  if (it == landforms.end()) {
+    return config.seaLevel; // Default if landform not found
+  }
+
+  LandformConfig *landform = &it->second;
+
+  int seedX = (seed * 1337) % 65536;
+  int seedZ = (seed * 9999) % 65536;
+  float nx = (float)x + (float)seedX;
+  float nz = (float)z + (float)seedZ;
+
+  const int numOctaves = 10;
+  float noiseHeight = 0.0f;
+  float frequency = config.terrainScale;
+
+  for (int i = 0; i < numOctaves; ++i) {
+    float octaveValue = glm::perlin(glm::vec2(nx, nz) * frequency);
+
+    float amp = (i < landform->octaveAmplitudes.size())
+                    ? landform->octaveAmplitudes[i]
+                    : 0.0f;
+
+    // Check for overrides in config
+    auto itOverride = config.landformOverrides.find(name);
+    if (itOverride != config.landformOverrides.end() &&
+        i < itOverride->second.octaveAmplitudes.size()) {
+      amp = itOverride->second.octaveAmplitudes[i];
+    }
+
+    float threshold = (i < landform->octaveThresholds.size())
+                          ? landform->octaveThresholds[i]
+                          : 0.0f;
+
+    if (octaveValue > threshold) {
+      noiseHeight += (octaveValue - threshold) * amp;
+    }
+
+    frequency *= 2.0f;
+  }
+
+  // Normalize
+  float maxPossibleAmplitude = 0.0f;
+  for (int i = 0; i < numOctaves; ++i) {
+    if (i < landform->octaveAmplitudes.size()) {
+      maxPossibleAmplitude += landform->octaveAmplitudes[i];
+    }
+  }
+  if (maxPossibleAmplitude > 0.0f) {
+    noiseHeight /= maxPossibleAmplitude;
+  }
+
+  int finalHeight =
+      (int)(landform->baseHeight + noiseHeight * landform->heightVariation);
+
+  // Apply river carving
+  if (config.enableRivers) {
+    float carveFactor = GetRiverCarveFactor(x, z);
+    if (carveFactor > 0.0f) {
+      float heightToSea = (float)(finalHeight - config.seaLevel);
+      float dynamicDepth = std::max(config.riverDepth, heightToSea + 2.0f);
+      finalHeight -= (int)(dynamicDepth * carveFactor);
+    }
+  }
+
+  return finalHeight;
+}
+
+void WorldGenerator::GetLandformBlend(int x, int z, std::string &primary,
+                                      std::string &secondary,
+                                      float &blendFactor) {
+  float landformNoise = GetLandformNoise(x, z);
+
+  if (landformNoise < -0.4f) {
+    primary = "oceans";
+    secondary = "valleys";
+    blendFactor = (landformNoise + 0.6f) / 0.2f;
+  } else if (landformNoise < 0.0f) {
+    primary = "valleys";
+    secondary = "plains";
+    blendFactor = (landformNoise + 0.4f) / 0.4f;
+  } else if (landformNoise < 0.4f) {
+    primary = "plains";
+    secondary = "hills";
+    blendFactor = (landformNoise - 0.0f) / 0.4f;
+  } else {
+    primary = "hills";
+    secondary = "mountains";
+    blendFactor = (landformNoise - 0.4f) / 0.4f;
+  }
+
+  blendFactor = std::max(0.0f, std::min(1.0f, blendFactor));
 }
 
 float WorldGenerator::GetTemperature(int x, int z) {

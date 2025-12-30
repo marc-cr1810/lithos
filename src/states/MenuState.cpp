@@ -63,8 +63,15 @@ void MenuState::UpdatePreview() {
     m_PreviewData[i] = (float)tempGen.GetHeight(x, z);
     m_TempData[i] = tempGen.GetTemperature(x, z);
     m_HumidData[i] = tempGen.GetHumidity(x, z);
-    m_BiomeData[i] = (int)tempGen.GetBiome(x, z);
+    m_BiomeData[i] = (float)tempGen.GetBiome(x, z);
     m_CaveProbData[i] = tempGen.GetCaveProbability(x, z);
+
+    // Sample individual landforms
+    m_OceansData[i] = (float)tempGen.GetHeightForLandform("oceans", x, z);
+    m_ValleysData[i] = (float)tempGen.GetHeightForLandform("valleys", x, z);
+    m_PlainsData[i] = (float)tempGen.GetHeightForLandform("plains", x, z);
+    m_HillsData[i] = (float)tempGen.GetHeightForLandform("hills", x, z);
+    m_MountainsData[i] = (float)tempGen.GetHeightForLandform("mountains", x, z);
   }
 }
 
@@ -297,13 +304,83 @@ void MenuState::RenderUI(Application *app) {
         ImGui::Text("Terrain Slice Preview (X-Axis)");
         ImGui::Separator();
 
-        // Render the terrain profile
-        ImGui::PlotLines("##TerrainProfile", m_PreviewData, 128, 0, nullptr,
-                         0.0f, 255.0f, ImVec2(0, 300));
+        // Layer visibility toggles
+        ImGui::Text("Show Layers:");
+        ImGui::Checkbox("Oceans", &m_ShowOceans);
+        ImGui::SameLine();
+        ImGui::Checkbox("Valleys", &m_ShowValleys);
+        ImGui::SameLine();
+        ImGui::Checkbox("Plains", &m_ShowPlains);
+        ImGui::Checkbox("Hills", &m_ShowHills);
+        ImGui::SameLine();
+        ImGui::Checkbox("Mountains", &m_ShowMountains);
+        ImGui::SameLine();
+        ImGui::Checkbox("Blended", &m_ShowBlended);
+
+        ImGui::Separator();
+
+        // Multi-layer plot
+        float availWidth = ImGui::GetContentRegionAvail().x;
+        ImVec2 plotSize(availWidth, 300);
+        ImVec2 plotPos = ImGui::GetCursorScreenPos();
+        ImDrawList *drawList = ImGui::GetWindowDrawList();
+
+        // Reserve space for the plot
+        ImGui::InvisibleButton("##plot", plotSize);
+
+        // Calculate plot bounds
+        float minY = 0.0f;
+        float maxY = 255.0f;
+        float rangeY = maxY - minY;
+
+        // Draw background
+        drawList->AddRectFilled(
+            plotPos, ImVec2(plotPos.x + plotSize.x, plotPos.y + plotSize.y),
+            IM_COL32(20, 20, 30, 255));
+
+        // Draw grid lines
+        for (int i = 0; i <= 4; ++i) {
+          float y = plotPos.y + (plotSize.y * i / 4.0f);
+          drawList->AddLine(ImVec2(plotPos.x, y),
+                            ImVec2(plotPos.x + plotSize.x, y),
+                            IM_COL32(60, 60, 70, 255));
+        }
+
+        // Helper lambda to draw a line series
+        auto drawSeries = [&](float *data, ImU32 color,
+                              float thickness = 1.5f) {
+          for (int i = 0; i < 127; ++i) {
+            float x1 = plotPos.x + (plotSize.x * i / 127.0f);
+            float x2 = plotPos.x + (plotSize.x * (i + 1) / 127.0f);
+            float y1 = plotPos.y + plotSize.y -
+                       ((data[i] - minY) / rangeY * plotSize.y);
+            float y2 = plotPos.y + plotSize.y -
+                       ((data[i + 1] - minY) / rangeY * plotSize.y);
+            drawList->AddLine(ImVec2(x1, y1), ImVec2(x2, y2), color, thickness);
+          }
+        };
+
+        // Draw each layer if enabled
+        if (m_ShowOceans)
+          drawSeries(m_OceansData, IM_COL32(30, 80, 150, 255));
+        if (m_ShowValleys)
+          drawSeries(m_ValleysData, IM_COL32(80, 150, 120, 255));
+        if (m_ShowPlains)
+          drawSeries(m_PlainsData, IM_COL32(100, 180, 80, 255));
+        if (m_ShowHills)
+          drawSeries(m_HillsData, IM_COL32(200, 180, 60, 255));
+        if (m_ShowMountains)
+          drawSeries(m_MountainsData, IM_COL32(220, 100, 100, 255));
+        if (m_ShowBlended)
+          drawSeries(m_PreviewData, IM_COL32(255, 255, 255, 255), 2.5f);
+
+        // Draw border
+        drawList->AddRect(
+            plotPos, ImVec2(plotPos.x + plotSize.x, plotPos.y + plotSize.y),
+            IM_COL32(100, 100, 120, 255));
 
         // Biome Color Bar
         ImGui::Text("Biome Strip:");
-        ImDrawList *drawList = ImGui::GetWindowDrawList();
         ImVec2 p0 = ImGui::GetCursorScreenPos();
         float width = ImGui::GetContentRegionAvail().x;
         float height = 20.0f;
@@ -314,7 +391,7 @@ void MenuState::RenderUI(Application *app) {
         float step = width / 128.0f;
         for (int i = 0; i < 128; ++i) {
           ImU32 col = IM_COL32(200, 200, 200, 255);
-          switch (m_BiomeData[i]) {
+          switch ((int)m_BiomeData[i]) {
           case 0:
             col = IM_COL32(30, 60, 180, 255);
             break; // Ocean
@@ -412,7 +489,7 @@ void MenuState::RenderUI(Application *app) {
           changed = true;
         HelpMarker("Controls the frequency/wiggle of rivers.");
         if (ImGui::SliderFloat("River Threshold", &m_Config.riverThreshold,
-                               0.001f, 0.1f))
+                               0.001f, 0.2f))
           changed = true;
         HelpMarker("Controls the width of the river channels.");
         if (ImGui::SliderFloat("River Depth", &m_Config.riverDepth, 1.0f,

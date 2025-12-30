@@ -37,8 +37,8 @@ struct WorldGenConfig {
   // Hydrology
   bool enableRivers = true;
   float riverScale = 0.005f;
-  float riverThreshold = 0.05f;
-  float riverDepth = 8.0f;
+  float riverThreshold = 0.08f;
+  float riverDepth = 15.0f;
   int lakeLevel = 62;
 
   // Decorators
