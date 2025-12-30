@@ -40,6 +40,8 @@ struct WorldGenConfig {
   bool enableCaves = true;
   bool enableRavines = true;
   int ravineDepth = 40;
+  float ravineWidth = 1.0f;
+  float caveSize = 1.0f;
   float caveEntranceNoise = 0.2f;
 
   // Hydrology

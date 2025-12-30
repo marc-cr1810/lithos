@@ -60,23 +60,36 @@ void MenuState::Init(Application *app) {
 
 void MenuState::UpdatePreview() {
   WorldGenerator tempGen(m_Config);
-  for (int i = 0; i < 128; ++i) {
-    int x = i * 4;
+  for (int i = 0; i < 256; ++i) {
+    int x = i * 2; // More resolution, smaller step
     int z = 0;
     int height = tempGen.GetHeight(x, z);
-    m_PreviewData[i] = (float)height;
-    m_TempData[i] = tempGen.GetTemperature(x, z, height);
-    m_HumidData[i] = tempGen.GetHumidity(x, z);
-    m_BiomeData[i] =
-        (float)tempGen.GetBiomeAtHeight(x, z, height); // Use height-aware biome
-    m_CaveProbData[i] = tempGen.GetCaveProbability(x, z);
 
-    // Sample individual landforms
-    m_OceansData[i] = (float)tempGen.GetHeightForLandform("oceans", x, z);
-    m_ValleysData[i] = (float)tempGen.GetHeightForLandform("valleys", x, z);
-    m_PlainsData[i] = (float)tempGen.GetHeightForLandform("plains", x, z);
-    m_HillsData[i] = (float)tempGen.GetHeightForLandform("hills", x, z);
-    m_MountainsData[i] = (float)tempGen.GetHeightForLandform("mountains", x, z);
+    // Populate main preview data (128 samples for compatibility with old plots
+    // if needed, but we use 256 for the new cave slice)
+    if (i % 2 == 0) {
+      int idx = i / 2;
+      m_PreviewData[idx] = (float)height;
+      m_TempData[idx] = tempGen.GetTemperature(x, z, height);
+      m_HumidData[idx] = tempGen.GetHumidity(x, z);
+      m_BiomeData[idx] = (float)tempGen.GetBiomeAtHeight(x, z, height);
+      m_CaveProbData[idx] = tempGen.GetCaveProbability(x, z);
+
+      // Sample individual landforms
+      m_OceansData[idx] = (float)tempGen.GetHeightForLandform("oceans", x, z);
+      m_ValleysData[idx] = (float)tempGen.GetHeightForLandform("valleys", x, z);
+      m_PlainsData[idx] = (float)tempGen.GetHeightForLandform("plains", x, z);
+      m_HillsData[idx] = (float)tempGen.GetHeightForLandform("hills", x, z);
+      m_MountainsData[idx] =
+          (float)tempGen.GetHeightForLandform("mountains", x, z);
+    }
+
+    // Sample 2D cave slice (X: 256, Y: 128)
+    for (int j = 0; j < 128; ++j) {
+      // Map j [0, 127] to height [0, worldHeight]
+      int y = (int)((float)j / 128.0f * (float)m_Config.worldHeight);
+      m_CaveSliceData[i + j * 256] = tempGen.IsCaveAt(x, y, 0) ? 1.0f : 0.0f;
+    }
   }
 }
 
@@ -257,15 +270,11 @@ void MenuState::RenderUI(Application *app) {
         // Draw terrain cross-section with biome colors
         ImDrawList *drawList = ImGui::GetWindowDrawList();
         ImVec2 plotPos = ImGui::GetCursorScreenPos();
-        float fullWidth = ImGui::GetContentRegionAvail().x - 10;
-        float barWidth = 30.0f;
-        float spacing = 10.0f;
-        ImVec2 plotSize(fullWidth - barWidth - spacing, 200.0f);
-        ImVec2 barPos(plotPos.x + plotSize.x + spacing, plotPos.y);
-        ImVec2 barSize(barWidth, plotSize.y);
+        float availWidth = ImGui::GetContentRegionAvail().x - 10;
+        ImVec2 plotSize(availWidth, 200.0f);
 
-        // Reserve space for both
-        ImGui::InvisibleButton("##biomeplot", ImVec2(fullWidth, plotSize.y));
+        // Reserve space
+        ImGui::InvisibleButton("##biomeplot", plotSize);
 
         // Check if mouse is hovering over the plot
         if (ImGui::IsItemHovered()) {
@@ -368,71 +377,6 @@ void MenuState::RenderUI(Application *app) {
         drawList->AddLine(ImVec2(plotPos.x, seaY),
                           ImVec2(plotPos.x + plotSize.x, seaY),
                           IM_COL32(50, 100, 200, 200), 2.0f);
-
-        // --- Draw Vertical Temperature Gradient Bar ---
-        drawList->AddRectFilled(
-            barPos, ImVec2(barPos.x + barSize.x, barPos.y + barSize.y),
-            IM_COL32(30, 30, 35, 255));
-
-        // Segments for the gradient
-        int segments = 20;
-        float segHeight = barSize.y / segments;
-        for (int i = 0; i < segments; i++) {
-          float relY0 = (float)i / segments;
-          float relY1 = (float)(i + 1) / segments;
-
-          // Map relY to world height (top-down)
-          float worldY0 = (1.0f - relY0) * m_Config.worldHeight;
-          float worldY1 = (1.0f - relY1) * m_Config.worldHeight;
-          float avgY = (worldY0 + worldY1) * 0.5f;
-
-          // Calculate temperature at this altitude (assuming base temp 0.0 for
-          // comparison)
-          float t = 0.0f;
-          if (avgY > m_Config.seaLevel) {
-            t -= (avgY - m_Config.seaLevel) * m_Config.temperatureLapseRate;
-          } else {
-            t += (m_Config.seaLevel - avgY) * m_Config.geothermalGradient;
-          }
-
-          // Temp to Color Mapping
-          ImU32 col;
-          if (t < -0.3f) {
-            col = IM_COL32(200, 220, 240, 255); // Tundra
-          } else if (t < 0.0f) {
-            float f = (t + 0.3f) / 0.3f;
-            col = IM_COL32(200 + f * (60 - 200), 220 + f * (140 - 220),
-                           240 + f * (60 - 240), 255);
-          } else if (t < 0.3f) {
-            float f = t / 0.3f;
-            col = IM_COL32(60 + f * (220 - 60), 140 + f * (200 - 140),
-                           60 + f * (120 - 60), 255);
-          } else {
-            float f = std::min(1.0f, (t - 0.3f) / 0.7f);
-            col = IM_COL32(220 + f * (255 - 220), 200 + f * (50 - 200),
-                           120 + f * (0 - 120), 255);
-          }
-
-          drawList->AddRectFilled(
-              ImVec2(barPos.x, barPos.y + i * segHeight),
-              ImVec2(barPos.x + barSize.x, barPos.y + (i + 1) * segHeight),
-              col);
-        }
-
-        // Sea Level Marker on the bar
-        float barSeaY =
-            barPos.y + barSize.y -
-            ((float)m_Config.seaLevel / (float)m_Config.worldHeight) *
-                barSize.y;
-        drawList->AddLine(ImVec2(barPos.x - 2, barSeaY),
-                          ImVec2(barPos.x + barSize.x + 2, barSeaY),
-                          IM_COL32(255, 255, 255, 255), 2.0f);
-
-        // Labels
-        drawList->AddText(ImVec2(barPos.x - 25, barPos.y),
-                          IM_COL32(200, 200, 200, 255), "High");
-        drawList->AddText(ImVec2(barPos.x - 25, barPos.y + barSize.y - 15),
-                          IM_COL32(200, 200, 200, 255), "Deep");
 
         // Legend
         ImGui::Text("Biome Colors:");
@@ -629,9 +573,6 @@ void MenuState::RenderUI(Application *app) {
       if (ImGui::BeginTabItem("Caves")) {
         ImGui::Dummy(ImVec2(0, 5));
 
-        ImGui::Columns(2, "CaveSplit", true);
-        ImGui::SetColumnWidth(0, 300.0f);
-
         ImGui::Text("Underground Generation Settings");
         ImGui::Separator();
         bool changed = false;
@@ -659,20 +600,107 @@ void MenuState::RenderUI(Application *app) {
         if (ImGui::SliderInt("Lava Level", &m_Config.lavaLevel, 0, 40))
           changed = true;
         HelpMarker("Depth at which caves and ravines fill with lava.");
+        if (ImGui::SliderFloat("Ravine Width", &m_Config.ravineWidth, 0.1f,
+                               3.0f, "%.2f"))
+          changed = true;
+        HelpMarker("Thickness of vertical cracks.");
+        if (ImGui::SliderFloat("Cave Size", &m_Config.caveSize, 0.1f, 3.0f,
+                               "%.2f"))
+          changed = true;
+        HelpMarker("Overall scale of caverns and spaghetti tunnels.");
 
         if (changed)
           UpdatePreview();
 
         ImGui::Separator();
-        ImGui::Text("Terrain Profile Visualization");
+        ImGui::Text("Subterranean Cross-Section");
         ImGui::Separator();
 
-        // Terrain visualization
-        ImGui::PlotLines("Probability", m_CaveProbData, 128, 0, nullptr, 0.0f,
-                         1.0f, ImVec2(0, 200));
-        ImGui::Text("Showing avg cave presence 0-64Y");
+        // 2D Cave Visualization
+        ImDrawList *drawList = ImGui::GetWindowDrawList();
+        ImVec2 plotPos = ImGui::GetCursorScreenPos();
+        float availWidth = ImGui::GetContentRegionAvail().x - 10;
+        ImVec2 plotSize(availWidth, 300.0f);
 
-        ImGui::Columns(1);
+        // Reserve space
+        ImGui::InvisibleButton("##caveslice", plotSize);
+
+        // Draw background
+        drawList->AddRectFilled(
+            plotPos, ImVec2(plotPos.x + plotSize.x, plotPos.y + plotSize.y),
+            IM_COL32(20, 20, 25, 255));
+
+        float stepX = plotSize.x / 256.0f;
+        float stepY = plotSize.y / 128.0f;
+
+        // Optimisation: We'll draw the solid terrain first as columns,
+        // then only draw caves/lava sections
+        for (int i = 0; i < 256; i++) {
+          float height = (i % 2 == 0)
+                             ? m_PreviewData[i / 2]
+                             : (m_PreviewData[i / 2] +
+                                m_PreviewData[std::min(127, i / 2 + 1)]) *
+                                   0.5f;
+
+          float surfaceY = plotPos.y + plotSize.y -
+                           (height / (float)m_Config.worldHeight) * plotSize.y;
+
+          // Draw solid stone column up to surface
+          drawList->AddRectFilled(
+              ImVec2(plotPos.x + i * stepX, surfaceY),
+              ImVec2(plotPos.x + (i + 1) * stepX, plotPos.y + plotSize.y),
+              IM_COL32(70, 70, 75, 255));
+
+          for (int j = 0; j < 128; j++) {
+            float worldY = (float)j / 128.0f * (float)m_Config.worldHeight;
+
+            // Only draw caves below terrain surface
+            if (worldY > height)
+              break;
+
+            if (m_CaveSliceData[i + j * 256] > 0.5f) {
+              // Flip Y for drawing (0 at bottom)
+              float y0 = plotPos.y + plotSize.y - (j + 1) * stepY;
+              float y1 = plotPos.y + plotSize.y - j * stepY;
+
+              ImU32 col;
+              if (worldY <= m_Config.lavaLevel) {
+                col = IM_COL32(200, 50, 20, 255); // Lava
+              } else {
+                col = IM_COL32(10, 10, 15, 255); // Cave Air
+              }
+
+              drawList->AddRectFilled(ImVec2(plotPos.x + i * stepX, y0),
+                                      ImVec2(plotPos.x + (i + 1) * stepX, y1),
+                                      col);
+            }
+          }
+
+          // Draw terrain surface line for context
+          drawList->AddLine(ImVec2(plotPos.x + i * stepX, surfaceY),
+                            ImVec2(plotPos.x + (i + 1) * stepX, surfaceY),
+                            IM_COL32(120, 180, 80, 255), 1.0f);
+        }
+
+        // Sea Level marker
+        float seaY = plotPos.y + plotSize.y -
+                     ((float)m_Config.seaLevel / (float)m_Config.worldHeight) *
+                         plotSize.y;
+        drawList->AddLine(ImVec2(plotPos.x, seaY),
+                          ImVec2(plotPos.x + plotSize.x, seaY),
+                          IM_COL32(255, 255, 255, 100), 1.0f);
+
+        // Lava Level marker
+        float lavaY =
+            plotPos.y + plotSize.y -
+            ((float)m_Config.lavaLevel / (float)m_Config.worldHeight) *
+                plotSize.y;
+        drawList->AddLine(ImVec2(plotPos.x, lavaY),
+                          ImVec2(plotPos.x + plotSize.x, lavaY),
+                          IM_COL32(255, 100, 0, 150), 1.5f);
+
+        ImGui::Text("High-resolution vertical slice (256x128).");
+
         ImGui::EndTabItem();
       }
 

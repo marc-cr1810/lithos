@@ -22,6 +22,7 @@ private:
   float m_HumidData[128];
   float m_BiomeData[128];
   float m_CaveProbData[128];
+  float m_CaveSliceData[256 * 128]; // X: 256, Y: 128
 
   // Individual landform previews
   float m_OceansData[128];

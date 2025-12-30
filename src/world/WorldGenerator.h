@@ -68,7 +68,10 @@ public:
   Biome
   GetBiomeAtHeight(int x, int z,
                    int height); // Height-aware biome (considers water level)
-  BlockType GetSurfaceBlock(int gx, int gy, int gz, bool checkCarving = false);
+  BlockType
+  GetSurfaceBlock(int gx, int gy, int gz,
+                  bool checkCarving = false); // Check for subterranean features
+  bool IsCaveAt(int x, int y, int z);
   float GetCaveProbability(int x, int z);
   int GetSeed() const { return seed; }
   const WorldGenConfig &GetConfig() const { return config; }

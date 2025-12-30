@@ -44,19 +44,25 @@ bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth) {
   float depthFactor = 1.0f - ((float)y / (float)maxDepth);
 
   // Layer 1: "Cheese" caves - Swiss cheese style, larger caverns
-  // Low frequency, creates large blob-like caves
-  float cheeseNoise = glm::perlin(pos * 0.01f);
-  float cheeseThreshold = 0.68f - (depthFactor * 0.12f) + surfaceDeterrent -
-                          grandEntranceBonus; // Apply bonus
+  // Low frequency, creates large blob-like caves. Base is 0.01f
+  float cheeseScale = 0.01f * (config.caveFrequency / 0.015f);
+  float cheeseNoise = glm::perlin(pos * cheeseScale);
+
+  // Base threshold is 0.68f. Lower threshold = bigger caves.
+  float cheeseThreshold = (0.68f / config.caveSize) - (depthFactor * 0.12f) +
+                          surfaceDeterrent - grandEntranceBonus;
 
   // Minimum size filter: check nearby points to ensure cave is at least a few
   // blocks wide This prevents tiny 1-2 block holes
   bool isCheeseCave = false;
   if (cheeseNoise > cheeseThreshold) {
     // Sample a few nearby points to ensure this is part of a larger cave
-    float nearby1 = glm::perlin((pos + glm::vec3(2.0f, 0.0f, 0.0f)) * 0.01f);
-    float nearby2 = glm::perlin((pos + glm::vec3(0.0f, 2.0f, 0.0f)) * 0.01f);
-    float nearby3 = glm::perlin((pos + glm::vec3(0.0f, 0.0f, 2.0f)) * 0.01f);
+    float nearby1 =
+        glm::perlin((pos + glm::vec3(2.0f, 0.0f, 0.0f)) * cheeseScale);
+    float nearby2 =
+        glm::perlin((pos + glm::vec3(0.0f, 2.0f, 0.0f)) * cheeseScale);
+    float nearby3 =
+        glm::perlin((pos + glm::vec3(0.0f, 0.0f, 2.0f)) * cheeseScale);
 
     // Only create cave if at least 2 out of 3 nearby points also pass threshold
     int nearbyCount = 0;
@@ -71,20 +77,22 @@ bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth) {
   }
 
   // Layer 2: "Spaghetti" caves - Varied width winding tunnels
-  // Modular width: Use a low-freq noise to vary the thickness organically
-  // Lowered frequency slightly (0.012 -> 0.01) for smoother size transitions
-  float spaghettiSizeMod = glm::perlin(pos * 0.01f);
-  float spaghettiWidthBonus =
-      (spaghettiSizeMod * 0.045f); // Increased bonus (0.03 -> 0.045)
+  // Base scale is 0.01f for mod, 0.03f for noise
+  float spagModScale = 0.01f * (config.caveFrequency / 0.015f);
+  float spagNoiseScale = 0.03f * (config.caveFrequency / 0.015f);
+
+  float spaghettiSizeMod = glm::perlin(pos * spagModScale);
+  float spaghettiWidthBonus = (spaghettiSizeMod * 0.045f * config.caveSize);
 
   // Use ridged noise (abs) for tunnel-like structures
-  float spaghettiNoise1 = glm::perlin(pos * 0.03f);
+  float spaghettiNoise1 = glm::perlin(pos * spagNoiseScale);
   float spaghettiNoise2 =
-      glm::perlin(pos * 0.03f + glm::vec3(100.0f, 100.0f, 100.0f));
+      glm::perlin(pos * spagNoiseScale + glm::vec3(100.0f, 100.0f, 100.0f));
 
-  // Increased base threshold (0.035 -> 0.05)
-  float spaghettiThreshold =
-      0.05f + (depthFactor * 0.025f) + spaghettiWidthBonus - surfaceDeterrent;
+  // Base threshold is 0.05f. Higher = wider tunnels.
+  float spaghettiThreshold = (0.05f * config.caveSize) +
+                             (depthFactor * 0.025f) + spaghettiWidthBonus -
+                             surfaceDeterrent;
 
   if (spaghettiThreshold < 0.005f)
     spaghettiThreshold =
@@ -110,13 +118,15 @@ bool CaveGenerator::IsRavineAt(int x, int y, int z, int surfaceHeight) {
   glm::vec2 pos2D((float)(x + seedX), (float)(z + seedZ));
 
   // Use 2D ridged noise to create long, winding ravines
-  float ravineNoise1 = glm::perlin(
-      pos2D * 0.006f); // Slightly lower frequency for longer ravines
-  float ravineNoise2 = glm::perlin(pos2D * 0.006f + glm::vec2(500.0f, 500.0f));
+  // Base scale is 0.006f
+  float ravineScale = 0.006f * (config.caveFrequency / 0.015f);
+  float ravineNoise1 = glm::perlin(pos2D * ravineScale);
+  float ravineNoise2 =
+      glm::perlin(pos2D * ravineScale + glm::vec2(500.0f, 500.0f));
 
   // Ravines are where noise is close to zero (ridged)
-  // Increased width slightly to make them more common (0.03 -> 0.05)
-  float ravinePathWidth = 0.05f;
+  // Base width is 0.05f
+  float ravinePathWidth = 0.05f * config.ravineWidth;
   bool isOnRavinePath = (std::abs(ravineNoise1) < ravinePathWidth) &&
                         (std::abs(ravineNoise2) < ravinePathWidth);
 
@@ -126,7 +136,8 @@ bool CaveGenerator::IsRavineAt(int x, int y, int z, int surfaceHeight) {
 
   // Depth profile: wider at top, narrower at bottom
   float depthRatio = (float)(surfaceHeight - y) / (float)config.ravineDepth;
-  float widthAtDepth = 3.0f + (1.0f - depthRatio) * 5.0f; // 3-8 blocks wide
+  float widthAtDepth = (3.0f + (1.0f - depthRatio) * 5.0f) *
+                       config.ravineWidth; // 3-8 blocks wide base
 
   // Add some horizontal variation
   float horizontalNoise =

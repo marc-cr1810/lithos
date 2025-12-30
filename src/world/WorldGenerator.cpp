@@ -439,6 +439,23 @@ BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz,
   return type;
 }
 
+bool WorldGenerator::IsCaveAt(int x, int y, int z) {
+  if (!config.enableCaves && !config.enableRavines)
+    return false;
+
+  int surfaceHeight = GetHeight(x, z);
+  if (y > surfaceHeight)
+    return false;
+
+  if (config.enableCaves && caveGenerator->IsCaveAt(x, y, z, surfaceHeight))
+    return true;
+
+  if (config.enableRavines && caveGenerator->IsRavineAt(x, y, z, surfaceHeight))
+    return true;
+
+  return false;
+}
+
 float WorldGenerator::GetCaveProbability(int x, int z) {
   if (!config.enableCaves)
     return 0.0f;
