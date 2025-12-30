@@ -15,7 +15,7 @@ enum Biome {
   BIOME_PLAINS
 };
 
-class ChunkColumn;
+struct ChunkColumn;
 
 class WorldGenerator {
 public:
