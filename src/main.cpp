@@ -349,7 +349,7 @@ int main(int argc, char *argv[]) {
   int retry = 0;
   const int MAX_RETRIES = 1000; // Increased timeout
 
-  LOG_WORLD_INFO("Generating Spawn Area... (Radius 12 Chunks)");
+  LOG_WORLD_INFO("Generating Spawn Area... (Radius 6 Chunks)");
 
   while (!foundGround && retry < MAX_RETRIES) {
     // Drive World Generation
@@ -360,17 +360,27 @@ int main(int argc, char *argv[]) {
                          (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
 
     // Force load radius around spawn
-    world.loadChunks(glm::vec3(spawnX, 100, spawnZ), 12, projection * view);
+    world.loadChunks(glm::vec3(spawnX, 100, spawnZ), 6, projection * view);
     world.Update();
 
-    // Check if the center column's chunk is loaded
+    // Check if ALL chunks in radius are loaded
     int cx =
         (spawnX >= 0) ? (spawnX / CHUNK_SIZE) : ((spawnX + 1) / CHUNK_SIZE - 1);
     int cz =
         (spawnZ >= 0) ? (spawnZ / CHUNK_SIZE) : ((spawnZ + 1) / CHUNK_SIZE - 1);
 
-    if (world.getChunk(cx, 4, cz) ==
-        nullptr) { // Y=4 is ~128 height, surface usually 64-80
+    bool allLoaded = true;
+    for (int rx = cx - 6; rx <= cx + 6; ++rx) {
+      for (int rz = cz - 6; rz <= cz + 6; ++rz) {
+        if (world.getChunk(rx, 4, rz) == nullptr) { // Check surface level
+          allLoaded = false;
+          goto check_done;
+        }
+      }
+    }
+  check_done:
+
+    if (!allLoaded) {
       // Wait
       std::this_thread::sleep_for(std::chrono::milliseconds(5));
       retry++;
