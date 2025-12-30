@@ -157,7 +157,7 @@ void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
         continue; // No trees in ocean/low beach
 
       Biome biome = generator.GetBiome(gx, gz);
-      BlockType surface = generator.GetSurfaceBlock(gx, height, gz);
+      BlockType surface = generator.GetSurfaceBlock(gx, height, gz, true);
 
       // We use different salts for different biomes to avoid identical layouts
       int roll = GetPosRand(gx, gz, seed, 100);

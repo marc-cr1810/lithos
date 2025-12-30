@@ -146,7 +146,8 @@ Biome WorldGenerator::GetBiome(int x, int z) {
   return BIOME_FOREST;
 }
 
-BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz) {
+BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz,
+                                          bool checkCarving) {
   int height = GetHeight(gx, gz);
   if (gy > height)
     return AIR;
@@ -192,19 +193,46 @@ BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz) {
   int beachHeightLimit = 60 + (int)(beachNoise * 4.0f);
   BlockType beachBlock = (beachNoise > 0.4f) ? GRAVEL : SAND;
 
+  BlockType type = AIR;
   if (gy == height) {
     if (gy < 60)
-      return (beachNoise > 0.0f) ? GRAVEL : DIRT;
-    if (gy <= beachHeightLimit)
-      return beachBlock;
-    return surfaceBlock;
+      type = (beachNoise > 0.0f) ? GRAVEL : DIRT;
+    else if (gy <= beachHeightLimit)
+      type = beachBlock;
+    else
+      type = surfaceBlock;
   } else if (gy > height - 4) {
     if (gy < 60)
-      return DIRT;
-    return subsurfaceBlock;
+      type = DIRT;
+    else
+      type = subsurfaceBlock;
+  } else {
+    type = GetStrataBlock(gx, gy, gz);
   }
 
-  return GetStrataBlock(gx, gy, gz);
+  // Cave/Ravine Carving Check
+  if (checkCarving && type != AIR && type != WATER) {
+    bool isUnderwater = (height <= 60);
+    bool preserveCrust = false;
+
+    // Consistency check with GenerateChunk carving logic
+    if (isUnderwater && gy > height - 3)
+      preserveCrust = true;
+    if (gy <= 0)
+      preserveCrust = true;
+
+    if (!preserveCrust) {
+      if (caveGenerator->IsCaveAt(gx, gy, gz, height) ||
+          caveGenerator->IsRavineAt(gx, gy, gz, height)) {
+        if (gy <= 10)
+          return LAVA;
+        else
+          return AIR;
+      }
+    }
+  }
+
+  return type;
 }
 
 float WorldGenerator::GetLandformNoise(int x, int z) {

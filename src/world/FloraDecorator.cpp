@@ -25,7 +25,7 @@ void FloraDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
           continue; // Above water only
 
         Biome biome = column.getBiome(x, z);
-        BlockType surface = generator.GetSurfaceBlock(gx, height, gz);
+        BlockType surface = generator.GetSurfaceBlock(gx, height, gz, true);
 
         if (biome == BIOME_DESERT) {
           if (surface == SAND) {

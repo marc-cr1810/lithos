@@ -63,7 +63,7 @@ public:
   float GetTemperature(int x, int z);
   float GetHumidity(int x, int z);
   Biome GetBiome(int x, int z);
-  BlockType GetSurfaceBlock(int gx, int gy, int gz);
+  BlockType GetSurfaceBlock(int gx, int gy, int gz, bool checkCarving = false);
   int GetSeed() const { return seed; }
 
 private:
