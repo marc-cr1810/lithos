@@ -66,8 +66,10 @@ public:
   float GetHumidity(int x, int z);
   Biome GetBiome(int x, int z);
   BlockType GetSurfaceBlock(int gx, int gy, int gz, bool checkCarving = false);
+  float GetCaveProbability(int x, int z);
   int GetSeed() const { return seed; }
   const WorldGenConfig &GetConfig() const { return config; }
+  float GetRiverCarve(int x, int z);
 
 private:
   BlockType GetStrataBlock(int x, int y, int z);
@@ -77,6 +79,7 @@ private:
   float GetClimateNoise(int x, int z);
   float GetGeologicNoise(int x, int z);
   std::string GetLandformType(int x, int z);
+  int riverWaterLevel;
 
   // Landform initialization
   void InitializeLandforms();

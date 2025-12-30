@@ -3,6 +3,7 @@
 #include "../core/State.h"
 #include "../world/WorldGenConfig.h"
 #include <string>
+#include <vector>
 
 class MenuState : public State {
 public:
@@ -16,4 +17,10 @@ public:
 private:
   WorldGenConfig m_Config;
   char m_SeedBuffer[32];
+  float m_PreviewData[128];
+  float m_TempData[128];
+  float m_HumidData[128];
+  int m_BiomeData[128];
+  float m_CaveProbData[128];
+  void UpdatePreview();
 };

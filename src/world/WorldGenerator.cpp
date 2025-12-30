@@ -76,9 +76,27 @@ int WorldGenerator::GetHeight(int x, int z) {
     float octaveValue = glm::perlin(glm::vec2(nx, nz) * frequency);
 
     // Blend octave amplitudes between landforms
-    float blendedAmplitude =
-        primary->octaveAmplitudes[i] * (1.0f - blendFactor) +
-        secondary->octaveAmplitudes[i] * blendFactor;
+    float ampP = (i < primary->octaveAmplitudes.size())
+                     ? primary->octaveAmplitudes[i]
+                     : primary->octaveAmplitudes[i]; // Default to landform base
+    float ampS = (i < secondary->octaveAmplitudes.size())
+                     ? secondary->octaveAmplitudes[i]
+                     : secondary->octaveAmplitudes[i];
+
+    // Check for overrides in config
+    auto itP = config.landformOverrides.find(primary->name);
+    if (itP != config.landformOverrides.end() &&
+        i < itP->second.octaveAmplitudes.size()) {
+      ampP = itP->second.octaveAmplitudes[i];
+    }
+    auto itS = config.landformOverrides.find(secondary->name);
+    if (itS != config.landformOverrides.end() &&
+        i < itS->second.octaveAmplitudes.size()) {
+      ampS = itS->second.octaveAmplitudes[i];
+    }
+
+    float blendedAmplitude = ampP * (1.0f - blendFactor) + ampS * blendFactor;
+
     float blendedThreshold =
         primary->octaveThresholds[i] * (1.0f - blendFactor) +
         secondary->octaveThresholds[i] * blendFactor;
@@ -107,7 +125,33 @@ int WorldGenerator::GetHeight(int x, int z) {
   float blendedVariation = primary->heightVariation * (1.0f - blendFactor) +
                            secondary->heightVariation * blendFactor;
 
-  return (int)(blendedBaseHeight + noiseHeight * blendedVariation);
+  int baseFinalHeight =
+      (int)(blendedBaseHeight + noiseHeight * blendedVariation);
+
+  // River Carving
+  if (config.enableRivers) {
+    baseFinalHeight -= (int)GetRiverCarve(x, z);
+  }
+
+  return baseFinalHeight;
+}
+
+float WorldGenerator::GetRiverCarve(int x, int z) {
+  if (!config.enableRivers)
+    return 0.0f;
+
+  int seedR = (seed * 1234) % 65536;
+  float rx = (float)x + (float)seedR;
+  float rz = (float)z + (float)seedR;
+  float riverNoise = glm::perlin(glm::vec2(rx, rz) * config.riverScale);
+  float riverVal = std::abs(riverNoise);
+
+  if (riverVal < config.riverThreshold) {
+    float t = riverVal / config.riverThreshold;
+    float carveFactor = 1.0f - (t * t); // Smooth curve
+    return config.riverDepth * carveFactor;
+  }
+  return 0.0f;
 }
 
 float WorldGenerator::GetTemperature(int x, int z) {
@@ -237,6 +281,21 @@ BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz,
   }
 
   return type;
+}
+
+float WorldGenerator::GetCaveProbability(int x, int z) {
+  if (!config.enableCaves)
+    return 0.0f;
+  int height = GetHeight(x, z);
+  float totalCaveNoise = 0.0f;
+  int samples = 0;
+  for (int y = 5; y < height && y < 64; y += 8) {
+    if (caveGenerator->IsCaveAt(x, y, z, height)) {
+      totalCaveNoise += 1.0f;
+    }
+    samples++;
+  }
+  return (samples > 0) ? (totalCaveNoise / (float)samples) : 0.0f;
 }
 
 float WorldGenerator::GetLandformNoise(int x, int z) {
@@ -423,13 +482,40 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
         BlockType type = GetSurfaceBlock(gx, gy, gz);
 
         // 1. Water Fill
-        if (type == AIR && gy <= config.seaLevel) {
-          // Ice forms in cold climates
-          float temp = GetTemperature(gx, gz);
-          if (temp < -0.3f && gy == config.seaLevel)
-            type = ICE;
-          else
-            type = WATER;
+        if (type == AIR) {
+          bool shouldWater = false;
+          if (gy <= config.seaLevel)
+            shouldWater = true;
+
+          // River Water
+          if (config.enableRivers) {
+            float carve = GetRiverCarve(gx, gz);
+            if (carve > 0.1f) {
+              // Calculate a "flat" local water level based on the deepest part
+              // of the river nearby We use config.riverDepth as the reference
+              // for the center's carving depth
+              int riverBottom = height;
+              int maxWaterLevel =
+                  riverBottom + (int)carve; // The original ground
+              int targetWaterLevel = (maxWaterLevel - (int)config.riverDepth) +
+                                     (int)config.riverWaterDepth;
+
+              if (gy > riverBottom && gy <= targetWaterLevel &&
+                  gy < maxWaterLevel) {
+                shouldWater = true;
+              }
+            }
+          }
+
+          if (shouldWater) {
+            // Ice forms in cold climates
+            float temp = GetTemperature(gx, gz);
+            if (temp < -0.3f &&
+                gy >= config.seaLevel) // Ice on surface, even rivers
+              type = ICE;
+            else
+              type = WATER;
+          }
         }
 
         // 2. Carve Caves using new CaveGenerator

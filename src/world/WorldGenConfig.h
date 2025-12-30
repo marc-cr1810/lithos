@@ -1,10 +1,12 @@
 #pragma once
 #include <map>
 #include <string>
+#include <vector>
 
 struct LandformConfigOverride {
   float baseHeight;
   float heightVariation;
+  std::vector<float> octaveAmplitudes; // Overrides for 8 octaves
 };
 
 struct WorldGenConfig {
@@ -32,6 +34,14 @@ struct WorldGenConfig {
   int ravineDepth = 40;
   float caveEntranceNoise = 0.2f;
 
+  // Hydrology
+  bool enableRivers = true;
+  float riverScale = 0.005f;
+  float riverThreshold = 0.05f;
+  float riverDepth = 8.0f;
+  float riverWaterDepth = 2.0f;
+  int lakeLevel = 62;
+
   // Decorators
   bool enableOre = true;
   bool enableTrees = true;
@@ -47,10 +57,23 @@ struct WorldGenConfig {
 
   WorldGenConfig() {
     // Initialize with default values seen in WorldGenerator.cpp
-    landformOverrides["oceans"] = {45.0f, 10.0f};
-    landformOverrides["plains"] = {64.0f, 12.0f};
-    landformOverrides["hills"] = {68.0f, 25.0f};
-    landformOverrides["mountains"] = {82.0f, 60.0f};
-    landformOverrides["valleys"] = {58.0f, 7.0f};
+    landformOverrides["oceans"] = {
+        35.0f,
+        40.0f,
+        {0.60f, 0.20f, 0.10f, 0.05f, 0.025f, 0.012f, 0.006f, 0.003f}};
+    landformOverrides["plains"] = {
+        66.0f,
+        15.0f,
+        {0.55f, 0.28f, 0.14f, 0.07f, 0.035f, 0.018f, 0.009f, 0.0045f}};
+    landformOverrides["hills"] = {
+        72.0f,
+        40.0f,
+        {0.45f, 0.38f, 0.28f, 0.2f, 0.12f, 0.07f, 0.035f, 0.018f}};
+    landformOverrides["mountains"] = {
+        85.0f, 120.0f, {0.38f, 0.45f, 0.5f, 0.42f, 0.28f, 0.2f, 0.14f, 0.07f}};
+    landformOverrides["valleys"] = {
+        55.0f,
+        20.0f,
+        {0.65f, 0.22f, 0.11f, 0.055f, 0.028f, 0.014f, 0.007f, 0.0035f}};
   }
 };
