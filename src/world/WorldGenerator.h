@@ -1,6 +1,7 @@
 #ifndef WORLDGENERATOR_H
 #define WORLDGENERATOR_H
 
+#include "Block.h"
 #include <glm/glm.hpp>
 #include <map>
 #include <string>
@@ -62,9 +63,11 @@ public:
   float GetTemperature(int x, int z);
   float GetHumidity(int x, int z);
   Biome GetBiome(int x, int z);
+  BlockType GetSurfaceBlock(int gx, int gy, int gz);
+  int GetSeed() const { return seed; }
 
 private:
-  int GetStrataBlock(int x, int y, int z);
+  BlockType GetStrataBlock(int x, int y, int z);
 
   // Noise map methods
   float GetLandformNoise(int x, int z);

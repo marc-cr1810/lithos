@@ -146,6 +146,67 @@ Biome WorldGenerator::GetBiome(int x, int z) {
   return BIOME_FOREST;
 }
 
+BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz) {
+  int height = GetHeight(gx, gz);
+  if (gy > height)
+    return AIR;
+
+  // Re-calculate climate data
+  float temp = GetTemperature(gx, gz);
+  float humidity = GetHumidity(gx, gz);
+
+  BlockType surfaceBlock = GRASS;
+  BlockType subsurfaceBlock = DIRT;
+
+  if (temp > 0.3f) {
+    if (humidity < -0.2f) {
+      surfaceBlock = SAND;
+      subsurfaceBlock = SAND;
+    } else {
+      surfaceBlock = GRASS;
+      subsurfaceBlock = DIRT;
+    }
+  } else if (temp < -0.3f) {
+    if (humidity > 0.2f) {
+      surfaceBlock = PODZOL;
+      subsurfaceBlock = DIRT;
+    } else {
+      surfaceBlock = SNOW;
+      subsurfaceBlock = DIRT;
+    }
+  } else {
+    if (humidity > 0.4f) {
+      surfaceBlock = MUD;
+      subsurfaceBlock = DIRT;
+    } else {
+      surfaceBlock = GRASS;
+      subsurfaceBlock = DIRT;
+    }
+  }
+
+  // Beach Logic
+  int beachOffX = (seed * 5432) % 65536;
+  int beachOffZ = (seed * 1234) % 65536;
+  float beachNoise = glm::perlin(glm::vec3(
+      ((float)gx + beachOffX) * 0.05f, 0.0f, ((float)gz + beachOffZ) * 0.05f));
+  int beachHeightLimit = 60 + (int)(beachNoise * 4.0f);
+  BlockType beachBlock = (beachNoise > 0.4f) ? GRAVEL : SAND;
+
+  if (gy == height) {
+    if (gy < 60)
+      return (beachNoise > 0.0f) ? GRAVEL : DIRT;
+    if (gy <= beachHeightLimit)
+      return beachBlock;
+    return surfaceBlock;
+  } else if (gy > height - 4) {
+    if (gy < 60)
+      return DIRT;
+    return subsurfaceBlock;
+  }
+
+  return GetStrataBlock(gx, gy, gz);
+}
+
 float WorldGenerator::GetLandformNoise(int x, int z) {
   // Very low frequency for large landform regions
   int seedL = (seed * 1111) % 65536;
@@ -231,7 +292,7 @@ void WorldGenerator::InitializeLandforms() {
   landforms["valleys"] = valleys;
 }
 
-int WorldGenerator::GetStrataBlock(int x, int y, int z) {
+BlockType WorldGenerator::GetStrataBlock(int x, int y, int z) {
   // Stylized stone layers
   // Primary: Stone, with horizontal layers of variants for visual interest
 
@@ -310,139 +371,16 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
       // Get Height from column
       int height = column.heightMap[x][z];
 
-      // Get Climate Data from column or recalculate (Biome is stored,
-      // temp/humidity not yet) For now, let's just get Biome from column if we
-      // used it, but here code uses temp/humidity directly. Optimally we'd
-      // store temp/humidity in column too, but user asked for heightmap.
-      // Re-calculating temp/humidity is cheap (low frequency noise).
-      float temp = GetTemperature(gx, gz);
-      float humidity = GetHumidity(gx, gz);
-
-      // Climate-Based Surface Block Selection
-      BlockType surfaceBlock = GRASS;
-      BlockType subsurfaceBlock = DIRT;
-
-      // Hot climate
-      if (temp > 0.3f) {
-        if (humidity < -0.2f) {
-          // Hot + Dry = Desert
-          surfaceBlock = SAND;
-          subsurfaceBlock = SAND;
-        } else {
-          // Hot + Wet/Medium = Savanna/Jungle
-          surfaceBlock = GRASS;
-          subsurfaceBlock = DIRT;
-        }
-      }
-      // Cold climate
-      else if (temp < -0.3f) {
-        if (humidity > 0.2f) {
-          // Cold + Wet = Taiga (Podzol)
-          surfaceBlock = PODZOL;
-          subsurfaceBlock = DIRT;
-        } else {
-          // Cold + Dry = Tundra
-          surfaceBlock = SNOW;
-          subsurfaceBlock = DIRT;
-        }
-      }
-      // Temperate climate
-      else {
-        if (humidity > 0.4f) {
-          // Temperate + Very Wet = Swamp (Mud)
-          surfaceBlock = MUD;
-          subsurfaceBlock = DIRT;
-        } else {
-          // Temperate = Plains/Forest
-          surfaceBlock = GRASS;
-          subsurfaceBlock = DIRT;
-        }
-      }
-
-      // Calculate Beach Noise for this column
-      int beachOffX = (seed * 5432) % 65536;
-      int beachOffZ = (seed * 1234) % 65536;
-      float beachNoise =
-          glm::perlin(glm::vec3(((float)gx + beachOffX) * 0.05f, 0.0f,
-                                ((float)gz + beachOffZ) * 0.05f));
-
-      // Limit height for beaches
-      int beachHeightLimit = 60 + (int)(beachNoise * 4.0f); // 60 to 64
-      BlockType beachBlock = (beachNoise > 0.4f) ? GRAVEL : SAND;
-
-      // Hoisted Strata Noise (Calculate once per column)
-      int strataSeed = (seed * 777) % 65536;
-      float snx = (float)gx + (float)strataSeed;
-      float snz = (float)gz + (float)strataSeed;
-      float strataLayerWave = glm::perlin(glm::vec2(snx * 0.02f, snz * 0.02f));
-      float strataTypeNoise = glm::perlin(glm::vec2(snx * 0.01f, snz * 0.01f));
+      // Climate data and surface blocks are now handled by GetSurfaceBlock()
 
       for (int y = 0; y < CHUNK_SIZE; ++y) {
         int gy = pos.y * CHUNK_SIZE + y;
-        BlockType type = AIR;
-
-        // Helper Lambda for Strata Logic using pre-calced noise
-        auto getStrataBlock = [&](int yVal) -> BlockType {
-          int adjustedY = yVal + (int)(strataLayerWave * 5.0f);
-          if (adjustedY < 12) {
-            if (strataTypeNoise > 0.3f)
-              return GRANITE;
-            else if (strataTypeNoise < -0.3f)
-              return BASALT;
-            else
-              return DIORITE;
-          } else if (adjustedY < 20)
-            return STONE;
-          else if (adjustedY < 25) {
-            if (strataTypeNoise > 0.2f)
-              return ANDESITE;
-            else
-              return TUFF;
-          } else if (adjustedY < 35)
-            return STONE;
-          else if (adjustedY < 40) {
-            if (strataTypeNoise > 0.0f)
-              return SANDSTONE;
-            else
-              return DIORITE;
-          }
-          return STONE; // Default
-        };
-
-        // 1. Terrain Shape
-        if (gy <= height) {
-          if (gy == height) {
-            // Surface Layer
-            if (gy < 60) {
-              // Underwater
-              type = (beachNoise > 0.0f) ? GRAVEL : DIRT;
-            } else {
-              // Above water
-              if (gy <= beachHeightLimit)
-                type = beachBlock; // Natural Beach
-              else
-                type = surfaceBlock;
-            }
-          } else if (gy > height - 4) {
-            // Subsurface
-            if (gy < 60)
-              type = DIRT; // Underwater subsurface
-            else
-              type = subsurfaceBlock;
-          } else {
-            // Deep Underground - Use Strata
-            type = getStrataBlock(gy);
-          }
-        }
-
-        // Bedrock
-        if (gy == 0)
-          type = getStrataBlock(gy); // Or just BEDROCK if implemented, but
-                                     // strict logic was Strata
+        BlockType type = GetSurfaceBlock(gx, gy, gz);
 
         // Water Fill
         if (type == AIR && gy <= 60) {
           // Ice forms in cold climates
+          float temp = GetTemperature(gx, gz);
           if (temp < -0.3f && gy == 60)
             type = ICE;
           else
@@ -485,7 +423,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
           if (gy > 0) {
             int chance = 100 - (gy * 20);
             if ((rand() % 100) < chance)
-              type = getStrataBlock(gy);
+              type = GetSurfaceBlock(gx, gy, gz);
           }
         }
 
