@@ -38,8 +38,8 @@ int WorldGenerator::GetHeight(int x, int z) {
   float nx = (float)x + (float)seedX;
   float nz = (float)z + (float)seedZ;
 
-  // Enhanced octave system with 8 octaves
-  const int numOctaves = 8;
+  // Enhanced octave system with 10 octaves
+  const int numOctaves = 10;
   float noiseHeight = 0.0f;
   float frequency = 0.0025f; // Sweet spot between variation and smoothness
 
@@ -189,9 +189,10 @@ void WorldGenerator::InitializeLandforms() {
   // Plains - smooth, gentle terrain
   LandformConfig plains;
   plains.name = "plains";
-  plains.octaveAmplitudes = {0.55f,  0.28f,  0.14f,  0.07f,
-                             0.035f, 0.018f, 0.009f, 0.005f};
-  plains.octaveThresholds = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  plains.octaveAmplitudes = {0.55f,  0.28f,  0.14f,   0.07f,   0.035f,
+                             0.018f, 0.009f, 0.0045f, 0.0022f, 0.0011f};
+  plains.octaveThresholds = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                             0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
   plains.baseHeight = 64.0f;
   plains.heightVariation = 12.0f;
   landforms["plains"] = plains;
@@ -199,9 +200,10 @@ void WorldGenerator::InitializeLandforms() {
   // Hills - moderate variation
   LandformConfig hills;
   hills.name = "hills";
-  hills.octaveAmplitudes = {0.45f, 0.38f, 0.28f,  0.2f,
-                            0.12f, 0.07f, 0.035f, 0.018f};
-  hills.octaveThresholds = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  hills.octaveAmplitudes = {0.45f, 0.38f,  0.28f,  0.2f,   0.12f,
+                            0.07f, 0.035f, 0.018f, 0.009f, 0.0045f};
+  hills.octaveThresholds = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                            0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
   hills.baseHeight = 68.0f;
   hills.heightVariation = 25.0f;
   landforms["hills"] = hills;
@@ -209,9 +211,10 @@ void WorldGenerator::InitializeLandforms() {
   // Mountains - dramatic, rugged terrain
   LandformConfig mountains;
   mountains.name = "mountains";
-  mountains.octaveAmplitudes = {0.38f, 0.45f, 0.5f,  0.42f,
-                                0.28f, 0.2f,  0.14f, 0.07f};
-  mountains.octaveThresholds = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  mountains.octaveAmplitudes = {0.38f, 0.45f, 0.5f,  0.42f,  0.28f,
+                                0.2f,  0.14f, 0.07f, 0.035f, 0.018f};
+  mountains.octaveThresholds = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
   mountains.baseHeight = 82.0f;
   mountains.heightVariation = 60.0f;
   landforms["mountains"] = mountains;
@@ -219,9 +222,10 @@ void WorldGenerator::InitializeLandforms() {
   // Valleys - low, flat areas
   LandformConfig valleys;
   valleys.name = "valleys";
-  valleys.octaveAmplitudes = {0.65f,  0.22f,  0.11f,  0.055f,
-                              0.028f, 0.014f, 0.007f, 0.0035f};
-  valleys.octaveThresholds = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  valleys.octaveAmplitudes = {0.65f,  0.22f,  0.11f,   0.055f,  0.028f,
+                              0.014f, 0.007f, 0.0035f, 0.0017f, 0.0008f};
+  valleys.octaveThresholds = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                              0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
   valleys.baseHeight = 58.0f;
   valleys.heightVariation = 7.0f;
   landforms["valleys"] = valleys;
