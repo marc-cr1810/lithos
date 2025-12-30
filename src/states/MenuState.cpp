@@ -24,6 +24,9 @@ static void HelpMarker(const char *desc) {
 
 void MenuState::Init(Application *app) {
   glfwSetInputMode(app->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+
+  // Randomize seed on init
+  m_Config.seed = rand();
   snprintf(m_SeedBuffer, sizeof(m_SeedBuffer), "%d", m_Config.seed);
 
   // Initialize landform overrides with default amplitudes if not already
@@ -98,6 +101,27 @@ void MenuState::RenderUI(Application *app) {
 
   if (ImGui::Begin("World Configuration", nullptr,
                    ImGuiWindowFlags_NoCollapse)) {
+    // Seed input - visible on all tabs
+    ImGui::Text("World Seed:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(150);
+    bool changed = false;
+    if (ImGui::InputText("##seed", m_SeedBuffer, sizeof(m_SeedBuffer),
+                         ImGuiInputTextFlags_CharsDecimal)) {
+      m_Config.seed = atoi(m_SeedBuffer);
+      changed = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Randomize##seed")) {
+      m_Config.seed = rand();
+      snprintf(m_SeedBuffer, sizeof(m_SeedBuffer), "%d", m_Config.seed);
+      changed = true;
+    }
+    if (changed)
+      UpdatePreview();
+
+    ImGui::Separator();
+
     if (ImGui::BeginTabBar("ConfigTabs")) {
       // General Tab
       if (ImGui::BeginTabItem("General")) {
@@ -119,7 +143,8 @@ void MenuState::RenderUI(Application *app) {
           changed = true;
         }
 
-        if (ImGui::SliderInt("Sea Level", &m_Config.seaLevel, 0, 128))
+        if (ImGui::SliderInt("Sea Level", &m_Config.seaLevel, 0,
+                             m_Config.worldHeight - 1))
           changed = true;
         HelpMarker("The Y-level where water fills up to.");
         if (ImGui::SliderFloat("Terrain Scale", &m_Config.terrainScale, 0.0001f,
@@ -136,6 +161,32 @@ void MenuState::RenderUI(Application *app) {
                                5.0f))
           changed = true;
         HelpMarker("Multiplier for all terrain heights.");
+
+        // World Height slider with validation - use step size of 32
+        if (ImGui::SliderInt("World Height", &m_Config.worldHeight, 32, 1024,
+                             "%d blocks")) {
+          // Ensure it's a multiple of 32
+          m_Config.worldHeight = ((m_Config.worldHeight + 16) / 32) * 32;
+          if (m_Config.worldHeight < 32)
+            m_Config.worldHeight = 32;
+          if (m_Config.worldHeight > 1024)
+            m_Config.worldHeight = 1024;
+
+          // Clamp sea level to be within world height
+          if (m_Config.seaLevel >= m_Config.worldHeight) {
+            m_Config.seaLevel = m_Config.worldHeight / 2;
+          }
+          changed = true;
+        }
+        HelpMarker("Maximum world height in blocks. Snaps to multiples of 32 "
+                   "(chunk size).");
+
+        // Performance warning for high values
+        if (m_Config.worldHeight > 512) {
+          ImGui::TextColored(
+              ImVec4(1.0f, 0.6f, 0.0f, 1.0f),
+              "WARNING: Heights above 512 may impact performance!");
+        }
 
         if (changed)
           UpdatePreview();
@@ -280,11 +331,11 @@ void MenuState::RenderUI(Application *app) {
           if (ImGui::CollapsingHeader(name.c_str(),
                                       ImGuiTreeNodeFlags_DefaultOpen)) {
             if (ImGui::SliderFloat("Base Height", &override.baseHeight, 0.0f,
-                                   255.0f))
+                                   (float)m_Config.worldHeight))
               changed = true;
             HelpMarker("Elevates this specific landform type.");
             if (ImGui::SliderFloat("Variation", &override.heightVariation, 0.0f,
-                                   128.0f))
+                                   (float)m_Config.worldHeight / 2.0f))
               changed = true;
             HelpMarker("Amplitude of noise for this landform.");
 
@@ -333,9 +384,9 @@ void MenuState::RenderUI(Application *app) {
         // Reserve space for the plot
         ImGui::InvisibleButton("##plot", plotSize);
 
-        // Calculate plot bounds
+        // Calculate plot bounds - scale to worldHeight
         float minY = 0.0f;
-        float maxY = 255.0f;
+        float maxY = (float)m_Config.worldHeight;
         float rangeY = maxY - minY;
 
         // Draw background

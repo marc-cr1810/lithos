@@ -15,6 +15,7 @@ struct WorldGenConfig {
   float terrainScale = 0.0025f;
   int seaLevel = 60;
   int surfaceDepth = 4;
+  int worldHeight = 320; // World height in blocks (must be multiple of 32)
 
   // Noise Scales
   float tempScale = 0.003f;     // Balanced for moderate biome regions
@@ -71,7 +72,7 @@ struct WorldGenConfig {
         40.0f,
         {0.45f, 0.38f, 0.28f, 0.2f, 0.12f, 0.07f, 0.035f, 0.018f}};
     landformOverrides["mountains"] = {
-        85.0f, 120.0f, {0.38f, 0.45f, 0.5f, 0.42f, 0.28f, 0.2f, 0.14f, 0.07f}};
+        100.0f, 180.0f, {0.38f, 0.45f, 0.5f, 0.42f, 0.28f, 0.2f, 0.14f, 0.07f}};
     landformOverrides["valleys"] = {
         55.0f,
         20.0f,
