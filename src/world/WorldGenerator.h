@@ -62,9 +62,9 @@ public:
   void GenerateColumn(ChunkColumn &column, int cx, int cz);
   void GenerateChunk(Chunk &chunk, const ChunkColumn &column);
   int GetHeight(int x, int z); // Converted to Instance Method
-  float GetTemperature(int x, int z);
+  float GetTemperature(int x, int z, int y = -1);
   float GetHumidity(int x, int z);
-  Biome GetBiome(int x, int z);
+  Biome GetBiome(int x, int z, int y = -1);
   Biome
   GetBiomeAtHeight(int x, int z,
                    int height); // Height-aware biome (considers water level)

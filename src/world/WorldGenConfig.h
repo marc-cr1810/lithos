@@ -27,6 +27,9 @@ struct WorldGenConfig {
   float biomeVariation = 0.25f; // Adds noise to break up smooth biome blobs
   float temperatureLapseRate = 0.006f; // Temperature decrease per block of
                                        // altitude (for snow-capped mountains)
+  float geothermalGradient = 0.01f;    // Temperature increase per block of
+                                       // depth (getting warmer underground)
+  int lavaLevel = 10;                  // Depth at which caves fill with lava
 
   // Key is landform name: "oceans", "plains", "hills", "mountains", "valleys"
   std::map<std::string, LandformConfigOverride> landformOverrides;

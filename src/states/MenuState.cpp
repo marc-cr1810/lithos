@@ -65,7 +65,7 @@ void MenuState::UpdatePreview() {
     int z = 0;
     int height = tempGen.GetHeight(x, z);
     m_PreviewData[i] = (float)height;
-    m_TempData[i] = tempGen.GetTemperature(x, z);
+    m_TempData[i] = tempGen.GetTemperature(x, z, height);
     m_HumidData[i] = tempGen.GetHumidity(x, z);
     m_BiomeData[i] =
         (float)tempGen.GetBiomeAtHeight(x, z, height); // Use height-aware biome
@@ -240,6 +240,12 @@ void MenuState::RenderUI(Application *app) {
           changed = true;
         HelpMarker("Temperature decrease per block of altitude. Higher = more "
                    "dramatic snow caps on mountains.");
+        if (ImGui::SliderFloat("Geothermal Gradient",
+                               &m_Config.geothermalGradient, 0.0f, 0.05f,
+                               "%.4f"))
+          changed = true;
+        HelpMarker("Temperature increase per block of depth below sea level. "
+                   "Makes deep areas warmer.");
 
         if (changed)
           UpdatePreview();
@@ -580,6 +586,9 @@ void MenuState::RenderUI(Application *app) {
                                0.0f, 1.0f))
           changed = true;
         HelpMarker("Controls how likely caves are to break the surface.");
+        if (ImGui::SliderInt("Lava Level", &m_Config.lavaLevel, 0, 40))
+          changed = true;
+        HelpMarker("Depth at which caves and ravines fill with lava.");
 
         if (changed)
           UpdatePreview();

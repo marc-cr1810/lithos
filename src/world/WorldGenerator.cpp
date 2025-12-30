@@ -256,13 +256,26 @@ void WorldGenerator::GetLandformBlend(int x, int z, std::string &primary,
   blendFactor = std::max(0.0f, std::min(1.0f, blendFactor));
 }
 
-float WorldGenerator::GetTemperature(int x, int z) {
+float WorldGenerator::GetTemperature(int x, int z, int y) {
   // Very low frequency noise for large biomes
   int seedT = (seed * 555) % 65536;
   float nx = (float)x + (float)seedT;
   float nz = (float)z + (float)seedT;
   // Scale 0.001f means biomes are ~1000 blocks wide
-  return glm::perlin(glm::vec2(nx, nz) * config.tempScale);
+  float temp = glm::perlin(glm::vec2(nx, nz) * config.tempScale);
+
+  // Apply altitude-based temperature decrease (lapse rate)
+  if (y != -1 && config.temperatureLapseRate > 0.0f && y > config.seaLevel) {
+    float altitudeAboveSeaLevel = (float)(y - config.seaLevel);
+    temp -= altitudeAboveSeaLevel * config.temperatureLapseRate;
+  }
+  // Apply depth-based temperature increase (geothermal gradient)
+  else if (y != -1 && config.geothermalGradient > 0.0f && y < config.seaLevel) {
+    float depthBelowSeaLevel = (float)(config.seaLevel - y);
+    temp += depthBelowSeaLevel * config.geothermalGradient;
+  }
+
+  return temp;
 }
 
 float WorldGenerator::GetHumidity(int x, int z) {
@@ -272,8 +285,8 @@ float WorldGenerator::GetHumidity(int x, int z) {
   return glm::perlin(glm::vec2(nx, nz) * config.humidityScale);
 }
 
-Biome WorldGenerator::GetBiome(int x, int z) {
-  float temp = GetTemperature(x, z);
+Biome WorldGenerator::GetBiome(int x, int z, int y) {
+  float temp = GetTemperature(x, z, y);
   float humidity = GetHumidity(x, z);
 
   // Add high-frequency variation noise to break up smooth blobs
@@ -302,10 +315,8 @@ Biome WorldGenerator::GetBiome(int x, int z) {
       return BIOME_DESERT; // Hot and Dry
     return BIOME_FOREST;   // Hot and Wet (Jungle-ish)
   } else if (temp < -0.3f) {
-    // Cold
-    if (humidity > 0.3f)
-      return BIOME_TUNDRA; // Cold and snowy
-    return BIOME_PLAINS;   // Cold Plains
+    // Cold - significantly cold becomes Tundra
+    return BIOME_TUNDRA;
   }
 
   // Moderate Temp
@@ -315,8 +326,8 @@ Biome WorldGenerator::GetBiome(int x, int z) {
 }
 
 Biome WorldGenerator::GetBiomeAtHeight(int x, int z, int height) {
-  // First get the base climate biome
-  Biome climateBiome = GetBiome(x, z);
+  // First get the base climate biome (pass height to account for lapse rate)
+  Biome climateBiome = GetBiome(x, z, height);
 
   // Check if this location is underwater
   if (height < config.seaLevel) {
@@ -340,16 +351,9 @@ BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz,
   if (gy > height)
     return AIR;
 
-  // Re-calculate climate data
-  float temp = GetTemperature(gx, gz);
+  // Re-calculate climate data (height-aware)
+  float temp = GetTemperature(gx, gz, gy);
   float humidity = GetHumidity(gx, gz);
-
-  // Apply altitude-based temperature decrease (lapse rate)
-  // Higher altitudes are colder, enabling snow-capped mountains
-  float altitudeAboveSeaLevel = (float)(gy - config.seaLevel);
-  if (altitudeAboveSeaLevel > 0 && config.temperatureLapseRate > 0.0f) {
-    temp -= altitudeAboveSeaLevel * config.temperatureLapseRate;
-  }
 
   BlockType surfaceBlock = GRASS;
   BlockType subsurfaceBlock = DIRT;
@@ -424,7 +428,7 @@ BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz,
     if (!preserveCrust) {
       if (caveGenerator->IsCaveAt(gx, gy, gz, height) ||
           caveGenerator->IsRavineAt(gx, gy, gz, height)) {
-        if (gy <= 10)
+        if (gy <= config.lavaLevel)
           return LAVA;
         else
           return AIR;
@@ -674,7 +678,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
 
           if (shouldCarve) {
             // Cave Air or Lava?
-            if (gy <= 10)
+            if (gy <= config.lavaLevel)
               type = LAVA;
             else
               type = AIR;
