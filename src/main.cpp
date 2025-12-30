@@ -57,6 +57,7 @@ float lastFrame = 0.0f;
 
 // Debug State
 bool isDebugMode = false;
+bool isPaused = false; // Pause State
 bool showProfiler = false;
 bool lastM = false;
 bool lastP = false;
@@ -217,8 +218,8 @@ int main(int argc, char *argv[]) {
   // glfwSetCursorPosCallback(window, mouse_callback); // Disable callback
   // glfwSetScrollCallback(window, scroll_callback);
 
-  // tell GLFW to capture our mouse
-  glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+  // tell GLFW to capture our mouse (initially NORMAL for loading)
+  glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
 // glew: load all OpenGL function pointers
 // ---------------------------------------
@@ -462,6 +463,9 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  // Capture mouse for gameplay
+  glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
   if (!foundGround) {
     LOG_WORLD_WARN("Spawn Ground NOT Found (Timeout). Using Air Drop.");
   }
@@ -568,7 +572,7 @@ int main(int argc, char *argv[]) {
     lastFrame = currentFrame;
     deltaTime = std::min(deltaTime, 0.1f); // Clamp
 
-    if (!dbg_timePaused) {
+    if (!dbg_timePaused && !isPaused) {
       globalTime += deltaTime * dbg_timeSpeed;
 
       // Update Animations
@@ -582,8 +586,49 @@ int main(int argc, char *argv[]) {
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
+    // Pause Menu Logic
+    if (isPaused) {
+      ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
+                              ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+      ImGui::SetNextWindowSize(ImVec2(300, 200));
+
+      if (ImGui::Begin("Pause Menu", nullptr,
+                       ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                           ImGuiWindowFlags_NoResize)) {
+        // Centered Text
+        float windowWidth = ImGui::GetWindowSize().x;
+
+        ImGui::Dummy(ImVec2(0.0f, 20.0f));
+        std::string text = "GAME PAUSED";
+        float textWidth = ImGui::CalcTextSize(text.c_str()).x;
+        ImGui::SetCursorPosX((windowWidth - textWidth) * 0.5f);
+        ImGui::Text("%s", text.c_str());
+
+        ImGui::Dummy(ImVec2(0.0f, 30.0f));
+
+        // Resume Button
+        float buttonWidth = 200.0f;
+        ImGui::SetCursorPosX((windowWidth - buttonWidth) * 0.5f);
+        if (ImGui::Button("Resume", ImVec2(buttonWidth, 40.0f))) {
+          isPaused = false;
+          glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+          firstMouse = true;
+        }
+
+        ImGui::Dummy(ImVec2(0.0f, 10.0f));
+
+        // Quit Button
+        ImGui::SetCursorPosX((windowWidth - buttonWidth) * 0.5f);
+        if (ImGui::Button("Quit to Desktop", ImVec2(buttonWidth, 40.0f))) {
+          glfwSetWindowShouldClose(window, true);
+        }
+      }
+      ImGui::End();
+    }
+
     tickAccumulator += deltaTime;
-    {
+    // Only update physics and world if NOT paused
+    if (!isPaused) {
       PROFILE_SCOPE("Physics Tick");
       while (tickAccumulator >= TICK_INTERVAL) {
         world.Tick();
@@ -591,8 +636,9 @@ int main(int argc, char *argv[]) {
       }
     }
 
-    // World Update (Mesh Uploads)
-    {
+    // World Update (Mesh Uploads) - Keep this allowing background mesh
+    // processing or pause it? Let's pause it to be safe and true to "Pause"
+    if (!isPaused) {
       PROFILE_SCOPE("World Update");
       world.Update();
     }
@@ -834,7 +880,7 @@ int main(int argc, char *argv[]) {
       ImGui::End();
     }
     // ECS Update
-    {
+    if (!isPaused) {
       PROFILE_SCOPE("ECS Update");
 
       // Physics (Gravity & Velocity integration)
@@ -1100,8 +1146,24 @@ int main(int argc, char *argv[]) {
 void processInput(GLFWwindow *window, const World &world,
                   entt::registry &registry, entt::entity playerEntity,
                   float deltaTime) {
-  if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-    glfwSetWindowShouldClose(window, true);
+  //   if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+  //     glfwSetWindowShouldClose(window, true);
+
+  static bool lastEscState = false;
+  bool currentEsc = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
+  if (currentEsc && !lastEscState) {
+    isPaused = !isPaused;
+    if (isPaused) {
+      glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+    } else {
+      glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+      firstMouse = true;
+    }
+  }
+  lastEscState = currentEsc;
+
+  if (isPaused)
+    return; // Skip all other input handling
 
   // Debug Toggles
   // Debug Toggles
@@ -1185,7 +1247,7 @@ void processInput(GLFWwindow *window, const World &world,
                               world);
 
   // Mouse Polling & Camera Update
-  if (!isDebugMode) {
+  if (!isDebugMode && !isPaused) {
     double xpos, ypos;
     glfwGetCursorPos(window, &xpos, &ypos);
 
