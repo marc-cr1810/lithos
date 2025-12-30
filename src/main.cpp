@@ -25,7 +25,6 @@
 #include "render/Shader.h"
 #include "render/Texture.h"
 #include "render/TextureAtlas.h"
-#include "world/Player.h"
 #include "world/World.h"
 #include "world/WorldGenerator.h"
 
@@ -45,8 +44,9 @@ unsigned int SCR_HEIGHT = 720;
 
 // camera &// camera
 Camera camera(glm::vec3(0.0f, 20.0f, 3.0f));
-// Player (Position will be reset in main)
-Player player(glm::vec3(0.0f, 20.0f, 3.0f));
+// Player Position State (Replaces Player class)
+glm::vec3 playerPos(0.0f, 20.0f, 3.0f);
+
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
@@ -323,7 +323,7 @@ int main(int argc, char *argv[]) {
       glm::perspective(glm::radians(camera.Zoom),
                        (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
   glm::mat4 initView = camera.GetViewMatrix();
-  world.loadChunks(player.Position, dbg_renderDistance, initProj * initView);
+  world.loadChunks(playerPos, dbg_renderDistance, initProj * initView);
 
   // Wait for initial chunks to spawn to avoid falling into void?
   // For now, let's just let it load asynchronously.
@@ -343,7 +343,7 @@ int main(int argc, char *argv[]) {
   int spawnZ = 8;
   float spawnY = 85.0f; // Default safe air drop
 
-  player.Position.y = 100.0f;
+  playerPos.y = 100.0f;
 
   bool foundGround = false;
   int retry = 0;
@@ -446,18 +446,19 @@ int main(int argc, char *argv[]) {
 
   // Reset Player and Camera to safe spawn (Center of block!)
   // +0.5f ensures we are not on the corner/edge of blocks
-  player.Position =
+  glm::vec3 playerSpawnPos =
       glm::vec3((float)spawnX + 0.5f, spawnY, (float)spawnZ + 0.5f);
-  camera.Position = player.GetEyePosition();
+  camera.Position =
+      playerSpawnPos + glm::vec3(0.0f, 1.6f, 0.0f); // Set eye height
 
   // Set default teleport location to spawn
-  dbg_teleport_pos[0] = player.Position.x;
-  dbg_teleport_pos[1] = player.Position.y;
-  dbg_teleport_pos[2] = player.Position.z;
+  dbg_teleport_pos[0] = playerSpawnPos.x;
+  dbg_teleport_pos[1] = playerSpawnPos.y;
+  dbg_teleport_pos[2] = playerSpawnPos.z;
 
   // Create Player Entity
   auto playerEntity = registry.create();
-  registry.emplace<TransformComponent>(playerEntity, player.Position,
+  registry.emplace<TransformComponent>(playerEntity, playerSpawnPos,
                                        glm::vec3(0.0f), glm::vec3(1.0f));
   registry.emplace<VelocityComponent>(playerEntity, glm::vec3(0.0f));
   registry.emplace<GravityComponent>(playerEntity, 45.0f);
@@ -580,8 +581,11 @@ int main(int argc, char *argv[]) {
           glm::perspective(glm::radians(camera.Zoom),
                            (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
       glm::mat4 view = camera.GetViewMatrix();
-      world.loadChunks(player.Position, dbg_renderDistance, projection * view);
-      world.unloadChunks(player.Position, dbg_renderDistance);
+
+      // Get player entity position
+      auto &tx = registry.get<TransformComponent>(playerEntity);
+      world.loadChunks(tx.position, dbg_renderDistance, projection * view);
+      world.unloadChunks(tx.position, dbg_renderDistance);
     }
 
     // Calculate Sun Brightness
@@ -601,6 +605,13 @@ int main(int argc, char *argv[]) {
     if (isDebugMode) {
       ImGui::Begin("Debug Info");
 
+      // ... (In main loop Debug UI)
+      auto &transform = registry.get<TransformComponent>(playerEntity);
+      auto &velocity = registry.get<VelocityComponent>(playerEntity);
+      auto &camComp = registry.get<CameraComponent>(playerEntity);
+      auto &input = registry.get<InputComponent>(playerEntity);
+      auto &gravity = registry.get<GravityComponent>(playerEntity);
+
       if (ImGui::CollapsingHeader("Stats", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Text("FPS: %.1f (%.3f ms)", ImGui::GetIO().Framerate,
                     1000.0f / ImGui::GetIO().Framerate);
@@ -613,24 +624,17 @@ int main(int argc, char *argv[]) {
                          ImVec2(0, 80));
 
         ImGui::Separator();
-        ImGui::Text("Position: %.2f, %.2f, %.2f", player.Position.x,
-                    player.Position.y, player.Position.z);
-        ImGui::Text("Velocity: %.2f, %.2f, %.2f", player.Velocity.x,
-                    player.Velocity.y, player.Velocity.z);
-        ImGui::Text("Yaw: %.1f, Pitch: %.1f", player.Yaw, player.Pitch);
-        ImGui::Text("Grounded: %s", player.IsGrounded ? "Yes" : "No");
+        ImGui::Text("Position: %.2f, %.2f, %.2f", transform.position.x,
+                    transform.position.y, transform.position.z);
+        ImGui::Text("Velocity: %.2f, %.2f, %.2f", velocity.velocity.x,
+                    velocity.velocity.y, velocity.velocity.z);
+        ImGui::Text("Yaw: %.1f, Pitch: %.1f", camComp.yaw, camComp.pitch);
+        ImGui::Text("Grounded: %s", input.isGrounded ? "Yes" : "No");
 
         if (ImGui::Button("Teleport")) {
-          player.Position = glm::vec3(dbg_teleport_pos[0], dbg_teleport_pos[1],
-                                      dbg_teleport_pos[2]);
-          player.Velocity = glm::vec3(0.0f);
-
-          // Sync to ECS
-          auto &transform = registry.get<TransformComponent>(playerEntity);
-          transform.position = player.Position;
-
-          auto &velocity = registry.get<VelocityComponent>(playerEntity);
-          velocity.velocity = player.Velocity;
+          transform.position = glm::vec3(
+              dbg_teleport_pos[0], dbg_teleport_pos[1], dbg_teleport_pos[2]);
+          velocity.velocity = glm::vec3(0.0f);
         }
         ImGui::SameLine();
         ImGui::InputFloat3("##pos", dbg_teleport_pos);
@@ -638,9 +642,9 @@ int main(int argc, char *argv[]) {
 
       // Current Pos to Teleport Target
       if (ImGui::Button("Copy Current Pos")) {
-        dbg_teleport_pos[0] = player.Position.x;
-        dbg_teleport_pos[1] = player.Position.y;
-        dbg_teleport_pos[2] = player.Position.z;
+        dbg_teleport_pos[0] = transform.position.x;
+        dbg_teleport_pos[1] = transform.position.y;
+        dbg_teleport_pos[2] = transform.position.z;
       }
 
       ImGui::Separator();
@@ -663,18 +667,18 @@ int main(int argc, char *argv[]) {
 
       ImGui::Separator();
       ImGui::Text("Player / Render");
-      ImGui::Checkbox("Fly Mode (Noclip)", &player.FlyMode);
+      ImGui::Checkbox("Fly Mode (Noclip)", &input.flyMode);
       ImGui::Checkbox("Wireframe", &dbg_wireframe);
       if (ImGui::SliderInt("Render Dist", &dbg_renderDistance, 2, 32)) {
         glm::mat4 proj = glm::perspective(glm::radians(camera.Zoom),
                                           (float)SCR_WIDTH / (float)SCR_HEIGHT,
                                           0.1f, 1000.0f);
         glm::mat4 view = camera.GetViewMatrix();
-        world.loadChunks(player.Position, dbg_renderDistance, proj * view);
+        world.loadChunks(transform.position, dbg_renderDistance, proj * view);
       }
       ImGui::SliderInt("Simulation Dist", &dbg_simulationDistance, 1, 16);
       ImGui::Text("Chunks Loaded: %zu", world.getChunkCount());
-      ImGui::SliderFloat("Gravity", &player.Gravity, 0.0f, 50.0f);
+      ImGui::SliderFloat("Gravity", &gravity.strength, 0.0f, 50.0f);
 
       ImGui::SameLine();
       ImGui::Checkbox("Freeze Culling", &dbg_freezeCulling);
@@ -815,13 +819,6 @@ int main(int argc, char *argv[]) {
 
       // Syn Camera
       CameraSystem::Update(registry, camera);
-
-      // Sync ECS back to Legacy Player for Debug UI & compatibility
-      auto &transform = registry.get<TransformComponent>(playerEntity);
-      player.Position = transform.position;
-      // also sync velocity for debug?
-      // player.Velocity =
-      // registry.get<VelocityComponent>(playerEntity).velocity;
     }
 
     // Render
@@ -973,59 +970,6 @@ int main(int argc, char *argv[]) {
           glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
     }
 
-    // Right Mouse - Placement
-    bool currentRightMouse =
-        glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
-    if (hit && currentRightMouse && !lastRightMouse &&
-        !ImGui::GetIO().WantCaptureMouse) {
-      // Use prePos for placement
-      int placeX = prePos.x;
-      int placeY = prePos.y;
-      int placeZ = prePos.z;
-
-      ChunkBlock targetBlock = world.getBlock(placeX, placeY, placeZ);
-      bool canPlace = !targetBlock.isActive() ||
-                      targetBlock.getType() == WATER ||
-                      targetBlock.getType() == LAVA;
-
-      if (canPlace) {
-        // Check if we stuck the player (PRE-CHECK)
-        // We do this BEFORE setBlock to avoid "Ghost Light" bugs where
-        // reverting (setBlock to AIR) fails to fully clean up lighting
-        // propagated to neighbors.
-
-        float playerWidth = 0.6f;
-        float playerHeight = 1.8f;
-        float eyeHeight = 1.6f;
-        float epsilon = 0.05f;
-
-        float minX = player.Position.x - playerWidth / 2.0f;
-        float maxX = player.Position.x + playerWidth / 2.0f;
-        float minY = player.Position.y - eyeHeight + epsilon;
-        float maxY = player.Position.y - eyeHeight + playerHeight - epsilon;
-        float minZ = player.Position.z - playerWidth / 2.0f;
-        float maxZ = player.Position.z + playerWidth / 2.0f;
-
-        bool intersects = (maxX > placeX && minX < placeX + 1) &&
-                          (maxY > placeY && minY < placeY + 1) &&
-                          (maxZ > placeZ && minZ < placeZ + 1);
-
-        // Allow placement if no intersection OR if the placed block is
-        // non-solid (Water/Lava)
-        bool isPlacedBlockSolid =
-            (selectedBlock != WATER &&
-             selectedBlock != LAVA); // Simple check, or use Registry
-
-        if (!intersects || !isPlacedBlockSolid) {
-          world.setBlock(placeX, placeY, placeZ, selectedBlock);
-          world.setMetadata(placeX, placeY, placeZ, selectedBlockMetadata);
-        } else {
-          // Collision detected, do not place block.
-        }
-      }
-    }
-    lastRightMouse = currentRightMouse;
-
     // Inventory Selection (Hotbar)
     if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS) {
       selectedBlock = DIRT;
@@ -1080,8 +1024,8 @@ int main(int argc, char *argv[]) {
     glBindVertexArray(crosshairVAO);
     glDrawArrays(GL_LINES, 0, 4);
 
-    // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved
-    // etc.)
+    // glfw: swap buffers and poll IO events (keys pressed/released, mouse
+    // moved etc.)
     // -------------------------------------------------------------------------------
     // Render ImGui
     // ImGui Render

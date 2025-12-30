@@ -144,7 +144,6 @@ add_executable(lithos
     src/render/TextureAtlas.cpp
     src/render/ModelLoader.cpp
     src/world/Chunk.cpp
-    src/world/Player.cpp
     src/world/WorldGenerator.cpp
     src/world/TreeDecorator.cpp
     src/world/FloraDecorator.cpp
