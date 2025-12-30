@@ -5,6 +5,11 @@ project(lithos VERSION 1.0.0 LANGUAGES CXX C)
 if(MSVC)
     add_compile_definitions(_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)
     add_compile_definitions(_SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS)
+
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        add_compile_options(/Ob1)
+        add_compile_definitions(_ITERATOR_DEBUG_LEVEL=0)
+    endif()
 endif()
 
 set(CMAKE_CXX_STANDARD 17)
