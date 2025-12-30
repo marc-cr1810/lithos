@@ -39,7 +39,6 @@ struct WorldGenConfig {
   float riverScale = 0.005f;
   float riverThreshold = 0.05f;
   float riverDepth = 8.0f;
-  float riverWaterDepth = 2.0f;
   int lakeLevel = 62;
 
   // Decorators

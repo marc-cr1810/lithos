@@ -482,40 +482,13 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
         BlockType type = GetSurfaceBlock(gx, gy, gz);
 
         // 1. Water Fill
-        if (type == AIR) {
-          bool shouldWater = false;
-          if (gy <= config.seaLevel)
-            shouldWater = true;
-
-          // River Water
-          if (config.enableRivers) {
-            float carve = GetRiverCarve(gx, gz);
-            if (carve > 0.1f) {
-              // Calculate a "flat" local water level based on the deepest part
-              // of the river nearby We use config.riverDepth as the reference
-              // for the center's carving depth
-              int riverBottom = height;
-              int maxWaterLevel =
-                  riverBottom + (int)carve; // The original ground
-              int targetWaterLevel = (maxWaterLevel - (int)config.riverDepth) +
-                                     (int)config.riverWaterDepth;
-
-              if (gy > riverBottom && gy <= targetWaterLevel &&
-                  gy < maxWaterLevel) {
-                shouldWater = true;
-              }
-            }
-          }
-
-          if (shouldWater) {
-            // Ice forms in cold climates
-            float temp = GetTemperature(gx, gz);
-            if (temp < -0.3f &&
-                gy >= config.seaLevel) // Ice on surface, even rivers
-              type = ICE;
-            else
-              type = WATER;
-          }
+        if (type == AIR && gy <= config.seaLevel) {
+          // Ice forms in cold climates
+          float temp = GetTemperature(gx, gz);
+          if (temp < -0.3f && gy == config.seaLevel)
+            type = ICE;
+          else
+            type = WATER;
         }
 
         // 2. Carve Caves using new CaveGenerator

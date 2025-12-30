@@ -419,9 +419,6 @@ void MenuState::RenderUI(Application *app) {
                                32.0f))
           changed = true;
         HelpMarker("Maximum depth of river channel cuts.");
-        if (ImGui::SliderFloat("River Water Depth", &m_Config.riverWaterDepth,
-                               0.0f, 10.0f))
-          changed = true;
         HelpMarker("Depth of water at the bottom of river channels.");
         if (ImGui::SliderInt("Lake Level", &m_Config.lakeLevel, 0, 100))
           changed = true;
