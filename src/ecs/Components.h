@@ -43,6 +43,7 @@ struct InputComponent {
   float sprintSpeed;
   bool isSprinting;
   bool flyMode;
+  bool noclip;
   bool isGrounded;
 };
 

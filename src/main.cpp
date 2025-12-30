@@ -496,7 +496,7 @@ int main(int argc, char *argv[]) {
                                     camera.Up, camera.WorldUp, camera.Yaw,
                                     camera.Pitch, camera.Zoom);
   registry.emplace<InputComponent>(playerEntity, 0.1f, 6.0f, 10.5f, false,
-                                   false, false);
+                                   false, false, false);
   registry.emplace<PlayerTag>(playerEntity);
 
   // Crosshair Setup
@@ -741,7 +741,27 @@ int main(int argc, char *argv[]) {
 
       ImGui::Separator();
       ImGui::Text("Player / Render");
-      ImGui::Checkbox("Fly Mode (Noclip)", &input.flyMode);
+      int currentMode = 0;
+      if (input.flyMode && !input.noclip)
+        currentMode = 1;
+      if (input.noclip)
+        currentMode = 2;
+
+      ImGui::Text("Game Mode:");
+      if (ImGui::RadioButton("Normal", currentMode == 0)) {
+        input.flyMode = false;
+        input.noclip = false;
+      }
+      ImGui::SameLine();
+      if (ImGui::RadioButton("Creative", currentMode == 1)) {
+        input.flyMode = true;
+        input.noclip = false;
+      }
+      ImGui::SameLine();
+      if (ImGui::RadioButton("Spectator", currentMode == 2)) {
+        input.flyMode = false;
+        input.noclip = true;
+      }
       ImGui::Checkbox("Wireframe", &dbg_wireframe);
       if (ImGui::SliderInt("Render Dist", &dbg_renderDistance, 2, 32)) {
         glm::mat4 proj = glm::perspective(glm::radians(camera.Zoom),
@@ -985,93 +1005,106 @@ int main(int argc, char *argv[]) {
     if (hit) {
       // Check if ImGui wants the mouse
       bool mouseCaptured = ImGui::GetIO().WantCaptureMouse;
+      auto &inputInfo = registry.get<InputComponent>(playerEntity);
 
-      // Destruction
-      bool currentLeftMouse =
-          glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-      if (currentLeftMouse && !lastLeftMouse && !mouseCaptured) {
-        world.setBlock(hitPos.x, hitPos.y, hitPos.z, AIR);
-      }
+      if (!inputInfo.noclip) {
+        // Destruction
+        bool currentLeftMouse =
+            glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+        if (currentLeftMouse && !lastLeftMouse && !mouseCaptured) {
+          world.setBlock(hitPos.x, hitPos.y, hitPos.z, AIR);
+        }
 
-      lastLeftMouse = currentLeftMouse;
+        lastLeftMouse = currentLeftMouse;
 
-      // Placement (Right Click)
-      bool currentRightMouse =
-          glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
-      if (currentRightMouse && !lastRightMouse && !mouseCaptured) {
-        // Prevent placing block inside player
-        // Simple AABB check
-        float playerWidth = 0.6f;
-        float playerHeight = 1.8f;
-        glm::vec3 pMin =
-            camera.Position - glm::vec3(0.0f, 1.6f, 0.0f) -
-            glm::vec3(playerWidth / 2.0f, 0.0f, playerWidth / 2.0f);
-        glm::vec3 pMax =
-            pMin + glm::vec3(playerWidth, playerHeight, playerWidth);
+        // Placement (Right Click)
+        bool currentRightMouse =
+            glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+        if (currentRightMouse && !lastRightMouse && !mouseCaptured) {
+          // Prevent placing block inside player
+          // Simple AABB check
+          float playerWidth = 0.6f;
+          float playerHeight = 1.8f;
+          glm::vec3 pMin =
+              camera.Position - glm::vec3(0.0f, 1.6f, 0.0f) -
+              glm::vec3(playerWidth / 2.0f, 0.0f, playerWidth / 2.0f);
+          glm::vec3 pMax =
+              pMin + glm::vec3(playerWidth, playerHeight, playerWidth);
 
-        // Block AABB
-        glm::vec3 bMin((float)prePos.x, (float)prePos.y, (float)prePos.z);
-        glm::vec3 bMax = bMin + glm::vec3(1.0f);
+          // Block AABB
+          glm::vec3 bMin((float)prePos.x, (float)prePos.y, (float)prePos.z);
+          glm::vec3 bMax = bMin + glm::vec3(1.0f);
 
-        bool collision = (pMin.x <= bMax.x && pMax.x >= bMin.x) &&
-                         (pMin.y <= bMax.y && pMax.y >= bMin.y) &&
-                         (pMin.z <= bMax.z && pMax.z >= bMin.z);
+          bool collision = (pMin.x <= bMax.x && pMax.x >= bMin.x) &&
+                           (pMin.y <= bMax.y && pMax.y >= bMin.y) &&
+                           (pMin.z <= bMax.z && pMax.z >= bMin.z);
 
-        if (!collision ||
-            !BlockRegistry::getInstance().getBlock(selectedBlock)->isSolid()) {
-          world.setBlock(prePos.x, prePos.y, prePos.z, selectedBlock);
-          if (selectedBlockMetadata > 0) {
-            world.setMetadata(prePos.x, prePos.y, prePos.z,
-                              selectedBlockMetadata);
+          if (!collision || !BlockRegistry::getInstance()
+                                 .getBlock(selectedBlock)
+                                 ->isSolid()) {
+            world.setBlock(prePos.x, prePos.y, prePos.z, selectedBlock);
+            if (selectedBlockMetadata > 0) {
+              world.setMetadata(prePos.x, prePos.y, prePos.z,
+                                selectedBlockMetadata);
+            }
           }
         }
+        lastRightMouse = currentRightMouse;
+      } else {
+        // Update last state even if we don't process it to prevent
+        // instant-click on exit
+        lastLeftMouse =
+            glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+        lastRightMouse =
+            glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
       }
-      lastRightMouse = currentRightMouse;
 
-      // Draw Selection Wireframe
-      float gap = 0.001f;
-      float minX = hitPos.x - gap;
-      float maxX = hitPos.x + 1 + gap;
-      float minY = hitPos.y - gap;
-      float maxY = hitPos.y + 1 + gap;
-      float minZ = hitPos.z - gap;
-      float maxZ = hitPos.z + 1 + gap;
-      // White lines
-      float r = 1.0f, g = 1.0f, b = 1.0f;
-      float boxVerts[] = {minX, minY, minZ, r, g, b, 0, 0, 1, 1, 1,
-                          maxX, minY, minZ, r, g, b, 0, 0, 1, 1, 1,
-                          maxX, minY, minZ, r, g, b, 0, 0, 1, 1, 1,
-                          maxX, maxY, minZ, r, g, b, 0, 0, 1, 1, 1,
-                          maxX, maxY, minZ, r, g, b, 0, 0, 1, 1, 1,
-                          minX, maxY, minZ, r, g, b, 0, 0, 1, 1, 1,
-                          minX, maxY, minZ, r, g, b, 0, 0, 1, 1, 1,
-                          minX, minY, minZ, r, g, b, 0, 0, 1, 1, 1,
+      if (!inputInfo.noclip) {
+        // Draw Selection Wireframe
+        float gap = 0.001f;
+        float minX = hitPos.x - gap;
+        float maxX = hitPos.x + 1 + gap;
+        float minY = hitPos.y - gap;
+        float maxY = hitPos.y + 1 + gap;
+        float minZ = hitPos.z - gap;
+        float maxZ = hitPos.z + 1 + gap;
+        // White lines
+        float r = 1.0f, g = 1.0f, b = 1.0f;
+        float boxVerts[] = {minX, minY, minZ, r, g, b, 0, 0, 1, 1, 1,
+                            maxX, minY, minZ, r, g, b, 0, 0, 1, 1, 1,
+                            maxX, minY, minZ, r, g, b, 0, 0, 1, 1, 1,
+                            maxX, maxY, minZ, r, g, b, 0, 0, 1, 1, 1,
+                            maxX, maxY, minZ, r, g, b, 0, 0, 1, 1, 1,
+                            minX, maxY, minZ, r, g, b, 0, 0, 1, 1, 1,
+                            minX, maxY, minZ, r, g, b, 0, 0, 1, 1, 1,
+                            minX, minY, minZ, r, g, b, 0, 0, 1, 1, 1,
 
-                          minX, minY, maxZ, r, g, b, 0, 0, 1, 1, 1,
-                          maxX, minY, maxZ, r, g, b, 0, 0, 1, 1, 1,
-                          maxX, minY, maxZ, r, g, b, 0, 0, 1, 1, 1,
-                          maxX, maxY, maxZ, r, g, b, 0, 0, 1, 1, 1,
-                          maxX, maxY, maxZ, r, g, b, 0, 0, 1, 1, 1,
-                          minX, maxY, maxZ, r, g, b, 0, 0, 1, 1, 1,
-                          minX, maxY, maxZ, r, g, b, 0, 0, 1, 1, 1,
-                          minX, minY, maxZ, r, g, b, 0, 0, 1, 1, 1,
+                            minX, minY, maxZ, r, g, b, 0, 0, 1, 1, 1,
+                            maxX, minY, maxZ, r, g, b, 0, 0, 1, 1, 1,
+                            maxX, minY, maxZ, r, g, b, 0, 0, 1, 1, 1,
+                            maxX, maxY, maxZ, r, g, b, 0, 0, 1, 1, 1,
+                            maxX, maxY, maxZ, r, g, b, 0, 0, 1, 1, 1,
+                            minX, maxY, maxZ, r, g, b, 0, 0, 1, 1, 1,
+                            minX, maxY, maxZ, r, g, b, 0, 0, 1, 1, 1,
+                            minX, minY, maxZ, r, g, b, 0, 0, 1, 1, 1,
 
-                          minX, minY, minZ, r, g, b, 0, 0, 1, 1, 1,
-                          minX, minY, maxZ, r, g, b, 0, 0, 1, 1, 1,
-                          maxX, minY, minZ, r, g, b, 0, 0, 1, 1, 1,
-                          maxX, minY, maxZ, r, g, b, 0, 0, 1, 1, 1,
-                          maxX, maxY, minZ, r, g, b, 0, 0, 1, 1, 1,
-                          maxX, maxY, maxZ, r, g, b, 0, 0, 1, 1, 1,
-                          minX, maxY, minZ, r, g, b, 0, 0, 1, 1, 1,
-                          minX, maxY, maxZ, r, g, b, 0, 0, 1, 1, 1};
+                            minX, minY, minZ, r, g, b, 0, 0, 1, 1, 1,
+                            minX, minY, maxZ, r, g, b, 0, 0, 1, 1, 1,
+                            maxX, minY, minZ, r, g, b, 0, 0, 1, 1, 1,
+                            maxX, minY, maxZ, r, g, b, 0, 0, 1, 1, 1,
+                            maxX, maxY, minZ, r, g, b, 0, 0, 1, 1, 1,
+                            maxX, maxY, maxZ, r, g, b, 0, 0, 1, 1, 1,
+                            minX, maxY, minZ, r, g, b, 0, 0, 1, 1, 1,
+                            minX, maxY, maxZ, r, g, b, 0, 0, 1, 1, 1};
 
-      glBindVertexArray(selectVAO);
-      glBindBuffer(GL_ARRAY_BUFFER, selectVBO);
-      glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(boxVerts), boxVerts);
+        glBindVertexArray(selectVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, selectVBO);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(boxVerts), boxVerts);
 
-      ourShader.setMat4("model", glm::mat4(1.0f));
-      ourShader.setBool("useTexture", false);
-      glDrawArrays(GL_LINES, 0, 24);
+        ourShader.setMat4("model", glm::mat4(1.0f));
+        ourShader.setBool("useTexture", false);
+        glDrawArrays(GL_LINES, 0, 24);
+      }
     } else {
       lastLeftMouse =
           glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
@@ -1266,7 +1299,7 @@ void processInput(GLFWwindow *window, const World &world,
   bool up = false;
   bool down = false;
 
-  if (input.flyMode) {
+  if (input.flyMode || input.noclip) {
     if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
       up = true;
     if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)

@@ -10,17 +10,33 @@
 // --- Physics System ---
 
 void PhysicsSystem::Update(entt::registry &registry, float dt) {
+  // Include InputComponent to check for fly/noclip
   auto view =
       registry.view<TransformComponent, VelocityComponent, GravityComponent>();
 
-  view.each([dt](auto entity, auto &transform, auto &vel, auto &gravity) {
-    // Apply Gravity
-    vel.velocity.y -= gravity.strength * dt;
+  view.each(
+      [&registry, dt](auto entity, auto &transform, auto &vel, auto &gravity) {
+        bool applyGravity = true;
+        if (registry.any_of<InputComponent>(entity)) {
+          auto &input = registry.get<InputComponent>(entity);
+          if (input.flyMode || input.noclip) {
+            applyGravity = false;
+          }
+        }
 
-    // Apply Velocity (Collision system will correct this later ideally, but for
-    // now apply first)
-    transform.position += vel.velocity * dt;
-  });
+        if (applyGravity) {
+          // Apply Gravity
+          vel.velocity.y -= gravity.strength * dt;
+        } else {
+          // Apply friction to Y in fly mode so we stop ascending/descending
+          // when keys are released?
+          vel.velocity.y *= 0.9f;
+        }
+
+        // Apply Velocity (Collision system will correct this later ideally, but
+        // for now apply first)
+        transform.position += vel.velocity * dt;
+      });
 }
 
 // --- Collision System ---
@@ -31,6 +47,10 @@ void CollisionSystem::Update(entt::registry &registry, World &world, float dt) {
 
   view.each([&world, dt, &registry](auto entity, auto &transform, auto &vel,
                                     auto &collider, auto &block) {
+    if (registry.any_of<InputComponent>(entity)) {
+      if (registry.get<InputComponent>(entity).noclip)
+        return;
+    }
     // Simple AABB vs Voxel collision
     // Check center point + offsets?
 
@@ -123,7 +143,7 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
     };
 
     // --- PHASE 1: Resolve Y Collision (from PhysicsSystem gravity) ---
-    if (checkCollision(transform.position)) {
+    if (!input.noclip && checkCollision(transform.position)) {
       if (vel.velocity.y < 0) {
         // Falling down into floor - Snap up
         float eyeHeight = 1.6f;
@@ -146,7 +166,7 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
       }
     } else {
       // Not inside block, but check if we are grounded (standing on block)
-      if (!input.flyMode) {
+      if (!input.flyMode && !input.noclip) {
         glm::vec3 checkBelow = transform.position;
         // Check slightly deeper to catch ground
         checkBelow.y -= 0.1f;
@@ -219,18 +239,27 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
     if (inLava) {
       // High Viscosity
       gravity.strength = 10.0f;
-      vel.velocity *= 0.8f; // Strong drag
+      // Drag: v = v * (1 - k*dt)
+      float drag = std::max(0.0f, 1.0f - 3.0f * dt);
+      vel.velocity *= drag;
 
-      if (vel.velocity.y < -5.0f)
-        vel.velocity.y = -5.0f;
+      // Terminal velocity logic is implicitly handled by gravity vs drag
+      // equilibrium now, but we can keep the hard clamp if desired, or remove
+      // it for smoother physics. Equilibrium: 10 = v * 3 => v = 3.33 (if drag
+      // is 3*v). With multiplicative: v_next = v_prev * (1 - 3dt) - 10dt. v =
+      // v(1-3dt) - 10dt => v*3dt = -10dt => v = -3.33.
+
       input.isGrounded = false;
     } else if (inWater) {
       // Lower Viscosity but still buoyant
-      gravity.strength = 20.0f; // Faster sinking than lava
-      vel.velocity *= 0.92f;    // Less drag than lava
+      gravity.strength = 25.0f; // Slightly higher gravity
 
-      if (vel.velocity.y < -15.0f)
-        vel.velocity.y = -15.0f; // Faster terminal velocity
+      // Drag
+      // Equilibrium target: ~ -10 to -12 units/s
+      // v = -g / k.  -12 = -25 / k => k = ~2.0
+      float drag = std::max(0.0f, 1.0f - 2.0f * dt);
+      vel.velocity *= drag;
+
       input.isGrounded = false;
     } else {
       // Air
@@ -275,53 +304,64 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
     if (right)
       moveDir += flatRight;
 
-    if (input.flyMode)
-      displacement *= 4.0f; // Fly mode overrides fluid slow
+    if (input.noclip)
+      displacement *= 4.0f; // Noclip speed boost
+    else if (input.flyMode)
+      displacement *= 2.0f; // Fly speed boost
 
-    if (glm::length(moveDir) > 0.0f) {
+    if (input.noclip) {
+      // Noclip: Handle all movement (WASD + vertical) together
+      glm::vec3 flyDir(0.0f);
+      if (forward)
+        flyDir += cam.front;
+      if (backward)
+        flyDir -= cam.front;
+      if (left)
+        flyDir -= cam.right;
+      if (right)
+        flyDir += cam.right;
+      if (up)
+        flyDir += cam.worldUp;
+      if (down)
+        flyDir -= cam.worldUp;
+
+      if (glm::length(flyDir) > 0.0f)
+        transform.position += glm::normalize(flyDir) * displacement;
+
+      vel.velocity = glm::vec3(0.0f);
+    } else if (glm::length(moveDir) > 0.0f) {
+      // Standard movement with collision
       moveDir = glm::normalize(moveDir);
       glm::vec3 finalMove = moveDir * displacement;
 
       if (input.flyMode) {
-        // Free Fly logic (Noclip)
-        glm::vec3 flyDir(0.0f);
-        if (forward)
-          flyDir += cam.front;
-        if (backward)
-          flyDir -= cam.front;
-        if (left)
-          flyDir -= cam.right;
-        if (right)
-          flyDir += cam.right;
-        if (up)
-          flyDir += cam.worldUp;
-        if (down)
-          flyDir -= cam.worldUp;
-
-        if (glm::length(flyDir) > 0.0f) {
-          transform.position += glm::normalize(flyDir) * displacement;
-        }
-        vel.velocity = glm::vec3(0.0f);
-      } else {
-        // Check X
-        glm::vec3 tryX = transform.position;
-        tryX.x += finalMove.x;
-        if (!checkCollision(tryX))
-          transform.position.x = tryX.x;
-
-        // Check Z
-        glm::vec3 tryZ = transform.position;
-        tryZ.z += finalMove.z;
-        tryZ.x = transform.position.x; // Use updated X
-        if (!checkCollision(tryZ))
-          transform.position.z = tryZ.z;
+        // Fly Mode: standard X/Z movement but with collision checks
+        // Just use same logic as walk but maybe check collisions
+        // Actually, Noclip was overriding this.
+        // Now we just fall through to the collision check logic below!
       }
+
+      // Check X
+      glm::vec3 tryX = transform.position;
+      tryX.x += finalMove.x;
+      if (!checkCollision(tryX))
+        transform.position.x = tryX.x;
+
+      // Check Z
+      glm::vec3 tryZ = transform.position;
+      tryZ.z += finalMove.z;
+      tryZ.x = transform.position.x; // Use updated X
+      if (!checkCollision(tryZ))
+        transform.position.z = tryZ.z;
     }
 
-    // --- PHASE 4: Jump / Swim ---
-    // --- PHASE 4: Jump / Swim ---
+    // --- PHASE 4: Jump / Swim / Fly Vertical ---
     if (up) {
-      if (headInWater || headInLava) {
+      if (input.noclip) {
+        // Handled above
+      } else if (input.flyMode) {
+        vel.velocity.y = 10.0f; // Fly Up velocity
+      } else if (headInWater || headInLava) {
         // Only force swim UP if head is submerged.
         // If head is out but feet in, we let buoyancy/gravity handle the
         // bobbing.
@@ -345,6 +385,20 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
       } else if (input.isGrounded) {
         vel.velocity.y = 13.0f;
         input.isGrounded = false;
+      }
+    } else if (down) {
+      // Fly Down
+      if (!input.noclip && input.flyMode) {
+        // Check if there's a block directly below to prevent jitter
+        glm::vec3 checkBelow = transform.position;
+        checkBelow.y -= 0.05f; // Check very slightly below
+        if (!checkCollision(checkBelow)) {
+          // No collision below, safe to fly down
+          vel.velocity.y = -10.0f;
+        } else {
+          // On ground, set velocity to 0 to prevent jitter
+          vel.velocity.y = 0.0f;
+        }
       }
     }
   });
