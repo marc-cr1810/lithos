@@ -660,25 +660,38 @@ const Chunk *World::getChunk(int chunkX, int chunkY, int chunkZ) const {
   return nullptr;
 }
 
-// Helper for floor division
-int floorDiv(int a, int b) { return (a >= 0) ? (a / b) : ((a - b + 1) / b); }
+// Helper for floor division (explicitly defined to avoid ambiguity)
+inline int floorDiv(int a, int b) {
+  return (a >= 0) ? (a / b) : ((a - b + 1) / b);
+}
 
 ChunkBlock World::getBlock(int x, int y, int z) const {
-  int cx = floorDiv(x, CHUNK_SIZE);
-  int cy = floorDiv(y, CHUNK_SIZE);
-  int cz = floorDiv(z, CHUNK_SIZE);
+  // Explicit chunk coordinate calculation handles negative coordinates
+  // correctly
+  int cx = (x >= 0) ? (x / CHUNK_SIZE) : ((x - CHUNK_SIZE + 1) / CHUNK_SIZE);
+  int cy = (y >= 0) ? (y / CHUNK_SIZE) : ((y - CHUNK_SIZE + 1) / CHUNK_SIZE);
+  int cz = (z >= 0) ? (z / CHUNK_SIZE) : ((z - CHUNK_SIZE + 1) / CHUNK_SIZE);
 
   const Chunk *c = getChunk(cx, cy, cz);
   if (!c) {
-    // Return Air with full sunlight (simulate open world)
-    return ChunkBlock{BlockRegistry::getInstance().getBlock(AIR), 15, 0};
+    // Return Air if chunk is not loaded
+    return {BlockRegistry::getInstance().getBlock(AIR), 15, 0};
   }
 
-  // Local Calc
-  int lx = x - cx * CHUNK_SIZE;
-  int ly = y - cy * CHUNK_SIZE;
-  int lz = z - cz * CHUNK_SIZE;
+  // Local coordinates (robust modulo)
+  int lx = x % CHUNK_SIZE;
+  if (lx < 0)
+    lx += CHUNK_SIZE;
 
+  int ly = y % CHUNK_SIZE;
+  if (ly < 0)
+    ly += CHUNK_SIZE;
+
+  int lz = z % CHUNK_SIZE;
+  if (lz < 0)
+    lz += CHUNK_SIZE;
+
+  // Utilize the chunk's getBlock which has its own bounds checks
   return c->getBlock(lx, ly, lz);
 }
 

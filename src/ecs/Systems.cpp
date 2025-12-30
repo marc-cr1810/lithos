@@ -93,11 +93,14 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
       float playerWidth = 0.6f;
       float playerHeight = 1.8f;
       float eyeHeight = 1.6f;
-      float epsilon = 0.05f;
-      float minX = pos.x - playerWidth / 2.0f;
-      float maxX = pos.x + playerWidth / 2.0f;
-      float minZ = pos.z - playerWidth / 2.0f;
-      float maxZ = pos.z + playerWidth / 2.0f;
+      // Increased epsilon to prevent interacting with walls
+      float epsilon = 0.1f;
+      float minX = pos.x - playerWidth / 2.0f + epsilon;
+      float maxX = pos.x + playerWidth / 2.0f - epsilon;
+      float minZ = pos.z - playerWidth / 2.0f + epsilon;
+      float maxZ = pos.z + playerWidth / 2.0f - epsilon;
+
+      // Vertical margin
       float minY = pos.y - eyeHeight + epsilon;
       float maxY = pos.y - eyeHeight + playerHeight - epsilon;
 
@@ -120,30 +123,22 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
     };
 
     // --- PHASE 1: Resolve Y Collision (from PhysicsSystem gravity) ---
-    // PhysicsSystem has already integrated velocity into position.
-    // If we sunk into the floor, we need to snap out BEFORE processing lateral
-    // movement.
-
     if (checkCollision(transform.position)) {
       if (vel.velocity.y < 0) {
-        // Falling down into floor
-        // Snap up
-        // Find the block we hit.
+        // Falling down into floor - Snap up
         float eyeHeight = 1.6f;
         float feetY = transform.position.y - eyeHeight;
-        int blockY = (int)floor(feetY);
 
-        // We are intersecting, so we must be inside 'blockY' or slightly below.
-        // However, checkCollision checks a box.
+        // Use offset to stabilize integer boundary
+        int blockY = (int)floor(feetY - 0.1f);
+
         // Snap to top of blockY:
-        transform.position.y =
-            (float)(blockY + 1) + eyeHeight + 0.001f; // +epsilon
+        transform.position.y = (float)(blockY + 1) + eyeHeight;
 
         vel.velocity.y = 0.0f;
         input.isGrounded = true;
       } else if (vel.velocity.y > 0) {
-        // Jumping up into ceiling
-        // Snap down
+        // Jumping up into ceiling - Snap down
         while (checkCollision(transform.position)) {
           transform.position.y -= 0.01f;
         }
@@ -153,20 +148,22 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
       // Not inside block, but check if we are grounded (standing on block)
       if (!input.flyMode) {
         glm::vec3 checkBelow = transform.position;
-        checkBelow.y -= 0.05f;
+        // Check slightly deeper to catch ground
+        checkBelow.y -= 0.1f;
         if (checkCollision(checkBelow)) {
           input.isGrounded = true;
-          vel.velocity.y = 0.0f; // Stop small gravity accumulation
+          vel.velocity.y = 0.0f;
 
           // Precise snap to floor
           float eyeHeight = 1.6f;
           float feetY = transform.position.y - eyeHeight;
-          int blockY = (int)floor(feetY);
-          // Note: if feetY is 60.99, floor is 60. Target is 61.0.
-          // IF block Y=60 is the one coliding (checkBelow detected it).
-          // We should snap to blockY + 1.
 
-          transform.position.y = (float)(blockY + 1) + eyeHeight + 0.001f;
+          // Use offset to stabilize integer boundary logic
+          int blockY = (int)floor(feetY - 0.1f);
+
+          // Snap only if significant deviance? Or always consistent?
+          // Consistency is key.
+          transform.position.y = (float)(blockY + 1) + eyeHeight;
         } else {
           if (input.isGrounded && vel.velocity.y <= 0) {
             // Walked off ledge?

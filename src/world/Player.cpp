@@ -207,33 +207,52 @@ void Player::Update(float deltaTime, const World &world) {
   float playerHeight = 1.8f;
   float eyeHeight = 1.6f;
   float feetY = Position.y - eyeHeight;
-  int blockY = (int)floor(feetY);
+
+  // Use a slightly larger epsilon for vertical check to stabilize "standing"
+  // detection and ensure we check the block *below* the feet when exactly at
+  // integer coordinates.
+  int blockY = (int)floor(feetY - 0.1f);
 
   float playerWidth = 0.6f;
+  // Shrink the floor check bounding box slightly so we don't treat adjacent
+  // walls as "ground" This prevents the player from snapping up when walking
+  // into walls or "wall jumping". Increased to 0.1 to handle chunk boundary
+  // precision issues.
+  float boundsEpsilon = 0.1f;
 
-  int minBlockX = (int)floor(Position.x - playerWidth / 2.0f);
-  int maxBlockX = (int)floor(Position.x + playerWidth / 2.0f);
-  int minBlockZ = (int)floor(Position.z - playerWidth / 2.0f);
-  int maxBlockZ = (int)floor(Position.z + playerWidth / 2.0f);
+  int minBlockX = (int)floor(Position.x - playerWidth / 2.0f + boundsEpsilon);
+  int maxBlockX = (int)floor(Position.x + playerWidth / 2.0f - boundsEpsilon);
+  int minBlockZ = (int)floor(Position.z - playerWidth / 2.0f + boundsEpsilon);
+  int maxBlockZ = (int)floor(Position.z + playerWidth / 2.0f - boundsEpsilon);
 
   bool hitGround = false;
 
-  // Only check floor collision if we are falling or standing still
-  // This prevents snapping to the top of blocks we are jumping through/past
+  // Only check floor collision if we are falling or standing still (or moving
+  // slightly down due to gravity)
   if (Velocity.y <= 0.0f && blockY >= -128 && blockY < 512) {
     for (int x = minBlockX; x <= maxBlockX; ++x) {
       for (int z = minBlockZ; z <= maxBlockZ; ++z) {
         if (world.getBlock(x, blockY, z).isSolid()) {
           hitGround = true;
-          x = maxBlockX + 1;
-          break;
+          // Optimization: Break early if ground is found
+          // (Wait, we can't just set x = maxBlockX + 1 because the outer loop
+          // continues? Actually, breaking inner loop is fine, we just need one
+          // solid block to be grounded)
+          goto found_ground;
         }
       }
     }
   }
+found_ground:
 
   if (hitGround) {
-    Position.y = (float)(blockY + 1) + eyeHeight;
+    float newY = (float)(blockY + 1) + eyeHeight;
+    if (std::abs(newY - Position.y) > 0.1f) {
+      printf("[PHYSICS] SNAP DETECTED! PosY: %.4f -> %.4f. BlockY: %d. FeetY: "
+             "%.4f\n",
+             Position.y, newY, blockY, feetY);
+    }
+    Position.y = newY;
     Velocity.y = 0.0f;
     IsGrounded = true;
   } else {
