@@ -2,6 +2,7 @@
 #define BLOCK_H
 
 #include <cstdint>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -97,7 +98,7 @@ public:
   }
 
   // Resolve UVs from Atlas
-  void setModel(const std::string &path) {
+  void setModel(const std::filesystem::path &path) {
     customModel = ModelLoader::loadModel(path);
   }
 
