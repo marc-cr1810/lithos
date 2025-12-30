@@ -61,7 +61,8 @@ void GameState::InitEntities(Application *app) {
 
 void GameState::InitRendering() {
   m_Shader =
-      std::make_unique<Shader>("src/shaders/basic.vs", "src/shaders/basic.fs");
+      std::make_unique<Shader>(std::filesystem::path("src/shaders/basic.vs"),
+                               std::filesystem::path("src/shaders/basic.fs"));
 
   LOG_RESOURCE_INFO("Generating Texture Atlas...");
   m_Atlas = std::make_unique<TextureAtlas>(1024, 1024, 16);

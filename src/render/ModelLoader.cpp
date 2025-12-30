@@ -9,15 +9,17 @@ using json = nlohmann::json;
 
 std::unordered_map<std::string, std::shared_ptr<Model>> ModelLoader::cache;
 
-std::shared_ptr<Model> ModelLoader::loadModel(const std::string &path) {
-  LOG_RENDER_INFO("Loading Model: {}", path);
-  if (cache.find(path) != cache.end()) {
-    return cache[path];
+std::shared_ptr<Model>
+ModelLoader::loadModel(const std::filesystem::path &path) {
+  std::string pathStr = path.string();
+  LOG_RENDER_INFO("Loading Model: {}", pathStr);
+  if (cache.find(pathStr) != cache.end()) {
+    return cache[pathStr];
   }
 
   std::ifstream f(path);
   if (!f.is_open()) {
-    LOG_RENDER_ERROR("Failed to open model file: {}", path);
+    LOG_RENDER_ERROR("Failed to open model file: {}", pathStr);
     return nullptr;
   }
 
@@ -25,12 +27,12 @@ std::shared_ptr<Model> ModelLoader::loadModel(const std::string &path) {
   try {
     f >> j;
   } catch (const std::exception &e) {
-    LOG_RENDER_ERROR("JSON parsing error in {}: {}", path, e.what());
+    LOG_RENDER_ERROR("JSON parsing error in {}: {}", pathStr, e.what());
     return nullptr;
   }
 
   auto model = std::make_shared<Model>();
-  model->name = path;
+  model->name = pathStr;
 
   // Load textures
   if (j.contains("textures")) {
@@ -171,6 +173,6 @@ std::shared_ptr<Model> ModelLoader::loadModel(const std::string &path) {
     }
   }
 
-  cache[path] = model;
+  cache[pathStr] = model;
   return model;
 }

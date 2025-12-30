@@ -1,6 +1,7 @@
 #ifndef SHADER_H
 #define SHADER_H
 
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -13,7 +14,8 @@ class Shader {
 public:
   unsigned int ID;
 
-  Shader(const char *vertexPath, const char *fragmentPath);
+  Shader(const std::filesystem::path &vertexPath,
+         const std::filesystem::path &fragmentPath);
   void use();
 
   // Utility uniform functions

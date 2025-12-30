@@ -251,10 +251,11 @@ BlockRegistry::BlockRegistry() {
     if (colon != std::string::npos) {
       std::string path = resId.substr(colon + 1);
       // Check for JSON
-      std::string modelPath = "assets/models/block/" + path + ".json";
+      std::filesystem::path modelPath =
+          std::filesystem::path("assets/models/block") / (path + ".json");
       if (std::filesystem::exists(modelPath)) {
         LOG_RESOURCE_INFO("Loading custom model for {} -> {}", resId,
-                          modelPath);
+                          modelPath.string());
         block->setRenderShape(Block::RenderShape::MODEL);
         block->setModel(modelPath);
       }

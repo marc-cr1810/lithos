@@ -1,8 +1,10 @@
 #include "Shader.h"
 #include "../debug/Logger.h"
+#include <filesystem>
 #include <fstream>
 
-Shader::Shader(const char *vertexPath, const char *fragmentPath) {
+Shader::Shader(const std::filesystem::path &vertexPath,
+               const std::filesystem::path &fragmentPath) {
   // 1. Retrieve the vertex/fragment source code from filePath
   std::string vertexCode;
   std::string fragmentCode;
@@ -64,8 +66,8 @@ Shader::Shader(const char *vertexPath, const char *fragmentPath) {
   glDeleteShader(vertex);
   glDeleteShader(fragment);
 
-  LOG_RENDER_INFO("Shader Compiled: Vert='{}', Frag='{}'", vertexPath,
-                  fragmentPath);
+  LOG_RENDER_INFO("Shader Compiled: Vert='{}', Frag='{}'", vertexPath.string(),
+                  fragmentPath.string());
 }
 
 void Shader::use() { glUseProgram(ID); }
