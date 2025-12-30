@@ -372,10 +372,14 @@ void GameState::Update(Application *app, float dt) {
         up = true;
     }
 
-    PlayerControlSystem::Update(app->GetRegistry(), currentW, currentS,
-                                currentA, currentD, up, down, dt,
-                                *app->GetWorld());
-    CameraSystem::Update(app->GetRegistry(), app->GetCamera());
+    {
+      PROFILE_SCOPE("ECS Update");
+      PhysicsSystem::Update(app->GetRegistry(), dt);
+      PlayerControlSystem::Update(app->GetRegistry(), currentW, currentS,
+                                  currentA, currentD, up, down, dt,
+                                  *app->GetWorld());
+      CameraSystem::Update(app->GetRegistry(), app->GetCamera());
+    }
   }
 
   // LOD Check
@@ -418,6 +422,7 @@ void GameState::Update(Application *app, float dt) {
 }
 
 void GameState::Render(Application *app) {
+  auto &input = app->GetRegistry().get<InputComponent>(m_PlayerEntity);
   int width, height;
   glfwGetFramebufferSize(app->GetWindow(), &width, &height);
   // Water/Lava Tinting Logic
@@ -470,6 +475,7 @@ void GameState::Render(Application *app) {
 
   m_Shader->setMat4("projection", projection);
   m_Shader->setMat4("view", view);
+  m_Shader->setBool("useLighting", true);
   m_Shader->setVec3("viewPos", app->GetCamera().Position);
   m_Shader->setVec3("lightColor", 1.0f, 1.0f, 1.0f);
   m_Shader->setVec3("lightDir", 0.0f, 1.0f, 0.2f);
@@ -517,6 +523,7 @@ void GameState::Render(Application *app) {
   m_Shader->setMat4("view", glm::mat4(1.0f));
   m_Shader->setMat4("projection", glm::mat4(1.0f));
   m_Shader->setBool("useTexture", false);
+  m_Shader->setBool("useLighting", false);
   m_Shader->setBool("useFog", false);
 
   glBindVertexArray(m_CrosshairVAO);
@@ -524,7 +531,7 @@ void GameState::Render(Application *app) {
 
   // Block Selection Box
   // Block Selection Box
-  if (m_Hit) {
+  if (m_Hit && !input.noclip) {
     // Draw Selection Wireframe (World Space Vertices like old_main.cpp)
     float gap = 0.001f;
     float minX = m_HitPos.x - gap;
@@ -572,6 +579,7 @@ void GameState::Render(Application *app) {
     m_Shader->setMat4("view", view);
     m_Shader->setMat4("projection", projection);
     m_Shader->setBool("useTexture", false);
+    m_Shader->setBool("useLighting", false);
     m_Shader->setBool("useFog", false);
 
     glDrawArrays(GL_LINES, 0, 24);

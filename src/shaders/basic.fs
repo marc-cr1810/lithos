@@ -11,6 +11,7 @@ in vec3 FragPos;
 uniform sampler2D texture1;
 uniform bool useTexture;
 uniform float sunStrength;
+uniform bool useLighting;
 uniform vec3 viewPos; // Camera Position for Fog
 uniform vec2 uvScale; // Atlas Slot Size
 
@@ -62,6 +63,8 @@ void main()
     
     float lightVal = max(sunLevel, blockLevel);
     lightVal = max(0.2, lightVal); // Ambient min
+
+    if (!useLighting) lightVal = 1.0; // Bypass for UI/Fullbright
 
     // Apply AO to the final light multiplier or the color?
     // AO represents blocked ambient light.

@@ -1,14 +1,13 @@
 #include "Application.h"
 #include "../debug/Logger.h"
+#include "../debug/Profiler.h"
 #include "../states/LoadingState.h"
 #include "StateManager.h"
-
 
 // ImGui
 #include "backends/imgui_impl_glfw.h"
 #include "backends/imgui_impl_opengl3.h"
 #include "imgui.h"
-
 
 #include <iostream>
 
@@ -99,6 +98,7 @@ void Application::Run() {
   float lastFrame = 0.0f;
 
   while (!glfwWindowShouldClose(m_Window) && m_Running) {
+    PROFILE_SCOPE("Main Loop");
     float currentFrame = static_cast<float>(glfwGetTime());
     float deltaTime = currentFrame - lastFrame;
     lastFrame = currentFrame;
