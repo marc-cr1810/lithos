@@ -48,22 +48,22 @@ int WorldGenerator::GetHeight(int x, int z) {
   LandformConfig *secondary = nullptr;
   float blendFactor = 0.0f;
 
-  if (landformNoise < -0.3f) {
+  if (landformNoise < -0.4f) {
+    primary = &landforms["oceans"];
+    secondary = &landforms["valleys"];
+    blendFactor = (landformNoise + 0.6f) / 0.2f; // -0.6 to -0.4
+  } else if (landformNoise < 0.0f) {
     primary = &landforms["valleys"];
     secondary = &landforms["plains"];
-    blendFactor = (landformNoise + 0.5f) / 0.2f; // -0.5 to -0.3
-  } else if (landformNoise < 0.1f) {
+    blendFactor = (landformNoise + 0.4f) / 0.4f; // -0.4 to 0.0
+  } else if (landformNoise < 0.4f) {
     primary = &landforms["plains"];
     secondary = &landforms["hills"];
-    blendFactor = (landformNoise + 0.3f) / 0.4f; // -0.3 to 0.1
-  } else if (landformNoise < 0.5f) {
+    blendFactor = (landformNoise - 0.0f) / 0.4f; // 0.0 to 0.4
+  } else {
     primary = &landforms["hills"];
     secondary = &landforms["mountains"];
-    blendFactor = (landformNoise - 0.1f) / 0.4f; // 0.1 to 0.5
-  } else {
-    primary = &landforms["mountains"];
-    secondary = &landforms["mountains"];
-    blendFactor = 0.0f;
+    blendFactor = (landformNoise - 0.4f) / 0.4f; // 0.4 to 0.8
   }
 
   blendFactor = std::max(0.0f, std::min(1.0f, blendFactor));
@@ -263,11 +263,13 @@ std::string WorldGenerator::GetLandformType(int x, int z) {
   float landformNoise = GetLandformNoise(x, z);
 
   // Map noise value to landform types (used for biome/decoration logic)
-  if (landformNoise < -0.3f) {
+  if (landformNoise < -0.4f) {
+    return "oceans";
+  } else if (landformNoise < 0.0f) {
     return "valleys";
-  } else if (landformNoise < 0.1f) {
+  } else if (landformNoise < 0.4f) {
     return "plains";
-  } else if (landformNoise < 0.5f) {
+  } else if (landformNoise < 0.8f) {
     return "hills";
   } else {
     return "mountains";
@@ -275,6 +277,17 @@ std::string WorldGenerator::GetLandformType(int x, int z) {
 }
 
 void WorldGenerator::InitializeLandforms() {
+  // Oceans - deep basins
+  LandformConfig oceans;
+  oceans.name = "oceans";
+  oceans.octaveAmplitudes = {0.60f,  0.20f,  0.10f,  0.05f,   0.025f,
+                             0.012f, 0.006f, 0.003f, 0.0015f, 0.0008f};
+  oceans.octaveThresholds = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                             0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  oceans.baseHeight = 45.0f; // Deep enough for water (sea level 60)
+  oceans.heightVariation = 10.0f;
+  landforms["oceans"] = oceans;
+
   // Plains - smooth, gentle terrain
   LandformConfig plains;
   plains.name = "plains";
