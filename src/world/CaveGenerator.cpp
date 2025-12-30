@@ -6,8 +6,9 @@
 #include <glm/gtc/noise.hpp>
 #include <random>
 
-CaveGenerator::CaveGenerator(int seed)
-    : seed(seed), caveFrequency(0.015f), caveThreshold(0.55f) {}
+CaveGenerator::CaveGenerator(const WorldGenConfig &config)
+    : seed(config.seed), caveFrequency(config.caveFrequency),
+      caveThreshold(config.caveThreshold) {}
 
 bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth) {
   // Surface deterrent: instead of a hard cutoff, use a dynamic deterrent

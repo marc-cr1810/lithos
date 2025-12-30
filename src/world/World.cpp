@@ -53,7 +53,8 @@ bool isAABBInFrustum(const glm::vec3 &min, const glm::vec3 &max,
   return true;
 }
 
-World::World(int seed) : shutdown(false), worldSeed(seed) {
+World::World(const WorldGenConfig &config)
+    : shutdown(false), config(config), worldSeed(config.seed) {
   LOG_WORLD_INFO("World initialized with Seed: {}", worldSeed);
 
   // Start Mesh Threads
@@ -231,7 +232,7 @@ void World::QueueMeshUpdate(Chunk *c, bool priority) {
 }
 
 void World::GenerationWorkerLoop() {
-  WorldGenerator generator(worldSeed);
+  WorldGenerator generator(config);
   while (true) {
     std::tuple<int, int, int> coord;
     {

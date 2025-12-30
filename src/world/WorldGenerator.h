@@ -2,6 +2,7 @@
 #define WORLDGENERATOR_H
 
 #include "Block.h"
+#include "WorldGenConfig.h"
 #include <glm/glm.hpp>
 #include <map>
 #include <string>
@@ -33,7 +34,7 @@ struct LandformConfig {
 // Cave generation system
 class CaveGenerator {
 public:
-  CaveGenerator(int seed);
+  CaveGenerator(const WorldGenConfig &config);
 
   // Check if position should be a cave
   bool IsCaveAt(int x, int y, int z, int maxDepth);
@@ -55,7 +56,7 @@ private:
 
 class WorldGenerator {
 public:
-  WorldGenerator(int seed);
+  WorldGenerator(const WorldGenConfig &config);
   ~WorldGenerator();
   void GenerateColumn(ChunkColumn &column, int cx, int cz);
   void GenerateChunk(Chunk &chunk, const ChunkColumn &column);
@@ -78,10 +79,13 @@ private:
   // Landform initialization
   void InitializeLandforms();
 
+  LandformConfig *GetLandform(const std::string &name);
+
   // Members
   std::vector<WorldDecorator *> decorators;
   std::map<std::string, LandformConfig> landforms;
   CaveGenerator *caveGenerator;
+  WorldGenConfig config;
   int seed;
 };
 

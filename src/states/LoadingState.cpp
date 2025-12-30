@@ -3,15 +3,19 @@
 #include "../debug/Logger.h"
 #include "GameState.h"
 
-
 #include "backends/imgui_impl_glfw.h"
 #include "backends/imgui_impl_opengl3.h"
 #include "imgui.h"
 #include <GLFW/glfw3.h>
 
+LoadingState::LoadingState(const WorldGenConfig &config) : m_Config(config) {}
 
 void LoadingState::Init(Application *app) {
   LOG_INFO("Entering Loading State");
+
+  // Re-initialize World with our new config
+  app->SetWorld(std::make_unique<World>(m_Config));
+
   glfwSetInputMode(app->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
   m_LoadingStartTime = glfwGetTime();

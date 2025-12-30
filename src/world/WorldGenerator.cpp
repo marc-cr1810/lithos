@@ -9,7 +9,8 @@
 #include "OreDecorator.h"
 #include "TreeDecorator.h"
 
-WorldGenerator::WorldGenerator(int seed) : seed(seed) {
+WorldGenerator::WorldGenerator(const WorldGenConfig &config)
+    : config(config), seed(config.seed) {
   decorators.push_back(new OreDecorator());
   decorators.push_back(new TreeDecorator());
   decorators.push_back(new FloraDecorator());
@@ -18,7 +19,7 @@ WorldGenerator::WorldGenerator(int seed) : seed(seed) {
   InitializeLandforms();
 
   // Initialize cave generator
-  caveGenerator = new CaveGenerator(seed);
+  caveGenerator = new CaveGenerator(config);
 }
 
 WorldGenerator::~WorldGenerator() {
@@ -284,8 +285,8 @@ void WorldGenerator::InitializeLandforms() {
                              0.012f, 0.006f, 0.003f, 0.0015f, 0.0008f};
   oceans.octaveThresholds = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                              0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-  oceans.baseHeight = 45.0f; // Deep enough for water (sea level 60)
-  oceans.heightVariation = 10.0f;
+  oceans.baseHeight = config.landformOverrides["oceans"].baseHeight;
+  oceans.heightVariation = config.landformOverrides["oceans"].heightVariation;
   landforms["oceans"] = oceans;
 
   // Plains - smooth, gentle terrain
@@ -295,8 +296,8 @@ void WorldGenerator::InitializeLandforms() {
                              0.018f, 0.009f, 0.0045f, 0.0022f, 0.0011f};
   plains.octaveThresholds = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                              0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-  plains.baseHeight = 64.0f;
-  plains.heightVariation = 12.0f;
+  plains.baseHeight = config.landformOverrides["plains"].baseHeight;
+  plains.heightVariation = config.landformOverrides["plains"].heightVariation;
   landforms["plains"] = plains;
 
   // Hills - moderate variation
@@ -306,8 +307,8 @@ void WorldGenerator::InitializeLandforms() {
                             0.07f, 0.035f, 0.018f, 0.009f, 0.0045f};
   hills.octaveThresholds = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                             0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-  hills.baseHeight = 68.0f;
-  hills.heightVariation = 25.0f;
+  hills.baseHeight = config.landformOverrides["hills"].baseHeight;
+  hills.heightVariation = config.landformOverrides["hills"].heightVariation;
   landforms["hills"] = hills;
 
   // Mountains - dramatic, rugged terrain
@@ -317,8 +318,9 @@ void WorldGenerator::InitializeLandforms() {
                                 0.2f,  0.14f, 0.07f, 0.035f, 0.018f};
   mountains.octaveThresholds = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                                 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-  mountains.baseHeight = 82.0f;
-  mountains.heightVariation = 60.0f;
+  mountains.baseHeight = config.landformOverrides["mountains"].baseHeight;
+  mountains.heightVariation =
+      config.landformOverrides["mountains"].heightVariation;
   landforms["mountains"] = mountains;
 
   // Valleys - low, flat areas
@@ -328,8 +330,8 @@ void WorldGenerator::InitializeLandforms() {
                               0.014f, 0.007f, 0.0035f, 0.0017f, 0.0008f};
   valleys.octaveThresholds = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                               0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-  valleys.baseHeight = 58.0f;
-  valleys.heightVariation = 7.0f;
+  valleys.baseHeight = config.landformOverrides["valleys"].baseHeight;
+  valleys.heightVariation = config.landformOverrides["valleys"].heightVariation;
   landforms["valleys"] = valleys;
 }
 
@@ -411,56 +413,48 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
 
       // Get Height from column
       int height = column.heightMap[x][z];
-
-      // Climate data and surface blocks are now handled by GetSurfaceBlock()
+      bool isUnderwater = (height <= config.seaLevel);
 
       for (int y = 0; y < CHUNK_SIZE; ++y) {
         int gy = pos.y * CHUNK_SIZE + y;
         BlockType type = GetSurfaceBlock(gx, gy, gz);
 
-        // Water Fill
-        if (type == AIR && gy <= 60) {
+        // 1. Water Fill
+        if (type == AIR && gy <= config.seaLevel) {
           // Ice forms in cold climates
           float temp = GetTemperature(gx, gz);
-          if (temp < -0.3f && gy == 60)
+          if (temp < -0.3f && gy == config.seaLevel)
             type = ICE;
           else
             type = WATER;
         }
 
         // 2. Carve Caves using new CaveGenerator
+        bool preserveCrust = false;
         // Only try to carve if the block is solid (Not Air, Not Water)
-        if (type != WATER && type != AIR) {
-          bool isUnderwater = (height <= 60);
-          bool preserveCrust = false;
+        // Only preserve crust underwater to prevent ocean draining
+        if (isUnderwater && gy > height - 3)
+          preserveCrust = true;
 
-          // Only preserve crust underwater to prevent ocean draining
-          if (isUnderwater && gy > height - 3)
-            preserveCrust = true;
+        // Bedrock preservation
+        if (gy <= 0)
+          preserveCrust = true;
 
-          // Bedrock preservation
-          if (gy <= 0)
-            preserveCrust = true;
-
-          if (!preserveCrust) {
-            // Use new 3D cave generation and ravines
-            if (caveGenerator->IsCaveAt(gx, gy, gz, height) ||
-                caveGenerator->IsRavineAt(gx, gy, gz, height)) {
-              // Cave Air or Lava?
-              if (gy <= 10)
-                type = LAVA;
-              else
-                type = AIR;
-            }
+        if (!preserveCrust) {
+          // Use new 3D cave generation and ravines
+          if (caveGenerator->IsCaveAt(gx, gy, gz, height) ||
+              caveGenerator->IsRavineAt(gx, gy, gz, height)) {
+            // Cave Air or Lava?
+            if (gy <= 10)
+              type = LAVA;
+            else
+              type = AIR;
           }
         }
 
-        // Bedrock Flattening (Roughness)
+        // 3. Bedrock Flattening (Roughness)
         // Only apply if the block hasn't been carved by a cave or ravine
         if (gy <= 4 && type != AIR && type != LAVA) {
-          // Bedrock floor is at 0.
-          // Layer 1 has 80% bedrock, Layer 2 60%, etc.
-          // gy=0 is handled above.
           if (gy > 0) {
             int chance = 100 - (gy * 20);
             if ((rand() % 100) < chance)
@@ -470,8 +464,8 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
 
         chunk.setBlock(x, y, z, type);
 
-        // Post-Set Fixes (Grass->Dirt under water)
-        if (type == WATER && gy <= 60) {
+        // 4. Post-Set Fixes (Grass->Dirt under water)
+        if (type == WATER && gy <= config.seaLevel) {
           if (y > 0) {
             if (chunk.getBlock(x, y - 1, z).getType() == GRASS) {
               chunk.setBlock(x, y - 1, z, DIRT);

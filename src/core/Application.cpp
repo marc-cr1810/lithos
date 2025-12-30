@@ -2,6 +2,7 @@
 #include "../debug/Logger.h"
 #include "../debug/Profiler.h"
 #include "../states/LoadingState.h"
+#include "../states/MenuState.h"
 #include "StateManager.h"
 
 // ImGui
@@ -23,10 +24,10 @@ Application::Application(const AppConfig &config)
 
   // Init Application Dependent Systems
   m_StateManager = std::make_unique<StateManager>(this);
-  m_World = std::make_unique<World>(m_Config.seed);
+  // m_World will be initialized in LoadingState::Init
 
   // Load initial state
-  m_StateManager->PushState(std::make_unique<LoadingState>());
+  m_StateManager->PushState(std::make_unique<MenuState>());
 }
 
 Application::~Application() { Shutdown(); }

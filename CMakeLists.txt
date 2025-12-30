@@ -142,6 +142,7 @@ add_executable(lithos
     src/core/Application.cpp
     src/states/LoadingState.cpp
     src/states/GameState.cpp
+    src/states/MenuState.cpp
     src/render/Shader.cpp 
     src/render/Camera.cpp
     src/render/Texture.cpp

@@ -1,10 +1,12 @@
 #pragma once
 
 #include "../core/State.h"
+#include "../world/WorldGenConfig.h"
 #include <glm/glm.hpp>
 
 class LoadingState : public State {
 public:
+  LoadingState(const WorldGenConfig &config);
   void Init(Application *app) override;
   void HandleInput(Application *app) override;
   void Update(Application *app, float dt) override;
@@ -24,4 +26,6 @@ private:
   // Chunk Loading Tracking
   int m_LoadedCount = 0;
   int m_TotalChunksToCheck = 0;
+
+  WorldGenConfig m_Config;
 };

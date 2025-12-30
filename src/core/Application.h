@@ -13,7 +13,6 @@
 #include "StateManager.h"
 #include <entt/entt.hpp>
 
-
 struct AppConfig {
   int width = 1280;
   int height = 720;
@@ -40,6 +39,7 @@ public:
   // Getters for States
   GLFWwindow *GetWindow() const { return m_Window; }
   World *GetWorld() { return m_World.get(); }
+  void SetWorld(std::unique_ptr<World> world) { m_World = std::move(world); }
   entt::registry &GetRegistry() { return m_Registry; }
   Camera &GetCamera() { return m_Camera; }
 

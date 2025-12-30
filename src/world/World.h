@@ -19,6 +19,7 @@
 #include "Block.h"
 #include "Chunk.h"
 #include "ChunkColumn.h"
+#include "WorldGenConfig.h"
 
 // Hash function for std::tuple
 // Hash function for std::tuple
@@ -45,7 +46,7 @@ struct BlockUpdate {
 
 class World {
 public:
-  World(int seed);
+  World(const WorldGenConfig &config);
   ~World();
 
   void addChunk(int x, int y, int z); // Chunk coords
@@ -53,6 +54,7 @@ public:
   const Chunk *getChunk(int chunkX, int chunkY, int chunkZ) const;
 
   // Global world coordinates
+  WorldGenConfig config;
   int worldSeed;
   ChunkBlock getBlock(int x, int y, int z) const;
   void setBlock(int x, int y, int z, BlockType type);
