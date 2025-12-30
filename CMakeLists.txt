@@ -125,7 +125,7 @@ FetchContent_MakeAvailable(spdlog)
 
 # Debug Macro
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    add_definitions(-DMINCERAFT_DEBUG)
+    add_definitions(-DLITHOS_DEBUG)
 endif()
 
 

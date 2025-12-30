@@ -350,7 +350,14 @@ int main(int argc, char *argv[]) {
   int retry = 0;
   const int MAX_RETRIES = 1000; // Increased timeout
 
-  LOG_WORLD_INFO("Generating Spawn Area... (Radius 6 Chunks)");
+  // Define spawn radius based on build type
+#ifdef LITHOS_DEBUG
+  const int SPAWN_RADIUS = 2; // Smaller radius for faster debug builds
+#else
+  const int SPAWN_RADIUS = 8; // Larger radius for release builds
+#endif
+
+  LOG_WORLD_INFO("Generating Spawn Area... (Radius {} Chunks)", SPAWN_RADIUS);
 
   double loadingStartTime = glfwGetTime();
   while (!foundGround && !glfwWindowShouldClose(window)) {
@@ -373,8 +380,8 @@ int main(int argc, char *argv[]) {
       glm::mat4 projection =
           glm::perspective(glm::radians(camera.Zoom),
                            (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
-      // Radius 6
-      world.loadChunks(glm::vec3(spawnX, 100, spawnZ), 6, projection * view);
+      world.loadChunks(glm::vec3(spawnX, 100, spawnZ), SPAWN_RADIUS,
+                       projection * view);
       lastLoadTime = currentTime;
     }
     world.Update();
@@ -388,11 +395,11 @@ int main(int argc, char *argv[]) {
     int totalChunksToCheck = 0;
     bool allLoaded = true;
 
-    for (int rx = cx - 6; rx <= cx + 6; ++rx) {
-      for (int rz = cz - 6; rz <= cz + 6; ++rz) {
+    for (int rx = cx - SPAWN_RADIUS; rx <= cx + SPAWN_RADIUS; ++rx) {
+      for (int rz = cz - SPAWN_RADIUS; rz <= cz + SPAWN_RADIUS; ++rz) {
         int dx = rx - cx;
         int dz = rz - cz;
-        if (dx * dx + dz * dz <= 36) {
+        if (dx * dx + dz * dz <= SPAWN_RADIUS * SPAWN_RADIUS) {
           totalChunksToCheck++;
           if (world.getChunk(rx, 4, rz) != nullptr) {
             loadedCount++;
@@ -410,17 +417,26 @@ int main(int argc, char *argv[]) {
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+    // Calculate dynamic window size based on spawn radius
+    const int gridSize = (SPAWN_RADIUS * 2 + 1);
+    const float cellSize = 12.0f;
+    const float gridWidth = gridSize * cellSize;
+    const float gridHeight = gridSize * cellSize;
+    const float windowWidth =
+        std::max(500.0f, gridWidth + 40.0f);        // 40px padding
+    const float windowHeight = 200.0f + gridHeight; // Text + progress + grid
+
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
                             ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(500, 500));
+    ImGui::SetNextWindowSize(ImVec2(windowWidth, windowHeight));
     // Use a window with no title bar/resize for clean look
     if (ImGui::Begin("Loading", nullptr,
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                          ImGuiWindowFlags_NoSavedSettings)) {
       ImGui::Dummy(ImVec2(0.0f, 10.0f));
-      float windowWidth = ImGui::GetWindowSize().x;
+      float contentWidth = ImGui::GetWindowSize().x;
       float textWidth = ImGui::CalcTextSize("Generating World...").x;
-      ImGui::SetCursorPosX((windowWidth - textWidth) * 0.5f);
+      ImGui::SetCursorPosX((contentWidth - textWidth) * 0.5f);
       ImGui::Text("Generating World...");
 
       ImGui::Dummy(ImVec2(0.0f, 10.0f));
@@ -439,32 +455,27 @@ int main(int argc, char *argv[]) {
       ImGui::Text("Chunk Loading Status:");
       ImGui::Dummy(ImVec2(0.0f, 5.0f));
 
-      // Calculate grid dimensions (13x13 for radius 6)
-      const int gridSize = 13;
-      const float cellSize = 20.0f;
-      const float gridWidth = gridSize * cellSize;
-
       // Center the grid
-      ImGui::SetCursorPosX((windowWidth - gridWidth) * 0.5f);
+      ImGui::SetCursorPosX((contentWidth - gridWidth) * 0.5f);
 
       ImVec2 gridStart = ImGui::GetCursorScreenPos();
       ImDrawList *drawList = ImGui::GetWindowDrawList();
 
-      for (int rx = cx - 6; rx <= cx + 6; ++rx) {
-        for (int rz = cz - 6; rz <= cz + 6; ++rz) {
+      for (int rx = cx - SPAWN_RADIUS; rx <= cx + SPAWN_RADIUS; ++rx) {
+        for (int rz = cz - SPAWN_RADIUS; rz <= cz + SPAWN_RADIUS; ++rz) {
           int dx = rx - cx;
           int dz = rz - cz;
 
           // Grid position (flip Z for visual consistency)
-          int gridX = dx + 6;
-          int gridZ = 6 - dz;
+          int gridX = dx + SPAWN_RADIUS;
+          int gridZ = SPAWN_RADIUS - dz;
 
           ImVec2 cellMin(gridStart.x + gridX * cellSize,
                          gridStart.y + gridZ * cellSize);
           ImVec2 cellMax(cellMin.x + cellSize - 2, cellMin.y + cellSize - 2);
 
           ImU32 color;
-          if (dx * dx + dz * dz <= 36) {
+          if (dx * dx + dz * dz <= SPAWN_RADIUS * SPAWN_RADIUS) {
             // Within circular radius
             if (world.getChunk(rx, 4, rz) != nullptr) {
               color = IM_COL32(50, 200, 50, 255); // Green - Loaded
@@ -487,7 +498,7 @@ int main(int argc, char *argv[]) {
       }
 
       // Reserve space for the grid
-      ImGui::Dummy(ImVec2(gridWidth, gridSize * cellSize));
+      ImGui::Dummy(ImVec2(gridWidth, gridHeight));
     }
     ImGui::End();
 
@@ -913,7 +924,7 @@ int main(int argc, char *argv[]) {
       }
 
       ImGui::Separator();
-#ifdef MINCERAFT_DEBUG
+#ifdef LITHOS_DEBUG
       ImGui::TextColored(ImVec4(1, 1, 0, 1), "DEBUG BUILD");
 #else
       ImGui::TextColored(ImVec4(0, 1, 0, 1), "RELEASE BUILD");
