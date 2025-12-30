@@ -346,6 +346,13 @@ void MenuState::RenderUI(Application *app) {
                             IM_COL32(60, 60, 70, 255));
         }
 
+        // Draw sea level line
+        float seaLevelY = plotPos.y + plotSize.y -
+                          ((m_Config.seaLevel - minY) / rangeY * plotSize.y);
+        drawList->AddLine(ImVec2(plotPos.x, seaLevelY),
+                          ImVec2(plotPos.x + plotSize.x, seaLevelY),
+                          IM_COL32(50, 150, 255, 200), 2.0f);
+
         // Helper lambda to draw a line series
         auto drawSeries = [&](float *data, ImU32 color,
                               float thickness = 1.5f) {

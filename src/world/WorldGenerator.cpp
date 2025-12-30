@@ -388,16 +388,25 @@ BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz,
 float WorldGenerator::GetCaveProbability(int x, int z) {
   if (!config.enableCaves)
     return 0.0f;
-  int height = GetHeight(x, z);
-  float totalCaveNoise = 0.0f;
-  int samples = 0;
-  for (int y = 5; y < height && y < 64; y += 8) {
-    if (caveGenerator->IsCaveAt(x, y, z, height)) {
-      totalCaveNoise += 1.0f;
-    }
-    samples++;
+
+  // Use a simple 2D noise sample to show cave likelihood
+  // This gives a more intuitive preview that responds to frequency changes
+  int seedC = (seed * 7777) % 65536;
+  float nx = (float)x + (float)seedC;
+  float nz = (float)z + (float)seedC;
+
+  float caveNoise = glm::perlin(glm::vec2(nx, nz) * config.caveFrequency);
+
+  // Convert to 0-1 range and apply threshold
+  // Higher values = more likely to have caves
+  float normalized = (caveNoise + 1.0f) / 2.0f;
+
+  // Return probability based on how far above threshold
+  if (normalized > config.caveThreshold) {
+    return (normalized - config.caveThreshold) / (1.0f - config.caveThreshold);
   }
-  return (samples > 0) ? (totalCaveNoise / (float)samples) : 0.0f;
+
+  return 0.0f;
 }
 
 float WorldGenerator::GetLandformNoise(int x, int z) {
