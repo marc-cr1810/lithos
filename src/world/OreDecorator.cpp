@@ -10,8 +10,8 @@ void OreDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
   // Ores spawn underground (Stone)
   // Iterate random attempts per chunk
 
-  // Coal: Common, any height below surface
-  for (int i = 0; i < 10; ++i) {
+  // Coal
+  for (int i = 0; i < generator.GetConfig().coalAttempts; ++i) {
     int x = rand() % CHUNK_SIZE;
     int y = rand() % CHUNK_SIZE;
     int z = rand() % CHUNK_SIZE;
@@ -27,7 +27,7 @@ void OreDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
   // chunk.chunkPosition.y * CHUNK_SIZE + y;
   int globalYBase = chunk.chunkPosition.y * CHUNK_SIZE;
 
-  for (int i = 0; i < 5; ++i) {
+  for (int i = 0; i < generator.GetConfig().ironAttempts; ++i) {
     int x = rand() % CHUNK_SIZE;
     int y = rand() % CHUNK_SIZE;
     int z = rand() % CHUNK_SIZE;

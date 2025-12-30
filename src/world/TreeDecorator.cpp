@@ -163,12 +163,12 @@ void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
       int roll = GetPosRand(gx, gz, seed, 100);
 
       if (biome == BIOME_DESERT) {
-        if (surface == SAND && roll < 1) { // 1%
+        if (surface == SAND && roll < generator.GetConfig().cactusDensity) {
           GenerateCactus(chunk, gx, height, gz, seed);
         }
       } else if (biome == BIOME_TUNDRA) {
         if ((surface == SNOW || surface == GRASS || surface == DIRT) &&
-            roll < 2) {
+            roll < generator.GetConfig().pineDensity) {
           GeneratePine(chunk, gx, height, gz, seed);
           // Note: Ground flattening (SNOW->DIRT) only handled if trunk in THIS
           // chunk
@@ -180,7 +180,7 @@ void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
             chunk.setBlock(lx, ly, lz, DIRT);
         }
       } else if (biome == BIOME_FOREST) {
-        if (surface == GRASS && roll < 5) {
+        if (surface == GRASS && roll < generator.GetConfig().oakDensity) {
           GenerateOak(chunk, gx, height, gz, seed);
           int lx = gx - cp.x * CHUNK_SIZE;
           int ly = height - cp.y * CHUNK_SIZE;

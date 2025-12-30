@@ -52,6 +52,7 @@ private:
   int seed;
   float caveFrequency;
   float caveThreshold;
+  const WorldGenConfig &config;
 };
 
 class WorldGenerator {
@@ -66,6 +67,7 @@ public:
   Biome GetBiome(int x, int z);
   BlockType GetSurfaceBlock(int gx, int gy, int gz, bool checkCarving = false);
   int GetSeed() const { return seed; }
+  const WorldGenConfig &GetConfig() const { return config; }
 
 private:
   BlockType GetStrataBlock(int x, int y, int z);

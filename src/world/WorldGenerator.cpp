@@ -11,9 +11,12 @@
 
 WorldGenerator::WorldGenerator(const WorldGenConfig &config)
     : config(config), seed(config.seed) {
-  decorators.push_back(new OreDecorator());
-  decorators.push_back(new TreeDecorator());
-  decorators.push_back(new FloraDecorator());
+  if (config.enableOre)
+    decorators.push_back(new OreDecorator());
+  if (config.enableTrees)
+    decorators.push_back(new TreeDecorator());
+  if (config.enableFlora)
+    decorators.push_back(new FloraDecorator());
 
   // Initialize landform presets
   InitializeLandforms();
@@ -42,7 +45,7 @@ int WorldGenerator::GetHeight(int x, int z) {
   // Enhanced octave system with 10 octaves
   const int numOctaves = 10;
   float noiseHeight = 0.0f;
-  float frequency = 0.0025f; // Sweet spot between variation and smoothness
+  float frequency = config.terrainScale;
 
   // Blend between landforms for smooth transitions
   LandformConfig *primary = nullptr;
@@ -113,14 +116,14 @@ float WorldGenerator::GetTemperature(int x, int z) {
   float nx = (float)x + (float)seedT;
   float nz = (float)z + (float)seedT;
   // Scale 0.001f means biomes are ~1000 blocks wide
-  return glm::perlin(glm::vec2(nx, nz) * 0.002f);
+  return glm::perlin(glm::vec2(nx, nz) * config.tempScale);
 }
 
 float WorldGenerator::GetHumidity(int x, int z) {
   int seedH = (seed * 888) % 65536;
   float nx = (float)x + (float)seedH;
   float nz = (float)z + (float)seedH;
-  return glm::perlin(glm::vec2(nx, nz) * 0.002f);
+  return glm::perlin(glm::vec2(nx, nz) * config.humidityScale);
 }
 
 Biome WorldGenerator::GetBiome(int x, int z) {
@@ -202,7 +205,7 @@ BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz,
       type = beachBlock;
     else
       type = surfaceBlock;
-  } else if (gy > height - 4) {
+  } else if (gy > height - config.surfaceDepth) {
     if (gy < 60)
       type = DIRT;
     else
@@ -241,7 +244,7 @@ float WorldGenerator::GetLandformNoise(int x, int z) {
   int seedL = (seed * 1111) % 65536;
   float nx = (float)x + (float)seedL;
   float nz = (float)z + (float)seedL;
-  return glm::perlin(glm::vec2(nx, nz) * 0.0005f);
+  return glm::perlin(glm::vec2(nx, nz) * config.landformScale);
 }
 
 float WorldGenerator::GetClimateNoise(int x, int z) {
@@ -249,7 +252,7 @@ float WorldGenerator::GetClimateNoise(int x, int z) {
   int seedC = (seed * 2222) % 65536;
   float nx = (float)x + (float)seedC;
   float nz = (float)z + (float)seedC;
-  return glm::perlin(glm::vec2(nx, nz) * 0.0001f);
+  return glm::perlin(glm::vec2(nx, nz) * config.climateScale);
 }
 
 float WorldGenerator::GetGeologicNoise(int x, int z) {
@@ -257,7 +260,7 @@ float WorldGenerator::GetGeologicNoise(int x, int z) {
   int seedG = (seed * 3333) % 65536;
   float nx = (float)x + (float)seedG;
   float nz = (float)z + (float)seedG;
-  return glm::perlin(glm::vec2(nx, nz) * 0.001f);
+  return glm::perlin(glm::vec2(nx, nz) * config.geologicScale);
 }
 
 std::string WorldGenerator::GetLandformType(int x, int z) {
@@ -442,8 +445,14 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
 
         if (!preserveCrust) {
           // Use new 3D cave generation and ravines
-          if (caveGenerator->IsCaveAt(gx, gy, gz, height) ||
-              caveGenerator->IsRavineAt(gx, gy, gz, height)) {
+          bool shouldCarve = false;
+          if (config.enableCaves && caveGenerator->IsCaveAt(gx, gy, gz, height))
+            shouldCarve = true;
+          if (config.enableRavines &&
+              caveGenerator->IsRavineAt(gx, gy, gz, height))
+            shouldCarve = true;
+
+          if (shouldCarve) {
             // Cave Air or Lava?
             if (gy <= 10)
               type = LAVA;

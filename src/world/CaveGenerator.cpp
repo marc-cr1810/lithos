@@ -8,7 +8,7 @@
 
 CaveGenerator::CaveGenerator(const WorldGenConfig &config)
     : seed(config.seed), caveFrequency(config.caveFrequency),
-      caveThreshold(config.caveThreshold) {}
+      caveThreshold(config.caveThreshold), config(config) {}
 
 bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth) {
   // Surface deterrent: instead of a hard cutoff, use a dynamic deterrent
@@ -23,12 +23,13 @@ bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth) {
     float entranceNoise =
         glm::perlin(glm::vec2((float)x * 0.012f, (float)z * 0.012f));
 
-    // Broader entrance zones (0.4 -> 0.2)
-    if (entranceNoise < 0.2f) {
+    // Broader entrance zones (0.4 -> caveEntranceNoise)
+    if (entranceNoise < config.caveEntranceNoise) {
       surfaceDeterrent = (float)(y - (maxDepth - 15)) * 0.1f;
     } else {
       // Within entrance zones, we also boost the cave size for grand entrances
-      grandEntranceBonus = (entranceNoise - 0.2f) * 0.3f; // Up to 0.24 bonus
+      grandEntranceBonus =
+          (entranceNoise - config.caveEntranceNoise) * 0.3f; // Up to 0.24 bonus
     }
   }
 
@@ -99,7 +100,7 @@ bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth) {
 bool CaveGenerator::IsRavineAt(int x, int y, int z, int surfaceHeight) {
   // Ravines are surface features that cut deep into the ground
   // Only generate ravines from surface down to a certain depth
-  if (y > surfaceHeight || y < surfaceHeight - 40) {
+  if (y > surfaceHeight || y < surfaceHeight - config.ravineDepth) {
     return false;
   }
 
@@ -124,7 +125,7 @@ bool CaveGenerator::IsRavineAt(int x, int y, int z, int surfaceHeight) {
   }
 
   // Depth profile: wider at top, narrower at bottom
-  float depthRatio = (float)(surfaceHeight - y) / 40.0f;
+  float depthRatio = (float)(surfaceHeight - y) / (float)config.ravineDepth;
   float widthAtDepth = 3.0f + (1.0f - depthRatio) * 5.0f; // 3-8 blocks wide
 
   // Add some horizontal variation
