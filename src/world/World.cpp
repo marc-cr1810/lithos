@@ -77,19 +77,18 @@ World::World(int seed) : shutdown(false), worldSeed(seed) {
 }
 
 World::~World() {
-  {
-    std::lock_guard<std::mutex> lock(queueMutex);
-    shutdown = true;
-  }
-  condition.notify_all();
-  for (auto &t : meshThreads) {
+  shutdown = true;
+
+  // Join Gen Threads first (Stop Producers)
+  genCondition.notify_all();
+  for (auto &t : genThreads) {
     if (t.joinable())
       t.join();
   }
 
-  // Join Gen Threads
-  genCondition.notify_all();
-  for (auto &t : genThreads) {
+  // Join Mesh Threads (Stop Consumers)
+  condition.notify_all();
+  for (auto &t : meshThreads) {
     if (t.joinable())
       t.join();
   }
@@ -104,7 +103,7 @@ void World::WorkerLoop() {
         return !meshQueue.empty() || !meshQueueHighPrio.empty() || shutdown;
       });
 
-      if (shutdown && meshQueue.empty() && meshQueueHighPrio.empty())
+      if (shutdown)
         break;
 
       // Check high-priority queue first (block breaks)
@@ -239,7 +238,7 @@ void World::GenerationWorkerLoop() {
       std::unique_lock<std::mutex> lock(genMutex);
       genCondition.wait(lock, [this] { return !genQueue.empty() || shutdown; });
 
-      if (shutdown && genQueue.empty())
+      if (shutdown)
         break;
 
       if (!genQueue.empty()) {

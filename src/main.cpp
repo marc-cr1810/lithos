@@ -359,8 +359,13 @@ int main(int argc, char *argv[]) {
         glm::perspective(glm::radians(camera.Zoom),
                          (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
 
-    // Force load radius around spawn
-    world.loadChunks(glm::vec3(spawnX, 100, spawnZ), 6, projection * view);
+    static int loopCount = 0;
+    loopCount++;
+
+    // Force load radius around spawn (Throttled to avoid mutex starvation)
+    if (loopCount % 20 == 0 || loopCount == 1) {
+      world.loadChunks(glm::vec3(spawnX, 100, spawnZ), 6, projection * view);
+    }
     world.Update();
 
     // Check if ALL chunks in radius are loaded
@@ -372,9 +377,13 @@ int main(int argc, char *argv[]) {
     bool allLoaded = true;
     for (int rx = cx - 6; rx <= cx + 6; ++rx) {
       for (int rz = cz - 6; rz <= cz + 6; ++rz) {
-        if (world.getChunk(rx, 4, rz) == nullptr) { // Check surface level
-          allLoaded = false;
-          goto check_done;
+        int dx = rx - cx;
+        int dz = rz - cz;
+        if (dx * dx + dz * dz <= 36) { // Check circular radius only
+          if (world.getChunk(rx, 4, rz) == nullptr) { // Check surface level
+            allLoaded = false;
+            goto check_done;
+          }
         }
       }
     }
@@ -383,7 +392,28 @@ int main(int argc, char *argv[]) {
     if (!allLoaded) {
       // Wait
       std::this_thread::sleep_for(std::chrono::milliseconds(5));
-      retry++;
+      // Don't increment main retry here, use separate timeout or just wait
+      // longer
+      static int loadWaitCount = 0;
+      loadWaitCount++;
+
+      if (loadWaitCount % 100 == 0) {
+        int loadedCount = 0;
+        int expectedCount = (6 * 2 + 1) * (6 * 2 + 1);
+        for (int rx = cx - 6; rx <= cx + 6; ++rx) {
+          for (int rz = cz - 6; rz <= cz + 6; ++rz) {
+            if (world.getChunk(rx, 4, rz) != nullptr)
+              loadedCount++;
+          }
+        }
+        LOG_WORLD_INFO("Waiting for chunks... Loaded: {} / {} (Wait: {})",
+                       loadedCount, expectedCount, loadWaitCount);
+      }
+
+      if (loadWaitCount > 12000) { // ~60 seconds timeout
+        LOG_WORLD_ERROR("Timed out waiting for spawn chunks to load!");
+        break; // Give up and air drop
+      }
       continue;
     }
 

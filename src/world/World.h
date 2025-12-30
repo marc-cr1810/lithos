@@ -2,6 +2,7 @@
 #define WORLD_H
 
 #include <GL/glew.h>
+#include <atomic>
 #include <condition_variable>
 #include <entt/entt.hpp>
 #include <glm/glm.hpp>
@@ -93,7 +94,7 @@ private:
 
   // Worker Thread
   std::vector<std::thread> meshThreads;
-  bool shutdown;
+  std::atomic<bool> shutdown;
   std::condition_variable condition;
 
   std::mutex queueMutex;
