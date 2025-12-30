@@ -412,7 +412,7 @@ int main(int argc, char *argv[]) {
 
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
                             ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(400, 150));
+    ImGui::SetNextWindowSize(ImVec2(500, 500));
     // Use a window with no title bar/resize for clean look
     if (ImGui::Begin("Loading", nullptr,
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
@@ -432,6 +432,62 @@ int main(int argc, char *argv[]) {
                            ? ((float)loadedCount / totalChunksToCheck)
                            : 0.0f;
       ImGui::ProgressBar(progress, ImVec2(-1.0f, 20.0f));
+
+      ImGui::Dummy(ImVec2(0.0f, 15.0f));
+
+      // 2D Chunk Grid Visualization
+      ImGui::Text("Chunk Loading Status:");
+      ImGui::Dummy(ImVec2(0.0f, 5.0f));
+
+      // Calculate grid dimensions (13x13 for radius 6)
+      const int gridSize = 13;
+      const float cellSize = 20.0f;
+      const float gridWidth = gridSize * cellSize;
+
+      // Center the grid
+      ImGui::SetCursorPosX((windowWidth - gridWidth) * 0.5f);
+
+      ImVec2 gridStart = ImGui::GetCursorScreenPos();
+      ImDrawList *drawList = ImGui::GetWindowDrawList();
+
+      for (int rx = cx - 6; rx <= cx + 6; ++rx) {
+        for (int rz = cz - 6; rz <= cz + 6; ++rz) {
+          int dx = rx - cx;
+          int dz = rz - cz;
+
+          // Grid position (flip Z for visual consistency)
+          int gridX = dx + 6;
+          int gridZ = 6 - dz;
+
+          ImVec2 cellMin(gridStart.x + gridX * cellSize,
+                         gridStart.y + gridZ * cellSize);
+          ImVec2 cellMax(cellMin.x + cellSize - 2, cellMin.y + cellSize - 2);
+
+          ImU32 color;
+          if (dx * dx + dz * dz <= 36) {
+            // Within circular radius
+            if (world.getChunk(rx, 4, rz) != nullptr) {
+              color = IM_COL32(50, 200, 50, 255); // Green - Loaded
+            } else {
+              color = IM_COL32(100, 100, 100, 255); // Gray - Unloaded
+            }
+          } else {
+            // Outside radius
+            color = IM_COL32(40, 40, 40, 255); // Dark gray - Out of range
+          }
+
+          drawList->AddRectFilled(cellMin, cellMax, color);
+
+          // Highlight spawn chunk
+          if (rx == cx && rz == cz) {
+            drawList->AddRect(cellMin, cellMax, IM_COL32(255, 255, 0, 255),
+                              0.0f, 0, 2.0f);
+          }
+        }
+      }
+
+      // Reserve space for the grid
+      ImGui::Dummy(ImVec2(gridWidth, gridSize * cellSize));
     }
     ImGui::End();
 
