@@ -65,6 +65,9 @@ public:
   float GetTemperature(int x, int z);
   float GetHumidity(int x, int z);
   Biome GetBiome(int x, int z);
+  Biome
+  GetBiomeAtHeight(int x, int z,
+                   int height); // Height-aware biome (considers water level)
   BlockType GetSurfaceBlock(int gx, int gy, int gz, bool checkCarving = false);
   float GetCaveProbability(int x, int z);
   int GetSeed() const { return seed; }

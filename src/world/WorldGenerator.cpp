@@ -314,6 +314,26 @@ Biome WorldGenerator::GetBiome(int x, int z) {
   return BIOME_FOREST;
 }
 
+Biome WorldGenerator::GetBiomeAtHeight(int x, int z, int height) {
+  // First get the base climate biome
+  Biome climateBiome = GetBiome(x, z);
+
+  // Check if this location is underwater
+  if (height < config.seaLevel) {
+    // Determine if it's deep ocean or beach/shallow
+    int depthBelowSea = config.seaLevel - height;
+
+    if (depthBelowSea > 5) {
+      return BIOME_OCEAN; // Deep water
+    } else {
+      return BIOME_BEACH; // Shallow water / beach transition
+    }
+  }
+
+  // Above water - return the climate-based biome
+  return climateBiome;
+}
+
 BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz,
                                           bool checkCarving) {
   int height = GetHeight(gx, gz);
@@ -324,10 +344,22 @@ BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz,
   float temp = GetTemperature(gx, gz);
   float humidity = GetHumidity(gx, gz);
 
+  // Apply altitude-based temperature decrease (lapse rate)
+  // Higher altitudes are colder, enabling snow-capped mountains
+  float altitudeAboveSeaLevel = (float)(gy - config.seaLevel);
+  if (altitudeAboveSeaLevel > 0 && config.temperatureLapseRate > 0.0f) {
+    temp -= altitudeAboveSeaLevel * config.temperatureLapseRate;
+  }
+
   BlockType surfaceBlock = GRASS;
   BlockType subsurfaceBlock = DIRT;
 
-  if (temp > 0.3f) {
+  // Determine surface blocks based on adjusted temperature and humidity
+  if (temp < -0.4f) {
+    // Very cold - snow and ice
+    surfaceBlock = SNOW;
+    subsurfaceBlock = DIRT;
+  } else if (temp > 0.3f) {
     if (humidity < -0.2f) {
       surfaceBlock = SAND;
       subsurfaceBlock = SAND;

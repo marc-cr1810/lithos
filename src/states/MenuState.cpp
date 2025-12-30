@@ -63,10 +63,12 @@ void MenuState::UpdatePreview() {
   for (int i = 0; i < 128; ++i) {
     int x = i * 4;
     int z = 0;
-    m_PreviewData[i] = (float)tempGen.GetHeight(x, z);
+    int height = tempGen.GetHeight(x, z);
+    m_PreviewData[i] = (float)height;
     m_TempData[i] = tempGen.GetTemperature(x, z);
     m_HumidData[i] = tempGen.GetHumidity(x, z);
-    m_BiomeData[i] = (float)tempGen.GetBiome(x, z);
+    m_BiomeData[i] =
+        (float)tempGen.GetBiomeAtHeight(x, z, height); // Use height-aware biome
     m_CaveProbData[i] = tempGen.GetCaveProbability(x, z);
 
     // Sample individual landforms
@@ -119,6 +121,13 @@ void MenuState::RenderUI(Application *app) {
     }
     if (changed)
       UpdatePreview();
+
+    ImGui::Separator();
+
+    // Start Game button at the top for easy access
+    if (ImGui::Button("Start Game", ImVec2(-1, 40))) {
+      app->ChangeState(std::make_unique<LoadingState>(m_Config));
+    }
 
     ImGui::Separator();
 
@@ -197,9 +206,6 @@ void MenuState::RenderUI(Application *app) {
       if (ImGui::BeginTabItem("Climate")) {
         ImGui::Dummy(ImVec2(0, 5));
 
-        ImGui::Columns(2, "ClimateSplit", true);
-        ImGui::SetColumnWidth(0, 300.0f);
-
         ImGui::Text("Biome & Noise Scales");
         ImGui::Separator();
         bool changed = false;
@@ -228,87 +234,145 @@ void MenuState::RenderUI(Application *app) {
           changed = true;
         HelpMarker(
             "Adds noise to break up smooth biome blobs. Higher = more varied.");
+        if (ImGui::SliderFloat("Temp Lapse Rate",
+                               &m_Config.temperatureLapseRate, 0.0f, 0.02f,
+                               "%.4f"))
+          changed = true;
+        HelpMarker("Temperature decrease per block of altitude. Higher = more "
+                   "dramatic snow caps on mountains.");
 
         if (changed)
           UpdatePreview();
 
-        ImGui::NextColumn();
-        ImGui::Text("Climate Map (Temp vs Humid)");
+        ImGui::Separator();
+        ImGui::Text("Biome Distribution Preview");
         ImGui::Separator();
 
-        // Whittaker Diagram implementation
+        // Draw terrain cross-section with biome colors
         ImDrawList *drawList = ImGui::GetWindowDrawList();
-        ImVec2 canvas_p0 = ImGui::GetCursorScreenPos();
-        float canvas_sz = 220.0f;
-        ImVec2 canvas_p1 =
-            ImVec2(canvas_p0.x + canvas_sz, canvas_p0.y + canvas_sz);
+        ImVec2 plotPos = ImGui::GetCursorScreenPos();
+        ImVec2 plotSize(ImGui::GetContentRegionAvail().x - 10, 200.0f);
 
-        // Background - Draw Biome Regions
-        drawList->AddRectFilled(canvas_p0, canvas_p1,
-                                IM_COL32(50, 50, 50, 255));
+        // Reserve space
+        ImGui::InvisibleButton("##biomeplot", plotSize);
 
-        // Simplified biome mapping for the 2D background
-        // temp: -1 to 1, humid: -1 to 1
-        for (float ty = 0; ty < canvas_sz; ty += 10) {
-          for (float tx = 0; tx < canvas_sz; tx += 10) {
-            float t = ((tx / canvas_sz) * 2.0f) - 1.0f;
-            float h = (1.0f - (ty / canvas_sz)) * 2.0f - 1.0f;
+        // Check if mouse is hovering over the plot
+        if (ImGui::IsItemHovered()) {
+          ImVec2 mousePos = ImGui::GetMousePos();
+          float relX = (mousePos.x - plotPos.x) / plotSize.x;
+          if (relX >= 0.0f && relX <= 1.0f) {
+            int sampleIdx = (int)(relX * 128.0f);
+            if (sampleIdx >= 0 && sampleIdx < 128) {
+              int biome = (int)m_BiomeData[sampleIdx];
+              float height = m_PreviewData[sampleIdx];
 
-            ImU32 col = IM_COL32(100, 200, 100, 50); // Deep background
-            if (t > 0.3f) {
-              if (h < -0.2f)
-                col = IM_COL32(200, 180, 100, 100); // Desert
-              else
-                col = IM_COL32(100, 200, 100, 100); // Plains
-            } else if (t < -0.3f) {
-              if (h > 0.2f)
-                col = IM_COL32(50, 50, 120, 100); // Taiga/Podzol
-              else
-                col = IM_COL32(200, 200, 255, 100); // Tundra
-            } else {
-              if (h > 0.4f)
-                col = IM_COL32(50, 100, 50, 100); // Mud/Swamp
-              else
-                col = IM_COL32(100, 200, 100, 100); // Plains
+              const char *biomeName = "Unknown";
+              switch (biome) {
+              case 0:
+                biomeName = "Ocean";
+                break;
+              case 1:
+                biomeName = "Beach";
+                break;
+              case 2:
+                biomeName = "Desert";
+                break;
+              case 3:
+                biomeName = "Tundra";
+                break;
+              case 4:
+                biomeName = "Forest";
+                break;
+              case 5:
+                biomeName = "Plains";
+                break;
+              }
+
+              ImGui::BeginTooltip();
+              ImGui::Text("Biome: %s", biomeName);
+              ImGui::Text("Height: %.1f", height);
+              ImGui::EndTooltip();
             }
-            drawList->AddRectFilled(
-                ImVec2(canvas_p0.x + tx, canvas_p0.y + ty),
-                ImVec2(canvas_p0.x + tx + 10, canvas_p0.y + ty + 10), col);
           }
         }
 
-        // Axis Labels
-        drawList->AddText(ImVec2(canvas_p0.x + 5, canvas_p1.y - 15),
-                          IM_COL32(255, 255, 255, 200), "Cold");
-        drawList->AddText(ImVec2(canvas_p1.x - 35, canvas_p1.y - 15),
-                          IM_COL32(255, 255, 255, 200), "Hot");
-        drawList->AddText(ImVec2(canvas_p0.x + 5, canvas_p0.y + 5),
-                          IM_COL32(255, 255, 255, 200), "Wet");
-        drawList->AddText(ImVec2(canvas_p0.x + 5, canvas_p1.y - 35),
-                          IM_COL32(255, 255, 255, 200), "Dry");
+        // Draw background
+        drawList->AddRectFilled(
+            plotPos, ImVec2(plotPos.x + plotSize.x, plotPos.y + plotSize.y),
+            IM_COL32(30, 30, 35, 255));
 
-        // Draw the path of the world slice
-        for (int i = 0; i < 127; ++i) {
-          float t0 = (m_TempData[i] + 1.0f) / 2.0f;
-          float h0 = (m_HumidData[i] + 1.0f) / 2.0f;
-          float t1 = (m_TempData[i + 1] + 1.0f) / 2.0f;
-          float h1 = (m_HumidData[i + 1] + 1.0f) / 2.0f;
+        // Draw biome-colored terrain profile
+        for (int i = 0; i < 127; i++) {
+          float x0 = plotPos.x + (i / 128.0f) * plotSize.x;
+          float x1 = plotPos.x + ((i + 1) / 128.0f) * plotSize.x;
 
-          ImVec2 p0 = ImVec2(canvas_p0.x + t0 * canvas_sz,
-                             canvas_p1.y - h0 * canvas_sz);
-          ImVec2 p1 = ImVec2(canvas_p0.x + t1 * canvas_sz,
-                             canvas_p1.y - h1 * canvas_sz);
+          // Get height and biome for this position
+          float height = m_PreviewData[i];
+          float heightNext = m_PreviewData[i + 1];
+          int biome = (int)m_BiomeData[i];
 
-          drawList->AddLine(p0, p1, IM_COL32(255, 255, 255, 255), 2.0f);
-          if (i % 16 == 0) {
-            drawList->AddCircleFilled(p0, 3.0f, IM_COL32(255, 0, 0, 255));
+          // Normalize heights to plot space
+          float y0 = plotPos.y + plotSize.y -
+                     (height / (float)m_Config.worldHeight) * plotSize.y;
+          float y1 = plotPos.y + plotSize.y -
+                     (heightNext / (float)m_Config.worldHeight) * plotSize.y;
+
+          // Determine biome color
+          ImU32 biomeColor;
+          switch (biome) {
+          case 0:
+            biomeColor = IM_COL32(30, 60, 120, 255);
+            break; // Ocean - dark blue
+          case 1:
+            biomeColor = IM_COL32(220, 200, 150, 255);
+            break; // Beach - sandy
+          case 2:
+            biomeColor = IM_COL32(220, 200, 120, 255);
+            break; // Desert - tan
+          case 3:
+            biomeColor = IM_COL32(200, 220, 240, 255);
+            break; // Tundra - icy blue-white
+          case 4:
+            biomeColor = IM_COL32(60, 140, 60, 255);
+            break; // Forest - dark green
+          case 5:
+            biomeColor = IM_COL32(140, 180, 100, 255);
+            break; // Plains - light green
+          default:
+            biomeColor = IM_COL32(150, 150, 150, 255);
+            break;
           }
+
+          // Draw filled polygon from bottom to terrain height
+          ImVec2 points[4] = {ImVec2(x0, plotPos.y + plotSize.y),
+                              ImVec2(x0, y0), ImVec2(x1, y1),
+                              ImVec2(x1, plotPos.y + plotSize.y)};
+          drawList->AddConvexPolyFilled(points, 4, biomeColor);
         }
 
-        ImGui::Dummy(ImVec2(0, canvas_sz + 10));
-        ImGui::Text("Path represents 128 sampled world points.");
+        // Draw sea level line
+        float seaY = plotPos.y + plotSize.y -
+                     ((float)m_Config.seaLevel / (float)m_Config.worldHeight) *
+                         plotSize.y;
+        drawList->AddLine(ImVec2(plotPos.x, seaY),
+                          ImVec2(plotPos.x + plotSize.x, seaY),
+                          IM_COL32(50, 100, 200, 200), 2.0f);
 
-        ImGui::Columns(1);
+        // Legend
+        ImGui::Text("Biome Colors:");
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.12f, 0.24f, 0.47f, 1.0f), "Ocean");
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.86f, 0.78f, 0.59f, 1.0f), "Beach");
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.86f, 0.78f, 0.47f, 1.0f), "Desert");
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.78f, 0.86f, 0.94f, 1.0f), "Tundra");
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.24f, 0.55f, 0.24f, 1.0f), "Forest");
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.55f, 0.71f, 0.39f, 1.0f), "Plains");
+
         ImGui::EndTabItem();
       }
 
@@ -316,16 +380,12 @@ void MenuState::RenderUI(Application *app) {
       if (ImGui::BeginTabItem("Landforms")) {
         ImGui::Dummy(ImVec2(0, 5));
 
-        // Two-column layout: Parameters (Left) | Preview (Right)
-        ImGui::Columns(2, "LandformSplit", true);
-        ImGui::SetColumnWidth(0, 350.0f);
-
         ImGui::Text("Terrain Variation Settings");
         ImGui::Separator();
 
         bool changed = false;
 
-        ImGui::BeginChild("LandformScroll", ImVec2(0, -20), true);
+        ImGui::BeginChild("LandformScroll", ImVec2(0, 300), true);
         for (auto &[name, override] : m_Config.landformOverrides) {
           ImGui::PushID(name.c_str());
           if (ImGui::CollapsingHeader(name.c_str(),
@@ -355,8 +415,10 @@ void MenuState::RenderUI(Application *app) {
         }
         ImGui::EndChild();
 
-        ImGui::NextColumn();
+        if (changed)
+          UpdatePreview();
 
+        ImGui::Separator();
         ImGui::Text("Terrain Slice Preview (X-Axis)");
         ImGui::Separator();
 
@@ -484,11 +546,6 @@ void MenuState::RenderUI(Application *app) {
 
         ImGui::Text("Samples: 128 (X: 0 to 512)");
 
-        if (changed) {
-          UpdatePreview();
-        }
-
-        ImGui::Columns(1);
         ImGui::EndTabItem();
       }
 
@@ -527,9 +584,11 @@ void MenuState::RenderUI(Application *app) {
         if (changed)
           UpdatePreview();
 
-        ImGui::NextColumn();
-        ImGui::Text("Cave Probability Overlay");
         ImGui::Separator();
+        ImGui::Text("Terrain Profile Visualization");
+        ImGui::Separator();
+
+        // Terrain visualization
         ImGui::PlotLines("Probability", m_CaveProbData, 128, 0, nullptr, 0.0f,
                          1.0f, ImVec2(0, 200));
         ImGui::Text("Showing avg cave presence 0-64Y");
@@ -606,12 +665,6 @@ void MenuState::RenderUI(Application *app) {
       }
 
       ImGui::EndTabBar();
-    }
-
-    ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 60);
-    ImGui::Separator();
-    if (ImGui::Button("Start Game", ImVec2(-1, 40))) {
-      app->ChangeState(std::make_unique<LoadingState>(m_Config));
     }
   }
   ImGui::End();
