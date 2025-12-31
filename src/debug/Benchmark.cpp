@@ -12,7 +12,7 @@ static BenchmarkStatus s_Status;
 
 BenchmarkStatus &GetBenchmarkStatus() { return s_Status; }
 
-void StartBenchmarkAsync(const WorldGenConfig &config, int radius) {
+void StartBenchmarkAsync(const WorldGenConfig &config, int sideSize) {
   if (s_Status.isRunning)
     return; // Prevent multiple runs
 
@@ -20,15 +20,11 @@ void StartBenchmarkAsync(const WorldGenConfig &config, int radius) {
   s_Status.isFinished = false;
   s_Status.progress = 0.0f;
 
-  std::thread([config, radius]() {
+  std::thread([config, sideSize]() {
     // Run logic similar to RunWorldGenBenchmark but updating progress
     BenchmarkResult result = {0};
 
     // Clear previous profiling data
-    // Note: Profiler usually uses thread-local storage or needs thread safety.
-    // Profiler::Get() singleton might need care. Assuming it is thread-safe
-    // enough or we use it here. Actually, ProfileTimer uses `Profiler::Get()`
-    // which returns a singleton. `WriteProfile` has a mutex. Safe.
     Profiler::Get().ClearResults();
 
     WorldGenerator generator(config);
@@ -39,11 +35,11 @@ void StartBenchmarkAsync(const WorldGenConfig &config, int radius) {
 
     auto start = std::chrono::high_resolution_clock::now();
     int count = 0;
-    int totalColumns = (radius * 2 + 1) * (radius * 2 + 1);
+    int totalColumns = sideSize * sideSize;
     int processedCols = 0;
 
-    for (int cx = -radius; cx <= radius; ++cx) {
-      for (int cz = -radius; cz <= radius; ++cz) {
+    for (int cx = 0; cx < sideSize; ++cx) {
+      for (int cz = 0; cz < sideSize; ++cz) {
         ChunkColumn column;
         generator.GenerateColumn(column, cx, cz);
 
@@ -57,7 +53,7 @@ void StartBenchmarkAsync(const WorldGenConfig &config, int radius) {
         }
 
         processedCols++;
-        s_Status.progress = (float)processedCols / totalColumns;
+        s_Status.progress = (float)processedCols / (float)totalColumns;
       }
     }
 
@@ -81,7 +77,7 @@ void StartBenchmarkAsync(const WorldGenConfig &config, int radius) {
         sum += v;
 
       if (!history.empty()) {
-        result.stepAvgTimes[name] = sum / history.size();
+        result.stepAvgTimes[name] = sum / (float)history.size();
       }
     }
 
@@ -91,9 +87,9 @@ void StartBenchmarkAsync(const WorldGenConfig &config, int radius) {
   }).detach();
 }
 
-// Keep existing synchronous function as a wrapper or just leave it for
-// legacy/testing
-BenchmarkResult RunWorldGenBenchmark(const WorldGenConfig &config, int radius) {
+// Keep existing synchronous function
+BenchmarkResult RunWorldGenBenchmark(const WorldGenConfig &config,
+                                     int sideSize) {
   BenchmarkResult result = {0};
 
   // Clear previous profiling data
@@ -107,8 +103,8 @@ BenchmarkResult RunWorldGenBenchmark(const WorldGenConfig &config, int radius) {
   auto start = std::chrono::high_resolution_clock::now();
   int count = 0;
 
-  for (int cx = -radius; cx <= radius; ++cx) {
-    for (int cz = -radius; cz <= radius; ++cz) {
+  for (int cx = 0; cx < sideSize; ++cx) {
+    for (int cz = 0; cz < sideSize; ++cz) {
       ChunkColumn column;
       generator.GenerateColumn(column, cx, cz);
 
@@ -141,7 +137,7 @@ BenchmarkResult RunWorldGenBenchmark(const WorldGenConfig &config, int radius) {
       sum += v;
 
     if (!history.empty()) {
-      result.stepAvgTimes[name] = sum / history.size();
+      result.stepAvgTimes[name] = sum / (float)history.size();
     }
   }
 

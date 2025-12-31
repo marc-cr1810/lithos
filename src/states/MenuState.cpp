@@ -114,12 +114,13 @@ void MenuState::RenderUI(Application *app) {
   ImGui_ImplGlfw_NewFrame();
   ImGui::NewFrame();
 
-  ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
-                          ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-  ImGui::SetNextWindowSize(ImVec2(600, 500), ImGuiCond_FirstUseEver);
+  ImGuiViewport *viewport = ImGui::GetMainViewport();
+  ImGui::SetNextWindowPos(viewport->Pos);
+  ImGui::SetNextWindowSize(viewport->Size);
 
   if (ImGui::Begin("World Configuration", nullptr,
-                   ImGuiWindowFlags_NoCollapse)) {
+                   ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                       ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse)) {
     // Seed input - visible on all tabs
     ImGui::Text("World Seed:");
     ImGui::SameLine();
@@ -229,18 +230,29 @@ void MenuState::RenderUI(Application *app) {
         }
 
         ImGui::Dummy(ImVec2(0, 10));
-        if (ImGui::Button("Run Benchmark (4x4 Column)")) {
-          StartBenchmarkAsync(m_Config, 2);
+        ImGui::Text("Benchmarking");
+        ImGui::Separator();
+        ImGui::SliderInt("Benchmark Area Size", &m_BenchmarkSize, 1, 16,
+                         "%d columns (Square)");
+        HelpMarker(
+            "Size of the area to generate for benchmarking. Larger sizes "
+            "provide more stable averages but take longer.");
+
+        if (ImGui::Button("Run Benchmark", ImVec2(-1, 0))) {
+          StartBenchmarkAsync(m_Config, m_BenchmarkSize);
           ImGui::OpenPopup("Running Benchmark...");
         }
 
+        ImGuiViewport *viewport = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing,
+                                ImVec2(0.5f, 0.5f));
         if (ImGui::BeginPopupModal("Running Benchmark...", NULL,
                                    ImGuiWindowFlags_AlwaysAutoResize |
                                        ImGuiWindowFlags_NoMove)) {
           BenchmarkStatus &status = GetBenchmarkStatus();
           float progress = status.progress;
           ImGui::Text("Generating chunks... %.0f%%", progress * 100.0f);
-          ImGui::ProgressBar(progress, ImVec2(200, 0));
+          ImGui::ProgressBar(progress, ImVec2(300, 0));
 
           if (status.isFinished) {
             // Benchmark complete, transition to result
@@ -276,8 +288,8 @@ void MenuState::RenderUI(Application *app) {
           m_ShouldOpenResults = false;
         }
 
-        bool resultOpen = true;
-        // Actually OpenPopup schedules it.
+        ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing,
+                                ImVec2(0.5f, 0.5f));
         if (ImGui::BeginPopupModal("Benchmark Results", NULL,
                                    ImGuiWindowFlags_AlwaysAutoResize)) {
           ImGui::Text("%s", m_BenchmarkResult.c_str());

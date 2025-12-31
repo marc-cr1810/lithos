@@ -24,10 +24,11 @@ struct BenchmarkStatus {
 };
 
 // Returns synchronous result (blocking)
-BenchmarkResult RunWorldGenBenchmark(const WorldGenConfig &config, int radius);
+BenchmarkResult RunWorldGenBenchmark(const WorldGenConfig &config,
+                                     int sideSize);
 
 // Starts benchmark in a detached thread
-void StartBenchmarkAsync(const WorldGenConfig &config, int radius);
+void StartBenchmarkAsync(const WorldGenConfig &config, int sideSize);
 BenchmarkStatus &GetBenchmarkStatus();
 
 #endif // BENCHMARK_H

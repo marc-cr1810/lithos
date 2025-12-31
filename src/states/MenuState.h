@@ -45,6 +45,7 @@ private:
   bool m_ShowBlended = true;
 
   std::string m_BenchmarkResult;
+  int m_BenchmarkSize = 4; // Side length for NxN benchmark (e.g. 4x4)
   int m_PrevSeaLevel = 60; // Default startup value before config load
   bool m_ShouldOpenResults = false;
 };
