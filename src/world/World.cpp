@@ -233,6 +233,7 @@ void World::QueueMeshUpdate(Chunk *c, bool priority) {
 
 void World::GenerationWorkerLoop() {
   WorldGenerator generator(config);
+  generator.GenerateFixedMaps();
   while (true) {
     std::tuple<int, int, int> coord;
     {

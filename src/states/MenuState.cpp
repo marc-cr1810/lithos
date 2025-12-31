@@ -1,5 +1,6 @@
 #include "MenuState.h"
 #include "../core/Application.h"
+#include "../debug/Benchmark.h"
 #include "../debug/Logger.h"
 #include "../world/WorldGenerator.h"
 #include "LoadingState.h"
@@ -212,6 +213,78 @@ void MenuState::RenderUI(Application *app) {
         }
         HelpMarker("Maximum world height in blocks. Snaps to multiples of 32 "
                    "(chunk size).");
+
+        // Fixed World Settings
+        if (ImGui::Checkbox("Fixed World Size", &m_Config.fixedWorld))
+          changed = true;
+        HelpMarker("If enabled, the world has a fixed finite size and terrain "
+                   "is pre-generated (faster runtime, slower startup).");
+
+        if (m_Config.fixedWorld) {
+          if (ImGui::SliderInt("Map Size", &m_Config.fixedWorldSize, 128, 4096,
+                               "%d blocks"))
+            changed = true;
+          HelpMarker("Size of the fixed world (Square). Larger maps take "
+                     "longer to generate at start.");
+        }
+
+        ImGui::Dummy(ImVec2(0, 10));
+        if (ImGui::Button("Run Benchmark (4x4 Column)")) {
+          StartBenchmarkAsync(m_Config, 2);
+          ImGui::OpenPopup("Running Benchmark...");
+        }
+
+        if (ImGui::BeginPopupModal("Running Benchmark...", NULL,
+                                   ImGuiWindowFlags_AlwaysAutoResize |
+                                       ImGuiWindowFlags_NoMove)) {
+          BenchmarkStatus &status = GetBenchmarkStatus();
+          float progress = status.progress;
+          ImGui::Text("Generating chunks... %.0f%%", progress * 100.0f);
+          ImGui::ProgressBar(progress, ImVec2(200, 0));
+
+          if (status.isFinished) {
+            // Benchmark complete, transition to result
+            std::lock_guard<std::mutex> lock(status.resultMutex);
+            BenchmarkResult res = status.result;
+
+            std::string msg =
+                "Total Time: " + std::to_string(res.totalTimeMs) + " ms\n" +
+                "Chunks: " + std::to_string(res.chunksGenerated) + "\n" +
+                "Avg/Chunk: " + std::to_string(res.avgChunkTimeMs) + " ms\n\n";
+
+            msg += "Breakdown (Avg per Chunk):\n";
+            for (const auto &kv : res.stepAvgTimes) {
+              msg +=
+                  " - " + kv.first + ": " + std::to_string(kv.second) + " ms\n";
+            }
+            m_BenchmarkResult = msg;
+
+            ImGui::CloseCurrentPopup();
+            m_ShouldOpenResults = true;
+          }
+
+          ImGui::EndPopup();
+        }
+
+        if (m_ShouldOpenResults) {
+          ImGui::OpenPopup("Benchmark Results");
+          m_ShouldOpenResults = false;
+        }
+
+        bool resultOpen = true;
+        // Actually OpenPopup schedules it.
+        if (ImGui::BeginPopupModal("Benchmark Results", NULL,
+                                   ImGuiWindowFlags_AlwaysAutoResize)) {
+          ImGui::Text("%s", m_BenchmarkResult.c_str());
+          ImGui::Separator();
+
+          if (ImGui::Button("OK", ImVec2(120, 0))) {
+            ImGui::CloseCurrentPopup();
+          }
+          ImGui::EndPopup();
+        }
+
+        // Performance warning for high values
 
         // Performance warning for high values
         if (m_Config.worldHeight > 512) {

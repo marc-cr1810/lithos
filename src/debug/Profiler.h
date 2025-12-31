@@ -51,7 +51,7 @@ private:
 
 class ProfileTimer {
 public:
-  ProfileTimer(const char *name);
+  ProfileTimer(const char *name, bool active = true);
   ~ProfileTimer();
 
   void Stop();
@@ -60,12 +60,16 @@ private:
   const char *m_Name;
   std::chrono::time_point<std::chrono::high_resolution_clock> m_StartTimepoint;
   bool m_Stopped;
+  bool m_Active;
 };
 
 #if 1 // Enable Profiling
 #define PROFILE_SCOPE(name) ProfileTimer timer##__LINE__(name)
+#define PROFILE_SCOPE_CONDITIONAL(name, active)                                \
+  ProfileTimer timer##__LINE__(name, active)
 #define PROFILE_FUNCTION() PROFILE_SCOPE(__FUNCSIG__)
 #else
 #define PROFILE_SCOPE(name)
+#define PROFILE_SCOPE_CONDITIONAL(name, active)
 #define PROFILE_FUNCTION()
 #endif

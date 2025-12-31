@@ -24,16 +24,20 @@ void Profiler::WriteProfile(const ProfileResult &result) {
   }
 }
 
-ProfileTimer::ProfileTimer(const char *name) : m_Name(name), m_Stopped(false) {
-  m_StartTimepoint = std::chrono::high_resolution_clock::now();
+ProfileTimer::ProfileTimer(const char *name, bool active)
+    : m_Name(name), m_Stopped(false), m_Active(active) {
+  if (m_Active)
+    m_StartTimepoint = std::chrono::high_resolution_clock::now();
 }
 
 ProfileTimer::~ProfileTimer() {
-  if (!m_Stopped)
+  if (!m_Stopped && m_Active)
     Stop();
 }
 
 void ProfileTimer::Stop() {
+  if (!m_Active)
+    return;
   auto endTimepoint = std::chrono::high_resolution_clock::now();
 
   long long start =

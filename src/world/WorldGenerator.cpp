@@ -1,5 +1,6 @@
 #include "WorldGenerator.h"
 #include "../debug/Logger.h"
+#include "../debug/Profiler.h"
 #include "Block.h"
 #include "Chunk.h"
 #include <glm/glm.hpp>
@@ -33,7 +34,7 @@ WorldGenerator::~WorldGenerator() {
   delete caveGenerator;
 }
 
-int WorldGenerator::GetHeight(int x, int z) {
+int WorldGenerator::ComputeHeight(int x, int z) {
   // Get landform noise for blending
   float landformNoise = GetLandformNoise(x, z);
 
@@ -230,6 +231,48 @@ int WorldGenerator::GetHeightForLandform(const std::string &name, int x,
   return finalHeight;
 }
 
+// Ensure GenerateFixedMaps is defined
+void WorldGenerator::GenerateFixedMaps() {
+  if (!config.fixedWorld)
+    return;
+
+  int size = config.fixedWorldSize;
+  fixedHeightMap.resize(size * size);
+  fixedTempMap.resize(size * size);
+  fixedHumidMap.resize(size * size);
+  fixedBiomeMap.resize(size * size);
+
+  int halfSize = size / 2;
+  for (int z = 0; z < size; ++z) {
+    for (int x = 0; x < size; ++x) {
+      int idx = x + z * size;
+      // Convert index to world coordinates (centered)
+      int worldX = x - halfSize;
+      int worldZ = z - halfSize;
+
+      fixedHeightMap[idx] = ComputeHeight(worldX, worldZ);
+      fixedTempMap[idx] = ComputeTemperature(worldX, worldZ, -1);
+      fixedHumidMap[idx] = ComputeHumidity(worldX, worldZ);
+      fixedBiomeMap[idx] = ComputeBiome(worldX, worldZ, -1);
+    }
+  }
+}
+
+int WorldGenerator::GetHeight(int x, int z) {
+  if (config.fixedWorld && !fixedHeightMap.empty()) {
+    int halfSize = config.fixedWorldSize / 2;
+    int idxX = x + halfSize;
+    int idxZ = z + halfSize;
+
+    if (idxX >= 0 && idxX < config.fixedWorldSize && idxZ >= 0 &&
+        idxZ < config.fixedWorldSize) {
+      return fixedHeightMap[idxX + idxZ * config.fixedWorldSize];
+    }
+    return 60; // Default ocean level outside bounds
+  }
+  return ComputeHeight(x, z);
+}
+
 void WorldGenerator::GetLandformBlend(int x, int z, std::string &primary,
                                       std::string &secondary,
                                       float &blendFactor) {
@@ -256,7 +299,8 @@ void WorldGenerator::GetLandformBlend(int x, int z, std::string &primary,
   blendFactor = std::max(0.0f, std::min(1.0f, blendFactor));
 }
 
-float WorldGenerator::GetTemperature(int x, int z, int y) {
+float WorldGenerator::ComputeTemperature(int x, int z, int y) {
+
   // Very low frequency noise for large biomes
   int seedT = (seed * 555) % 65536;
   float nx = (float)x + (float)seedT;
@@ -278,16 +322,59 @@ float WorldGenerator::GetTemperature(int x, int z, int y) {
   return temp;
 }
 
-float WorldGenerator::GetHumidity(int x, int z) {
+float WorldGenerator::GetTemperature(int x, int z, int y) {
+  if (config.fixedWorld && !fixedTempMap.empty()) {
+    int halfSize = config.fixedWorldSize / 2;
+    int idxX = x + halfSize;
+    int idxZ = z + halfSize;
+
+    if (idxX >= 0 && idxX < config.fixedWorldSize && idxZ >= 0 &&
+        idxZ < config.fixedWorldSize) {
+      float temp = fixedTempMap[idxX + idxZ * config.fixedWorldSize];
+      // Still need to apply lapse rate dynamically because y changes
+      if (y != -1 && config.temperatureLapseRate > 0.0f &&
+          y > config.seaLevel) {
+        float altitudeAboveSeaLevel = (float)(y - config.seaLevel);
+        temp -= altitudeAboveSeaLevel * config.temperatureLapseRate;
+      } else if (y != -1 && config.geothermalGradient > 0.0f &&
+                 y < config.seaLevel) {
+        float depthBelowSeaLevel = (float)(config.seaLevel - y);
+        temp += depthBelowSeaLevel * config.geothermalGradient;
+      }
+      return temp;
+    }
+    return 0.5f; // Failure default
+  }
+  return ComputeTemperature(x, z, y);
+}
+
+float WorldGenerator::ComputeHumidity(int x, int z) {
+
   int seedH = (seed * 888) % 65536;
   float nx = (float)x + (float)seedH;
   float nz = (float)z + (float)seedH;
   return glm::perlin(glm::vec2(nx, nz) * config.humidityScale);
 }
 
-Biome WorldGenerator::GetBiome(int x, int z, int y) {
-  float temp = GetTemperature(x, z, y);
-  float humidity = GetHumidity(x, z);
+float WorldGenerator::GetHumidity(int x, int z) {
+  if (config.fixedWorld && !fixedHumidMap.empty()) {
+    int halfSize = config.fixedWorldSize / 2;
+    int idxX = x + halfSize;
+    int idxZ = z + halfSize;
+
+    if (idxX >= 0 && idxX < config.fixedWorldSize && idxZ >= 0 &&
+        idxZ < config.fixedWorldSize) {
+      return fixedHumidMap[idxX + idxZ * config.fixedWorldSize];
+    }
+    return 0.5f;
+  }
+  return ComputeHumidity(x, z);
+}
+
+Biome WorldGenerator::ComputeBiome(int x, int z, int y) {
+  float temp = ComputeTemperature(
+      x, z, y); // Use Compute here to avoid double lookup if not needed
+  float humidity = ComputeHumidity(x, z); // Use Compute here
 
   // Add high-frequency variation noise to break up smooth blobs
   if (config.biomeVariation > 0.0f) {
@@ -325,6 +412,42 @@ Biome WorldGenerator::GetBiome(int x, int z, int y) {
   return BIOME_FOREST;
 }
 
+Biome WorldGenerator::GetBiome(int x, int z, int y) {
+  if (config.fixedWorld && !fixedTempMap.empty() && !fixedHumidMap.empty()) {
+    int halfSize = config.fixedWorldSize / 2;
+    int idxX = x + halfSize;
+    int idxZ = z + halfSize;
+
+    if (idxX >= 0 && idxX < config.fixedWorldSize && idxZ >= 0 &&
+        idxZ < config.fixedWorldSize) {
+      // Fetch cached data
+      float temp = fixedTempMap[idxX + idxZ * config.fixedWorldSize];
+      float humidity = fixedHumidMap[idxX + idxZ * config.fixedWorldSize];
+
+      // Apply lapse rate again (logic duplicated from GetTemp)
+      if (y != -1 && config.temperatureLapseRate > 0.0f &&
+          y > config.seaLevel) {
+        float altitudeAboveSeaLevel = (float)(y - config.seaLevel);
+        temp -= altitudeAboveSeaLevel * config.temperatureLapseRate;
+      }
+
+      // Normalize logic (same as ComputeBiome)
+      if (temp > 0.3f) {
+        if (humidity < -0.2f)
+          return BIOME_DESERT;
+        return BIOME_FOREST;
+      } else if (temp < -0.3f) {
+        return BIOME_TUNDRA;
+      }
+      if (humidity < -0.3f)
+        return BIOME_PLAINS;
+      return BIOME_FOREST;
+    }
+    return BIOME_OCEAN;
+  }
+  return ComputeBiome(x, z, y);
+}
+
 Biome WorldGenerator::GetBiomeAtHeight(int x, int z, int height) {
   // First get the base climate biome (pass height to account for lapse rate)
   Biome climateBiome = GetBiome(x, z, height);
@@ -348,12 +471,34 @@ Biome WorldGenerator::GetBiomeAtHeight(int x, int z, int height) {
 BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz,
                                           bool checkCarving) {
   int height = GetHeight(gx, gz);
+  float temp = GetTemperature(gx, gz, -1);
+  float humid = GetHumidity(gx, gz);
+  return GetSurfaceBlock(gx, gy, gz, height, temp, humid, checkCarving);
+}
+
+BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz,
+                                          int cachedHeight,
+                                          float cachedBaseTemp,
+                                          float cachedHumid,
+                                          bool checkCarving) {
+  int height = cachedHeight;
   if (gy > height)
     return AIR;
 
-  // Re-calculate climate data (height-aware)
-  float temp = GetTemperature(gx, gz, gy);
-  float humidity = GetHumidity(gx, gz);
+  // Re-calculate climate data logic locally to avoid noise calls
+  // Apply altitude-based temperature decrease (lapse rate)
+  float temp = cachedBaseTemp;
+  if (gy != -1) {
+    if (config.temperatureLapseRate > 0.0f && gy > config.seaLevel) {
+      float altitudeAboveSeaLevel = (float)(gy - config.seaLevel);
+      temp -= altitudeAboveSeaLevel * config.temperatureLapseRate;
+    } else if (config.geothermalGradient > 0.0f && gy < config.seaLevel) {
+      float depthBelowSeaLevel = (float)(config.seaLevel - gy);
+      temp += depthBelowSeaLevel * config.geothermalGradient;
+    }
+  }
+
+  float humidity = cachedHumid;
 
   BlockType surfaceBlock = GRASS;
   BlockType subsurfaceBlock = DIRT;
@@ -636,89 +781,162 @@ BlockType WorldGenerator::GetStrataBlock(int x, int y, int z) {
 #include "ChunkColumn.h"
 
 void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
+  PROFILE_SCOPE_CONDITIONAL("GenColumn", m_ProfilingEnabled);
   for (int x = 0; x < CHUNK_SIZE; ++x) {
     for (int z = 0; z < CHUNK_SIZE; ++z) {
       int gx = cx * CHUNK_SIZE + x;
       int gz = cz * CHUNK_SIZE + z;
       column.heightMap[x][z] = GetHeight(gx, gz);
+      // Cache climate data
+      column.temperatureMap[x][z] = GetTemperature(gx, gz, -1);
+      column.humidityMap[x][z] = GetHumidity(gx, gz);
+
       column.biomeMap[x][z] = GetBiomeAtHeight(gx, gz, column.heightMap[x][z]);
     }
   }
 }
 
 void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
+  PROFILE_SCOPE_CONDITIONAL("GenChunk", m_ProfilingEnabled);
   glm::ivec3 pos = chunk.chunkPosition;
 
-  for (int x = 0; x < CHUNK_SIZE; ++x) {
-    for (int z = 0; z < CHUNK_SIZE; ++z) {
-      // Global Coordinates
-      int gx = pos.x * CHUNK_SIZE + x;
-      int gz = pos.z * CHUNK_SIZE + z;
+  // Pass 1: Terrain
+  {
+    PROFILE_SCOPE_CONDITIONAL("GenChunk_Terrain", m_ProfilingEnabled);
+    for (int x = 0; x < CHUNK_SIZE; ++x) {
+      for (int z = 0; z < CHUNK_SIZE; ++z) {
+        // Global Coordinates
+        int gx = pos.x * CHUNK_SIZE + x;
+        int gz = pos.z * CHUNK_SIZE + z;
 
-      // Get Height from column
-      int height = column.heightMap[x][z];
-      bool isUnderwater = (height <= config.seaLevel);
+        int height = column.heightMap[x][z];
+        float baseTemp = column.temperatureMap[x][z];
+        float humid = column.humidityMap[x][z];
 
-      for (int y = 0; y < CHUNK_SIZE; ++y) {
-        int gy = pos.y * CHUNK_SIZE + y;
-        BlockType type = GetSurfaceBlock(gx, gy, gz);
-
-        // 1. Water Fill
-        if (type == AIR && gy <= config.seaLevel) {
-          // Ice forms in cold climates
-          float temp = GetTemperature(gx, gz);
-          if (temp < -0.3f && gy == config.seaLevel)
-            type = ICE;
-          else
-            type = WATER;
+        for (int y = 0; y < CHUNK_SIZE; ++y) {
+          int gy = pos.y * CHUNK_SIZE + y;
+          BlockType type = GetSurfaceBlock(gx, gy, gz, height, baseTemp, humid);
+          chunk.setBlock(x, y, z, type);
         }
+      }
+    }
+  }
 
-        // 2. Carve Caves using new CaveGenerator
-        bool preserveCrust = false;
-        // Only try to carve if the block is solid (Not Air, Not Water)
-        // Only preserve crust underwater to prevent ocean draining
-        if (isUnderwater && gy > height - 3)
-          preserveCrust = true;
+  // Pass 2: Water & Ice
+  {
+    PROFILE_SCOPE_CONDITIONAL("GenChunk_Water", m_ProfilingEnabled);
+    for (int x = 0; x < CHUNK_SIZE; ++x) {
+      for (int z = 0; z < CHUNK_SIZE; ++z) {
+        int gx = pos.x * CHUNK_SIZE + x;
+        int gz = pos.z * CHUNK_SIZE + z;
 
-        // Bedrock preservation
-        if (gy <= 0)
-          preserveCrust = true;
+        for (int y = 0; y < CHUNK_SIZE; ++y) {
+          int gy = pos.y * CHUNK_SIZE + y;
+          if (chunk.getBlock(x, y, z).getType() == AIR &&
+              gy <= config.seaLevel) {
+            float temp = column.temperatureMap[x][z];
+            // Apply lapse rate for Ice check at sea level
+            if (gy > config.seaLevel) {
+              float alt = (float)(gy - config.seaLevel);
+              temp -= alt * config.temperatureLapseRate;
+            }
 
-        if (!preserveCrust) {
-          // Use new 3D cave generation and ravines
-          bool shouldCarve = false;
-          if (config.enableCaves && caveGenerator->IsCaveAt(gx, gy, gz, height))
-            shouldCarve = true;
-          if (config.enableRavines &&
-              caveGenerator->IsRavineAt(gx, gy, gz, height))
-            shouldCarve = true;
-
-          if (shouldCarve) {
-            // Cave Air or Lava?
-            if (gy <= config.lavaLevel)
-              type = LAVA;
+            if (temp < -0.3f && gy == config.seaLevel)
+              chunk.setBlock(x, y, z, ICE);
             else
-              type = AIR;
+              chunk.setBlock(x, y, z, WATER);
           }
         }
+      }
+    }
+  }
 
-        // 3. Bedrock Flattening (Roughness)
-        // Only apply if the block hasn't been carved by a cave or ravine
-        if (gy <= 4 && type != AIR && type != LAVA) {
-          if (gy > 0) {
-            int chance = 100 - (gy * 20);
-            if ((rand() % 100) < chance)
-              type = GetSurfaceBlock(gx, gy, gz);
+  // Pass 3: Caves & Ravines
+  {
+    PROFILE_SCOPE_CONDITIONAL("GenChunk_Caves", m_ProfilingEnabled);
+    if (config.enableCaves || config.enableRavines) {
+      for (int x = 0; x < CHUNK_SIZE; ++x) {
+        for (int z = 0; z < CHUNK_SIZE; ++z) {
+          int gx = pos.x * CHUNK_SIZE + x;
+          int gz = pos.z * CHUNK_SIZE + z;
+          int height = column.heightMap[x][z];
+          bool isUnderwater = (height <= config.seaLevel);
+
+          for (int y = 0; y < CHUNK_SIZE; ++y) {
+            int gy = pos.y * CHUNK_SIZE + y;
+
+            // Optimization: Skip Air (unless we want caves in air? No)
+            // But caves carve stone.
+            BlockType currentType =
+                (BlockType)chunk.getBlock(x, y, z).getType();
+            if (currentType == AIR || currentType == WATER ||
+                currentType == LAVA)
+              continue;
+
+            bool preserveCrust = false;
+            if (isUnderwater && gy > height - 3)
+              preserveCrust = true;
+            if (gy <= 0)
+              preserveCrust = true;
+
+            if (!preserveCrust) {
+              bool shouldCarve = false;
+              if (config.enableCaves &&
+                  caveGenerator->IsCaveAt(gx, gy, gz, height))
+                shouldCarve = true;
+              else if (config.enableRavines &&
+                       caveGenerator->IsRavineAt(gx, gy, gz, height))
+                shouldCarve = true;
+
+              if (shouldCarve) {
+                if (gy <= config.lavaLevel)
+                  chunk.setBlock(x, y, z, LAVA);
+                else
+                  chunk.setBlock(x, y, z, AIR);
+              }
+            }
           }
         }
+      }
+    }
+  }
 
-        chunk.setBlock(x, y, z, type);
+  // Pass 4: Final Touches (Bedrock & Post-fix)
+  {
+    PROFILE_SCOPE_CONDITIONAL("GenChunk_Finishing", m_ProfilingEnabled);
+    for (int x = 0; x < CHUNK_SIZE; ++x) {
+      for (int z = 0; z < CHUNK_SIZE; ++z) {
+        int gx = pos.x * CHUNK_SIZE + x;
+        int gz = pos.z * CHUNK_SIZE + z;
+        int height = column.heightMap[x][z];
+        float baseTemp = column.temperatureMap[x][z];
+        float humid = column.humidityMap[x][z];
 
-        // 4. Post-Set Fixes (Grass->Dirt under water)
-        if (type == WATER && gy <= config.seaLevel) {
-          if (y > 0) {
-            if (chunk.getBlock(x, y - 1, z).getType() == GRASS) {
-              chunk.setBlock(x, y - 1, z, DIRT);
+        for (int y = 0; y < CHUNK_SIZE; ++y) {
+          int gy = pos.y * CHUNK_SIZE + y;
+          BlockType current = (BlockType)chunk.getBlock(x, y, z).getType();
+
+          // Bedrock Flattening
+          if (gy <= 4 && current != AIR && current != LAVA) {
+            if (gy > 0) {
+              int chance = 100 - (gy * 20);
+              if ((rand() % 100) < chance) {
+                // Re-call Surface Block gen for bedrock replacement?
+                // Original logic called GetSurfaceBlock again.
+                // We can use cached args.
+                BlockType type =
+                    GetSurfaceBlock(gx, gy, gz, height, baseTemp, humid);
+                chunk.setBlock(x, y, z, type);
+              }
+            }
+          }
+
+          // Grass->Dirt under water fix
+          if (current == WATER && gy <= config.seaLevel) {
+            if (y > 0) {
+              if (chunk.getBlock(x, y - 1, z).getType() == GRASS) {
+                chunk.setBlock(x, y - 1, z, DIRT);
+              }
             }
           }
         }
@@ -727,7 +945,10 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
   }
 
   // Apply Decorators
-  for (auto d : decorators) {
-    d->Decorate(chunk, *this, column);
+  {
+    PROFILE_SCOPE_CONDITIONAL("Decorators", m_ProfilingEnabled);
+    for (auto d : decorators) {
+      d->Decorate(chunk, *this, column);
+    }
   }
 }

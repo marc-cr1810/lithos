@@ -59,6 +59,7 @@ class WorldGenerator {
 public:
   WorldGenerator(const WorldGenConfig &config);
   ~WorldGenerator();
+  void GenerateFixedMaps(); // Pre-calculate maps if fixed world is enabled
   void GenerateColumn(ChunkColumn &column, int cx, int cz);
   void GenerateChunk(Chunk &chunk, const ChunkColumn &column);
   int GetHeight(int x, int z); // Converted to Instance Method
@@ -71,6 +72,9 @@ public:
   BlockType
   GetSurfaceBlock(int gx, int gy, int gz,
                   bool checkCarving = false); // Check for subterranean features
+  BlockType GetSurfaceBlock(int gx, int gy, int gz, int cachedHeight,
+                            float cachedBaseTemp, float cachedHumid,
+                            bool checkCarving = false);
   bool IsCaveAt(int x, int y, int z);
   float GetCaveProbability(int x, int z);
   int GetSeed() const { return seed; }
@@ -86,8 +90,16 @@ public:
   void GetLandformBlend(int x, int z, std::string &primary,
                         std::string &secondary, float &blendFactor);
 
+  void EnableProfiling(bool enable) { m_ProfilingEnabled = enable; }
+
 private:
   BlockType GetStrataBlock(int x, int y, int z);
+
+  // Compute methods (On-the-fly calculation)
+  int ComputeHeight(int x, int z);
+  float ComputeTemperature(int x, int z, int y = -1);
+  float ComputeHumidity(int x, int z);
+  Biome ComputeBiome(int x, int z, int y = -1);
 
   // Noise map methods
   float GetLandformNoise(int x, int z);
@@ -107,6 +119,13 @@ private:
   CaveGenerator *caveGenerator;
   WorldGenConfig config;
   int seed;
+  bool m_ProfilingEnabled = false;
+
+  // Fixed world maps (Linearized 2D arrays: index = x + z * size)
+  std::vector<int> fixedHeightMap;
+  std::vector<float> fixedTempMap;
+  std::vector<float> fixedHumidMap;
+  std::vector<Biome> fixedBiomeMap;
 };
 
 #endif

@@ -43,4 +43,8 @@ private:
   bool m_ShowHills = false;
   bool m_ShowMountains = false;
   bool m_ShowBlended = true;
+
+  std::string m_BenchmarkResult;
+  int m_PrevSeaLevel = 60; // Default startup value before config load
+  bool m_ShouldOpenResults = false;
 };

@@ -19,6 +19,8 @@ struct WorldGenConfig {
   int seaLevel = 60;
   int surfaceDepth = 4;
   int worldHeight = 320; // World height in blocks (must be multiple of 32)
+  bool fixedWorld = false;
+  int fixedWorldSize = 1024;
 
   // Noise Scales
   float tempScale = 0.003f;     // Balanced for moderate biome regions
@@ -110,6 +112,8 @@ inline void to_json(json &j, const WorldGenConfig &c) {
            {"seaLevel", c.seaLevel},
            {"surfaceDepth", c.surfaceDepth},
            {"worldHeight", c.worldHeight},
+           {"fixedWorld", c.fixedWorld},
+           {"fixedWorldSize", c.fixedWorldSize},
            {"tempScale", c.tempScale},
            {"humidityScale", c.humidityScale},
            {"landformScale", c.landformScale},
@@ -151,6 +155,11 @@ inline void from_json(const json &j, WorldGenConfig &c) {
   j.at("seaLevel").get_to(c.seaLevel);
   j.at("surfaceDepth").get_to(c.surfaceDepth);
   j.at("worldHeight").get_to(c.worldHeight);
+  // Optional fields for backward compatibility
+  if (j.contains("fixedWorld"))
+    j.at("fixedWorld").get_to(c.fixedWorld);
+  if (j.contains("fixedWorldSize"))
+    j.at("fixedWorldSize").get_to(c.fixedWorldSize);
   j.at("tempScale").get_to(c.tempScale);
   j.at("humidityScale").get_to(c.humidityScale);
   j.at("landformScale").get_to(c.landformScale);
