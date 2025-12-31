@@ -3,12 +3,14 @@
 #include "../debug/Profiler.h"
 #include "Block.h"
 #include "Chunk.h"
+#include "ChunkColumn.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/noise.hpp>
 
 #include "FloraDecorator.h"
 #include "OreDecorator.h"
 #include "TreeDecorator.h"
+#include <FastNoise/FastNoise.h>
 #include <mutex>
 
 WorldGenerator::WorldGenerator(const WorldGenConfig &config)
@@ -511,12 +513,15 @@ BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz,
   float humid = GetHumidity(gx, gz);
   float beach = GetBeachNoise(gx, gz);
 
-  return GetSurfaceBlock(gx, gy, gz, height, temp, humid, beach, checkCarving);
+  return GetSurfaceBlock(gx, gy, gz, height, temp, humid, beach, nullptr,
+                         checkCarving);
 }
 
 BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz, int height,
                                           float temp, float humid,
-                                          float beachNoise, bool checkCarving) {
+                                          float beachNoise,
+                                          const ChunkColumn *column,
+                                          bool checkCarving) {
   // Use pre-computed values for performance!
   int beachHeightLimit = config.seaLevel + 3;
   if (gy > height)
@@ -589,7 +594,40 @@ BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz, int height,
     else
       type = subsurfaceBlock;
   } else {
-    type = GetStrataBlock(gx, gy, gz);
+    // Determine strata using pre-computed values if available
+    float layerWave = 0.0f;
+    float typeNoise = 0.0f;
+
+    if (column) {
+      layerWave = column->strataWaveMap[gx % CHUNK_SIZE][gz % CHUNK_SIZE];
+      typeNoise = column->strataTypeMap[gx % CHUNK_SIZE][gz % CHUNK_SIZE];
+    } else {
+      int seedS = (m_Seed * 777) % 65536;
+      layerWave = m_PerlinNoise2D->GenSingle2D((float)gx + seedS,
+                                               (float)gz + seedS, m_Seed + 300);
+      typeNoise = m_PerlinNoise2D->GenSingle2D((float)gx + seedS,
+                                               (float)gz + seedS, m_Seed + 400);
+    }
+
+    int adjustedY = gy + (int)(layerWave * 5.0f);
+
+    if (adjustedY < 12) {
+      if (typeNoise > 0.3f)
+        type = GRANITE;
+      else if (typeNoise < -0.3f)
+        type = BASALT;
+      else
+        type = DIORITE;
+    } else if (adjustedY < 20) {
+      type = STONE;
+    } else if (adjustedY < 25) {
+      if (typeNoise > 0.2f)
+        type = ANDESITE;
+      else
+        type = TUFF;
+    } else {
+      type = STONE;
+    }
   }
 
   // Cave/Ravine Carving Check
@@ -772,11 +810,16 @@ BlockType WorldGenerator::GetStrataBlock(int x, int y, int z) {
   float nz = (float)z + (float)seedS;
 
   // 2D noise for layer undulation (wavy boundaries)
-  float layerWave = glm::perlin(glm::vec2(nx * 0.02f, nz * 0.02f));
+  if (!m_PerlinNoise2D)
+    InitializeFastNoise();
+
+  float layerWave =
+      m_PerlinNoise2D->GenSingle2D(nx * 0.02f, nz * 0.02f, m_Seed + 300);
   int adjustedY = y + (int)(layerWave * 5.0f);
 
   // Secondary noise for layer type variation
-  float typeNoise = glm::perlin(glm::vec2(nx * 0.01f, nz * 0.01f));
+  float typeNoise =
+      m_PerlinNoise2D->GenSingle2D(nx * 0.01f, nz * 0.01f, m_Seed + 400);
 
   // Horizontal layers with some variation
   // Deep layers
@@ -852,6 +895,18 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
       beachNoise.data(), startX + (m_Seed * 5432) % 65536,
       startZ + (m_Seed * 1234) % 65536, CHUNK_SIZE, CHUNK_SIZE, 0.05f, m_Seed);
 
+  // 5. Batch generate Strata Noise Maps
+  std::vector<float> strataWave(CHUNK_SIZE * CHUNK_SIZE);
+  int seedS = (m_Seed * 777) % 65536;
+  m_PerlinNoise2D->GenUniformGrid2D(strataWave.data(), (float)startX + seedS,
+                                    (float)startZ + seedS, CHUNK_SIZE,
+                                    CHUNK_SIZE, 0.02f, m_Seed + 300);
+
+  std::vector<float> strataType(CHUNK_SIZE * CHUNK_SIZE);
+  m_PerlinNoise2D->GenUniformGrid2D(strataType.data(), (float)startX + seedS,
+                                    (float)startZ + seedS, CHUNK_SIZE,
+                                    CHUNK_SIZE, 0.01f, m_Seed + 400);
+
   // Process and store in column
   for (int z = 0; z < CHUNK_SIZE; ++z) {
     for (int x = 0; x < CHUNK_SIZE; ++x) {
@@ -875,6 +930,8 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
       column.temperatureMap[x][z] = tempNoise[idx];
       column.humidityMap[x][z] = humidNoise[idx];
       column.beachNoiseMap[x][z] = beachNoise[idx];
+      column.strataWaveMap[x][z] = strataWave[idx];
+      column.strataTypeMap[x][z] = strataType[idx];
       column.biomeMap[x][z] = GetBiomeAtHeight(startX + x, startZ + z, height,
                                                tempNoise[idx], humidNoise[idx]);
     }
@@ -901,8 +958,8 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
 
         for (int y = 0; y < CHUNK_SIZE; ++y) {
           int gy = pos.y * CHUNK_SIZE + y;
-          BlockType type =
-              GetSurfaceBlock(gx, gy, gz, height, baseTemp, humid, beachNoise);
+          BlockType type = GetSurfaceBlock(gx, gy, gz, height, baseTemp, humid,
+                                           beachNoise, &column);
           chunk.setBlock(x, y, z, type);
         }
       }
@@ -940,7 +997,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
 
   // Pass 3: Caves & Ravines
   {
-    spdlog::debug("GenChunk Caves Start: {}, {}, {}", pos.x, pos.y, pos.z);
+    // LOG_WORLD_INFO("GenChunk Caves Start: {}, {}, {}", pos.x, pos.y, pos.z);
     PROFILE_SCOPE_CONDITIONAL("GenChunk_Caves", m_ProfilingEnabled);
 
     // Generate all cave noise grids once using SIMD batch (massive speedup!)
@@ -1021,7 +1078,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
                 // Original logic called GetSurfaceBlock again.
                 // We can use cached args.
                 BlockType type = GetSurfaceBlock(gx, gy, gz, height, baseTemp,
-                                                 humid, beachNoise);
+                                                 humid, beachNoise, &column);
                 chunk.setBlock(x, y, z, type);
               }
             }
@@ -1087,7 +1144,7 @@ void WorldGenerator::InitializeFastNoise() {
   m_HeightFractal = fractal;
 
   m_Initialized = true;
-  spdlog::info("FastNoise2 SIMD nodes initialized");
+  LOG_INFO("FastNoise2 SIMD nodes initialized");
 }
 
 float WorldGenerator::FastNoise2D(float x, float y, int seedOffset) {

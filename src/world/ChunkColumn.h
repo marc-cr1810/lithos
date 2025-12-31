@@ -10,6 +10,8 @@ struct ChunkColumn {
   float temperatureMap[CHUNK_SIZE][CHUNK_SIZE];
   float humidityMap[CHUNK_SIZE][CHUNK_SIZE];
   float beachNoiseMap[CHUNK_SIZE][CHUNK_SIZE];
+  float strataWaveMap[CHUNK_SIZE][CHUNK_SIZE];
+  float strataTypeMap[CHUNK_SIZE][CHUNK_SIZE];
 
   // Accessors if we want them, or direct access since it's a struct
   int getHeight(int localX, int localZ) const {

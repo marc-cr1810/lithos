@@ -100,7 +100,8 @@ public:
                   bool checkCarving = false); // Check for subterranean features
   BlockType GetSurfaceBlock(int gx, int gy, int gz, int cachedHeight,
                             float cachedBaseTemp, float cachedHumid,
-                            float cachedBeachNoise, bool checkCarving = false);
+                            float cachedBeachNoise, const ChunkColumn *column,
+                            bool checkCarving = false);
   float GetBeachNoise(int gx, int gz);
   bool IsCaveAt(int x, int y, int z);
   float GetCaveProbability(int x, int z);
@@ -112,10 +113,10 @@ public:
   // Get height for a specific landform without blending
   int GetHeightForLandform(const std::string &name, int x, int z);
 
-  // Get the current landform blend at a position (primary, secondary, blend
-  // factor)
   void GetLandformBlend(int x, int z, std::string &primary,
                         std::string &secondary, float &blendFactor);
+
+  bool IsProfilingEnabled() const { return m_ProfilingEnabled; }
 
   void EnableProfiling(bool enable) { m_ProfilingEnabled = enable; }
 
