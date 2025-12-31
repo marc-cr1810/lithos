@@ -65,7 +65,9 @@ public:
   bool IsCaveAt(int x, int y, int z, int maxDepth);
 
   // Check if position should be a ravine
-  bool IsRavineAt(int x, int y, int z, int surfaceHeight);
+  bool IsRavineAt(int gx, int gy, int gz, int surfaceHeight);
+  bool IsRavineAt(int bx, int by, int bz, int gx, int gy, int gz,
+                  int surfaceHeight, const CaveNoiseData &noiseData);
 
   // Generate worm-style cave tunnel
   void GenerateWormCave(Chunk &chunk, int startX, int startY, int startZ,

@@ -1050,6 +1050,12 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
           int height = column.heightMap[x][z];
           bool isUnderwater = (height < config.seaLevel);
 
+          // Pre-calculate entrance zone for this column to avoid inner-loop
+          // lookups
+          int idx2D = caveNoise->Index2D(x + 2, z + 2);
+          float entrance = caveNoise->entranceNoise[idx2D];
+          bool inEntranceZone = (entrance >= config.caveEntranceNoise);
+
           for (int y = 0; y < CHUNK_SIZE; ++y) {
             int gy = pos.y * CHUNK_SIZE + y;
             if (gy > height || gy > CHUNK_SIZE * 8)
@@ -1063,10 +1069,16 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
               continue;
 
             bool preserveCrust = false;
-            if (isUnderwater && gy > height - 3)
+            if (gy <= 0) {
               preserveCrust = true;
-            if (gy <= 0)
-              preserveCrust = true;
+            } else if (isUnderwater) {
+              if (gy > height - 3)
+                preserveCrust = true;
+            } else {
+              // Smart Crust: Protect top 2 blocks unless in an entrance zone
+              if (gy >= height - 2 && !inEntranceZone)
+                preserveCrust = true;
+            }
 
             if (!preserveCrust) {
               bool shouldCarve = false;
@@ -1074,7 +1086,8 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
                   caveGenerator->IsCaveAt(x, y, z, height, *caveNoise))
                 shouldCarve = true;
               else if (config.enableRavines &&
-                       caveGenerator->IsRavineAt(gx, gy, gz, height))
+                       caveGenerator->IsRavineAt(x, y, z, gx, gy, gz, height,
+                                                 *caveNoise))
                 shouldCarve = true;
 
               if (shouldCarve) {

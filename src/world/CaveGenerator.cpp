@@ -24,7 +24,8 @@ bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth,
 
     // Broader entrance zones (0.4 -> caveEntranceNoise)
     if (entranceNoise < config.caveEntranceNoise) {
-      surfaceDeterrent = (float)(y - (maxDepth - 15)) * 0.1f;
+      // Stronger deterrent: 0.15f per block (was 0.1f)
+      surfaceDeterrent = (float)(y - (maxDepth - 15)) * 0.15f;
     } else {
       // Within entrance zones, we also boost the cave size for grand entrances
       grandEntranceBonus =
@@ -102,7 +103,8 @@ bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth) {
     float entranceNoise =
         generator->FastNoise2D((float)x * 0.012f, (float)z * 0.012f, 5000);
     if (entranceNoise < config.caveEntranceNoise) {
-      surfaceDeterrent = (float)(y - (maxDepth - 15)) * 0.1f;
+      // Stronger deterrent: 0.15f per block (was 0.1f)
+      surfaceDeterrent = (float)(y - (maxDepth - 15)) * 0.15f;
     } else {
       grandEntranceBonus = (entranceNoise - config.caveEntranceNoise) * 0.3f;
     }
@@ -162,43 +164,81 @@ bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth) {
   return isCheeseCave || isSpaghettiCave;
 }
 
-bool CaveGenerator::IsRavineAt(int x, int y, int z, int surfaceHeight) {
-  // Ravines are surface features that cut deep into the ground
-  // Only generate ravines from surface down to a certain depth
-  if (y > surfaceHeight || y < surfaceHeight - config.ravineDepth) {
+bool CaveGenerator::IsRavineAt(int gx, int gy, int gz, int surfaceHeight) {
+  // Original implementation (slow path)
+  if (gy > surfaceHeight || gy < surfaceHeight - config.ravineDepth) {
     return false;
+  }
+
+  // Surface Deterrent for Ravines: Pierce top 1 block ONLY if in an entrance
+  // zone
+  if (gy >= surfaceHeight - 1) {
+    float entranceNoise =
+        generator->FastNoise2D((float)gx * 0.012f, (float)gz * 0.012f, 5000);
+    if (entranceNoise < config.caveEntranceNoise) {
+      return false;
+    }
   }
 
   int seedX = (seed * 3333) % 65536;
   int seedZ = (seed * 4444) % 65536;
-
-  glm::vec2 pos2D((float)(x + seedX), (float)(z + seedZ));
-
-  // Use 2D ridged noise to create long, winding ravines
-  // Base scale is 0.006f
+  glm::vec2 pos2D((float)(gx + seedX), (float)(gz + seedZ));
   float ravineScale = 0.006f * (config.caveFrequency / 0.015f);
   float ravineNoise1 = glm::perlin(pos2D * ravineScale);
   float ravineNoise2 =
       glm::perlin(pos2D * ravineScale + glm::vec2(500.0f, 500.0f));
 
-  // Ravines are where noise is close to zero (ridged)
-  // Base width is 0.05f
   float ravinePathWidth = 0.05f * config.ravineWidth;
-  bool isOnRavinePath = (std::abs(ravineNoise1) < ravinePathWidth) &&
-                        (std::abs(ravineNoise2) < ravinePathWidth);
-
-  if (!isOnRavinePath) {
+  if (std::abs(ravineNoise1) >= ravinePathWidth ||
+      std::abs(ravineNoise2) >= ravinePathWidth) {
     return false;
   }
 
-  // Depth profile: wider at top, narrower at bottom
-  float depthRatio = (float)(surfaceHeight - y) / (float)config.ravineDepth;
-  float widthAtDepth = (3.0f + (1.0f - depthRatio) * 5.0f) *
-                       config.ravineWidth; // 3-8 blocks wide base
-
-  // Add some horizontal variation
+  float depthRatio = (float)(surfaceHeight - gy) / (float)config.ravineDepth;
+  float widthAtDepth = (3.0f + (1.0f - depthRatio) * 5.0f) * config.ravineWidth;
   float horizontalNoise =
-      glm::perlin(glm::vec3(pos2D * 0.05f, (float)y * 0.1f));
+      glm::perlin(glm::vec3(pos2D * 0.05f, (float)gy * 0.1f));
+
+  return std::abs(horizontalNoise) < (widthAtDepth / 10.0f);
+}
+
+bool CaveGenerator::IsRavineAt(int bx, int by, int bz, int gx, int gy, int gz,
+                               int surfaceHeight,
+                               const CaveNoiseData &noiseData) {
+  // Batched implementation (fast path)
+  if (gy > surfaceHeight || gy < surfaceHeight - config.ravineDepth) {
+    return false;
+  }
+
+  // Surface Deterrent for Ravines using BATCHED entrance noise
+  if (gy >= surfaceHeight - 1) {
+    int idx2D = noiseData.Index2D(bx + 2, bz + 2);
+    float entranceNoise = noiseData.entranceNoise[idx2D];
+    if (entranceNoise < config.caveEntranceNoise) {
+      return false;
+    }
+  }
+
+  // Rest of the logic remains on-the-fly (perlin is reasonably fast, but could
+  // be batched if needed)
+  int seedX = (seed * 3333) % 65536;
+  int seedZ = (seed * 4444) % 65536;
+  glm::vec2 pos2D((float)(gx + seedX), (float)(gz + seedZ));
+  float ravineScale = 0.006f * (config.caveFrequency / 0.015f);
+  float ravineNoise1 = glm::perlin(pos2D * ravineScale);
+  float ravineNoise2 =
+      glm::perlin(pos2D * ravineScale + glm::vec2(500.0f, 500.0f));
+
+  float ravinePathWidth = 0.05f * config.ravineWidth;
+  if (std::abs(ravineNoise1) >= ravinePathWidth ||
+      std::abs(ravineNoise2) >= ravinePathWidth) {
+    return false;
+  }
+
+  float depthRatio = (float)(surfaceHeight - gy) / (float)config.ravineDepth;
+  float widthAtDepth = (3.0f + (1.0f - depthRatio) * 5.0f) * config.ravineWidth;
+  float horizontalNoise =
+      glm::perlin(glm::vec3(pos2D * 0.05f, (float)gy * 0.1f));
 
   return std::abs(horizontalNoise) < (widthAtDepth / 10.0f);
 }
