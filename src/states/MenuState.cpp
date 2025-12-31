@@ -168,9 +168,16 @@ void MenuState::RenderUI(Application *app) {
           changed = true;
         }
 
+        int oldSeaLevel = m_Config.seaLevel;
         if (ImGui::SliderInt("Sea Level", &m_Config.seaLevel, 0,
-                             m_Config.worldHeight - 1))
+                             m_Config.worldHeight - 1)) {
+          int diff = m_Config.seaLevel - oldSeaLevel;
+          // Shift all landforms by differences to maintain relative height
+          for (auto &kv : m_Config.landformOverrides) {
+            kv.second.baseHeight += (float)diff;
+          }
           changed = true;
+        }
         HelpMarker("The Y-level where water fills up to.");
         if (ImGui::SliderFloat("Terrain Scale", &m_Config.terrainScale, 0.0001f,
                                0.01f))
