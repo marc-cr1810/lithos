@@ -45,16 +45,16 @@ void MenuState::Init(Application *app) {
   initLandform("oceans", 35.0f, 40.0f,
                {0.60f, 0.20f, 0.10f, 0.05f, 0.025f, 0.012f, 0.006f, 0.003f,
                 0.015f, 0.0008f});
-  initLandform("plains", 66.0f, 15.0f,
+  initLandform("plains", 70.0f, 15.0f,
                {0.55f, 0.28f, 0.14f, 0.07f, 0.035f, 0.018f, 0.009f, 0.0045f,
                 0.0022f, 0.0011f});
-  initLandform("hills", 72.0f, 40.0f,
+  initLandform("hills", 75.0f, 40.0f,
                {0.45f, 0.38f, 0.28f, 0.2f, 0.12f, 0.07f, 0.035f, 0.018f, 0.009f,
                 0.0045f});
   initLandform(
-      "mountains", 85.0f, 120.0f,
+      "mountains", 100.0f, 120.0f,
       {0.38f, 0.45f, 0.5f, 0.42f, 0.28f, 0.2f, 0.14f, 0.07f, 0.035f, 0.018f});
-  initLandform("valleys", 55.0f, 20.0f,
+  initLandform("valleys", 62.0f, 20.0f,
                {0.65f, 0.22f, 0.11f, 0.055f, 0.028f, 0.014f, 0.007f, 0.0035f,
                 0.017f, 0.0008f});
 
@@ -514,8 +514,21 @@ void MenuState::RenderUI(Application *app) {
           ImGui::PushID(name.c_str());
           if (ImGui::CollapsingHeader(name.c_str(),
                                       ImGuiTreeNodeFlags_DefaultOpen)) {
-            if (ImGui::SliderFloat("Base Height", &override.baseHeight, 0.0f,
-                                   (float)m_Config.worldHeight))
+            float minH = 0.0f;
+            float maxH = (float)m_Config.worldHeight;
+
+            // Enforce constraints based on land/water status
+            if (name == "oceans") {
+              // Oceans must be below sea level
+              maxH = std::max(0.0f, (float)m_Config.seaLevel - 1.0f);
+            } else {
+              // Land must be at or above sea level
+              minH = std::min((float)m_Config.worldHeight,
+                              (float)m_Config.seaLevel);
+            }
+
+            if (ImGui::SliderFloat("Base Height", &override.baseHeight, minH,
+                                   maxH))
               changed = true;
             HelpMarker("Elevates this specific landform type.");
             if (ImGui::SliderFloat("Variation", &override.heightVariation, 0.0f,
