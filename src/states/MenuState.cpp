@@ -274,60 +274,70 @@ void MenuState::RenderUI(Application *app) {
         ImDrawList *drawList = ImGui::GetWindowDrawList();
         ImVec2 plotPos = ImGui::GetCursorScreenPos();
         float availWidth = ImGui::GetContentRegionAvail().x - 10;
-        ImVec2 plotSize(availWidth, 200.0f);
+        // Reduce width for the terrain plot to make room for the temp graph
+        float terrainWidth = availWidth * 0.95f;
+        float tempGraphWidth = availWidth * 0.025f; // Even narrower bar
+        ImVec2 terrainPlotSize(terrainWidth, 200.0f);
 
-        // Reserve space
-        ImGui::InvisibleButton("##biomeplot", plotSize);
+        // Reserve space for the whole block
+        ImGui::InvisibleButton("##biomeplot", ImVec2(availWidth, 200.0f));
 
-        // Check if mouse is hovering over the plot
+        // --- TERRAIN PLOT ---
+
+        // Check if mouse is hovering over the terrain plot
         if (ImGui::IsItemHovered()) {
           ImVec2 mousePos = ImGui::GetMousePos();
-          float relX = (mousePos.x - plotPos.x) / plotSize.x;
-          if (relX >= 0.0f && relX <= 1.0f) {
-            int sampleIdx = (int)(relX * 128.0f);
-            if (sampleIdx >= 0 && sampleIdx < 128) {
-              int biome = (int)m_BiomeData[sampleIdx];
-              float height = m_PreviewData[sampleIdx];
+          // Check if within terrain bounds
+          if (mousePos.x >= plotPos.x &&
+              mousePos.x <= plotPos.x + terrainWidth) {
+            float relX = (mousePos.x - plotPos.x) / terrainPlotSize.x;
+            if (relX >= 0.0f && relX <= 1.0f) {
+              int sampleIdx = (int)(relX * 128.0f);
+              if (sampleIdx >= 0 && sampleIdx < 128) {
+                int biome = (int)m_BiomeData[sampleIdx];
+                float height = m_PreviewData[sampleIdx];
 
-              const char *biomeName = "Unknown";
-              switch (biome) {
-              case 0:
-                biomeName = "Ocean";
-                break;
-              case 1:
-                biomeName = "Beach";
-                break;
-              case 2:
-                biomeName = "Desert";
-                break;
-              case 3:
-                biomeName = "Tundra";
-                break;
-              case 4:
-                biomeName = "Forest";
-                break;
-              case 5:
-                biomeName = "Plains";
-                break;
+                const char *biomeName = "Unknown";
+                switch (biome) {
+                case 0:
+                  biomeName = "Ocean";
+                  break;
+                case 1:
+                  biomeName = "Beach";
+                  break;
+                case 2:
+                  biomeName = "Desert";
+                  break;
+                case 3:
+                  biomeName = "Tundra";
+                  break;
+                case 4:
+                  biomeName = "Forest";
+                  break;
+                case 5:
+                  biomeName = "Plains";
+                  break;
+                }
+
+                ImGui::BeginTooltip();
+                ImGui::Text("Biome: %s", biomeName);
+                ImGui::Text("Height: %.1f", height);
+                ImGui::EndTooltip();
               }
-
-              ImGui::BeginTooltip();
-              ImGui::Text("Biome: %s", biomeName);
-              ImGui::Text("Height: %.1f", height);
-              ImGui::EndTooltip();
             }
           }
         }
 
-        // Draw background
-        drawList->AddRectFilled(
-            plotPos, ImVec2(plotPos.x + plotSize.x, plotPos.y + plotSize.y),
-            IM_COL32(30, 30, 35, 255));
+        // Draw background for terrain
+        drawList->AddRectFilled(plotPos,
+                                ImVec2(plotPos.x + terrainPlotSize.x,
+                                       plotPos.y + terrainPlotSize.y),
+                                IM_COL32(30, 30, 35, 255));
 
         // Draw biome-colored terrain profile
         for (int i = 0; i < 127; i++) {
-          float x0 = plotPos.x + (i / 128.0f) * plotSize.x;
-          float x1 = plotPos.x + ((i + 1) / 128.0f) * plotSize.x;
+          float x0 = plotPos.x + (i / 128.0f) * terrainPlotSize.x;
+          float x1 = plotPos.x + ((i + 1) / 128.0f) * terrainPlotSize.x;
 
           // Get height and biome for this position
           float height = m_PreviewData[i];
@@ -335,10 +345,11 @@ void MenuState::RenderUI(Application *app) {
           int biome = (int)m_BiomeData[i];
 
           // Normalize heights to plot space
-          float y0 = plotPos.y + plotSize.y -
-                     (height / (float)m_Config.worldHeight) * plotSize.y;
-          float y1 = plotPos.y + plotSize.y -
-                     (heightNext / (float)m_Config.worldHeight) * plotSize.y;
+          float y0 = plotPos.y + terrainPlotSize.y -
+                     (height / (float)m_Config.worldHeight) * terrainPlotSize.y;
+          float y1 =
+              plotPos.y + terrainPlotSize.y -
+              (heightNext / (float)m_Config.worldHeight) * terrainPlotSize.y;
 
           // Determine biome color
           ImU32 biomeColor;
@@ -367,19 +378,109 @@ void MenuState::RenderUI(Application *app) {
           }
 
           // Draw filled polygon from bottom to terrain height
-          ImVec2 points[4] = {ImVec2(x0, plotPos.y + plotSize.y),
+          ImVec2 points[4] = {ImVec2(x0, plotPos.y + terrainPlotSize.y),
                               ImVec2(x0, y0), ImVec2(x1, y1),
-                              ImVec2(x1, plotPos.y + plotSize.y)};
+                              ImVec2(x1, plotPos.y + terrainPlotSize.y)};
           drawList->AddConvexPolyFilled(points, 4, biomeColor);
         }
 
         // Draw sea level line
-        float seaY = plotPos.y + plotSize.y -
+        float seaY = plotPos.y + terrainPlotSize.y -
                      ((float)m_Config.seaLevel / (float)m_Config.worldHeight) *
-                         plotSize.y;
+                         terrainPlotSize.y;
         drawList->AddLine(ImVec2(plotPos.x, seaY),
-                          ImVec2(plotPos.x + plotSize.x, seaY),
+                          ImVec2(plotPos.x + terrainPlotSize.x, seaY),
                           IM_COL32(50, 100, 200, 200), 2.0f);
+
+        // --- TEMPERATURE VERTICAL GRADIENT BAR ---
+
+        ImVec2 tempPos(plotPos.x + terrainWidth + (availWidth * 0.02f),
+                       plotPos.y);
+        ImVec2 tempSize(tempGraphWidth, 200.0f);
+
+        // Background/Border
+        drawList->AddRectFilled(
+            tempPos, ImVec2(tempPos.x + tempSize.x, tempPos.y + tempSize.y),
+            IM_COL32(20, 20, 25, 255));
+
+        // Draw gradient strips
+        for (int i = 0; i < 100; ++i) {
+          float relY = (float)i / 100.0f; // 0 (bottom) to 1 (top)
+          int worldY = (int)(relY * m_Config.worldHeight);
+
+          // Calculate Temp (Base - Lapse + Geothermal)
+          float temp = 0.5f;
+          if (worldY > m_Config.seaLevel) {
+            temp -= (float)(worldY - m_Config.seaLevel) *
+                    m_Config.temperatureLapseRate;
+          }
+          if (worldY < m_Config.seaLevel) {
+            temp += (float)(m_Config.seaLevel - worldY) *
+                    m_Config.geothermalGradient;
+          }
+
+          // Clamp visual range for color mapping
+          // 0.0 -> Blue, 0.5 -> Green, 1.0 -> Red
+          float t = std::clamp(temp, 0.0f, 1.0f);
+
+          ImU32 col;
+          // White(255,255,255) -> Green(0,255,0) -> Red(255,0,0)
+          if (t < 0.5f) {
+            // White to Green
+            float f = t * 2.0f; // 0..1
+            // R: 255->0, G: 255->255, B: 255->0
+            int rb = (int)(255.0f * (1.0f - f));
+            col = IM_COL32(rb, 255, rb, 255);
+          } else {
+            // Green to Red
+            float f = (t - 0.5f) * 2.0f; // 0..1
+            // R: 0->255, G: 255->0, B: 0->0
+            int r = (int)(255.0f * f);
+            int g = (int)(255.0f * (1.0f - f));
+            col = IM_COL32(r, g, 0, 255);
+          }
+
+          float yBottom = tempPos.y + tempSize.y * (1.0f - relY);
+          float yTop =
+              tempPos.y + tempSize.y * (1.0f - ((float)(i + 1) / 100.0f));
+
+          drawList->AddRectFilled(ImVec2(tempPos.x, yTop),
+                                  ImVec2(tempPos.x + tempSize.x, yBottom), col);
+        }
+
+        // Sea Level Line extension
+        drawList->AddLine(ImVec2(tempPos.x, seaY),
+                          ImVec2(tempPos.x + tempSize.x, seaY),
+                          IM_COL32(255, 255, 255, 150), 2.0f);
+
+        // Border around bar
+        drawList->AddRect(
+            tempPos, ImVec2(tempPos.x + tempSize.x, tempPos.y + tempSize.y),
+            IM_COL32(100, 100, 120, 255));
+
+        // Add simple tooltip on hover
+        if (ImGui::IsMouseHoveringRect(
+                tempPos,
+                ImVec2(tempPos.x + tempSize.x, tempPos.y + tempSize.y))) {
+          ImVec2 mousePos = ImGui::GetMousePos();
+          float relY = 1.0f - (mousePos.y - tempPos.y) / tempSize.y;
+          int paramY = (int)(relY * m_Config.worldHeight);
+
+          float temp = 0.5f;
+          if (paramY > m_Config.seaLevel) {
+            temp -= (float)(paramY - m_Config.seaLevel) *
+                    m_Config.temperatureLapseRate;
+          }
+          if (paramY < m_Config.seaLevel) {
+            temp += (float)(m_Config.seaLevel - paramY) *
+                    m_Config.geothermalGradient;
+          }
+
+          ImGui::BeginTooltip();
+          ImGui::Text("Height: %d", paramY);
+          ImGui::Text("Base Temp: %.2f", temp);
+          ImGui::EndTooltip();
+        }
 
         // Legend
         ImGui::Text("Biome Colors:");
