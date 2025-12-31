@@ -24,6 +24,7 @@ WorldGenerator::WorldGenerator(const WorldGenConfig &config)
 
   // Initialize cave generator
   caveGenerator = new CaveGenerator(config);
+  caveGenerator->generator = this; // Give cave generator access to FastNoise
 }
 
 WorldGenerator::~WorldGenerator() {
@@ -74,7 +75,7 @@ int WorldGenerator::ComputeHeight(int x, int z) {
   blendFactor = std::max(0.0f, std::min(1.0f, blendFactor));
 
   for (int i = 0; i < numOctaves; ++i) {
-    float octaveValue = glm::perlin(glm::vec2(nx, nz) * frequency);
+    float octaveValue = FastNoise2D(nx * frequency, nz * frequency, i);
 
     // Blend octave amplitudes between landforms
     float ampP = (i < primary->octaveAmplitudes.size())
@@ -306,7 +307,7 @@ float WorldGenerator::ComputeTemperature(int x, int z, int y) {
   float nx = (float)x + (float)seedT;
   float nz = (float)z + (float)seedT;
   // Scale 0.001f means biomes are ~1000 blocks wide
-  float temp = glm::perlin(glm::vec2(nx, nz) * config.tempScale);
+  float temp = FastNoise2D(nx * config.tempScale, nz * config.tempScale, 100);
 
   // Apply altitude-based temperature decrease (lapse rate)
   if (y != -1 && config.temperatureLapseRate > 0.0f && y > config.seaLevel) {
@@ -353,7 +354,7 @@ float WorldGenerator::ComputeHumidity(int x, int z) {
   int seedH = (seed * 888) % 65536;
   float nx = (float)x + (float)seedH;
   float nz = (float)z + (float)seedH;
-  return glm::perlin(glm::vec2(nx, nz) * config.humidityScale);
+  return FastNoise2D(nx * config.humidityScale, nz * config.humidityScale, 200);
 }
 
 float WorldGenerator::GetHumidity(int x, int z) {
@@ -633,7 +634,7 @@ float WorldGenerator::GetLandformNoise(int x, int z) {
   int seedL = (seed * 1111) % 65536;
   float nx = (float)x + (float)seedL;
   float nz = (float)z + (float)seedL;
-  return glm::perlin(glm::vec2(nx, nz) * config.landformScale);
+  return FastNoise2D(nx * config.landformScale, nz * config.landformScale, 300);
 }
 
 float WorldGenerator::GetClimateNoise(int x, int z) {
@@ -974,4 +975,33 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
       d->Decorate(chunk, *this, column);
     }
   }
+}
+
+// FastNoise2 Wrapper Implementation
+void WorldGenerator::InitializeFastNoise() {
+  // Create 2D Perlin noise generator
+  m_PerlinNoise2D = FastNoise::New<FastNoise::Perlin>();
+
+  // Create 3D Perlin noise generator
+  m_PerlinNoise3D = FastNoise::New<FastNoise::Perlin>();
+
+  spdlog::info("FastNoise2 initialized");
+}
+
+float WorldGenerator::FastNoise2D(float x, float y, int seedOffset) {
+  if (!m_PerlinNoise2D) {
+    InitializeFastNoise();
+  }
+
+  // FastNoise2 returns float directly
+  return m_PerlinNoise2D->GenSingle2D(x, y, seed + seedOffset);
+}
+
+float WorldGenerator::FastNoise3D(float x, float y, float z, int seedOffset) {
+  if (!m_PerlinNoise3D) {
+    InitializeFastNoise();
+  }
+
+  // FastNoise2 returns float directly
+  return m_PerlinNoise3D->GenSingle3D(x, y, z, seed + seedOffset);
 }

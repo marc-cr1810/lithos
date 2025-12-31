@@ -3,8 +3,10 @@
 
 #include "Block.h"
 #include "WorldGenConfig.h"
+#include <FastNoise/FastNoise.h>
 #include <glm/glm.hpp>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -45,6 +47,8 @@ public:
   // Generate worm-style cave tunnel
   void GenerateWormCave(Chunk &chunk, int startX, int startY, int startZ,
                         int maxDepth);
+
+  class WorldGenerator *generator; // For FastNoise3D access
 
 private:
   void CarveSphere(Chunk &chunk, glm::vec3 center, float radius);
@@ -92,6 +96,11 @@ public:
 
   void EnableProfiling(bool enable) { m_ProfilingEnabled = enable; }
 
+  // FastNoise2 wrapper methods - PUBLIC for CaveGenerator access
+  void InitializeFastNoise();
+  float FastNoise2D(float x, float y, int seed = 0);
+  float FastNoise3D(float x, float y, float z, int seed = 0);
+
 private:
   BlockType GetStrataBlock(int x, int y, int z);
 
@@ -120,6 +129,10 @@ private:
   WorldGenConfig config;
   int seed;
   bool m_ProfilingEnabled = false;
+
+  // FastNoise2 nodes
+  FastNoise::SmartNode<> m_PerlinNoise2D;
+  FastNoise::SmartNode<> m_PerlinNoise3D;
 
   // Fixed world maps (Linearized 2D arrays: index = x + z * size)
   std::vector<int> fixedHeightMap;

@@ -46,7 +46,8 @@ bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth) {
   // Layer 1: "Cheese" caves - Swiss cheese style, larger caverns
   // Low frequency, creates large blob-like caves. Base is 0.01f
   float cheeseScale = 0.01f * (config.caveFrequency / 0.015f);
-  float cheeseNoise = glm::perlin(pos * cheeseScale);
+  float cheeseNoise = generator->FastNoise3D(
+      pos.x * cheeseScale, pos.y * cheeseScale, pos.z * cheeseScale, 1000);
 
   // Base threshold is 0.68f. Lower threshold = bigger caves.
   float cheeseThreshold = (0.68f / config.caveSize) - (depthFactor * 0.12f) +
@@ -58,11 +59,14 @@ bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth) {
   if (cheeseNoise > cheeseThreshold) {
     // Sample a few nearby points to ensure this is part of a larger cave
     float nearby1 =
-        glm::perlin((pos + glm::vec3(2.0f, 0.0f, 0.0f)) * cheeseScale);
-    float nearby2 =
-        glm::perlin((pos + glm::vec3(0.0f, 2.0f, 0.0f)) * cheeseScale);
+        generator->FastNoise3D((pos.x + 2.0f) * cheeseScale,
+                               pos.y * cheeseScale, pos.z * cheeseScale, 1000);
+    float nearby2 = generator->FastNoise3D(pos.x * cheeseScale,
+                                           (pos.y + 2.0f) * cheeseScale,
+                                           pos.z * cheeseScale, 1000);
     float nearby3 =
-        glm::perlin((pos + glm::vec3(0.0f, 0.0f, 2.0f)) * cheeseScale);
+        generator->FastNoise3D(pos.x * cheeseScale, pos.y * cheeseScale,
+                               (pos.z + 2.0f) * cheeseScale, 1000);
 
     // Only create cave if at least 2 out of 3 nearby points also pass threshold
     int nearbyCount = 0;
@@ -81,13 +85,17 @@ bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth) {
   float spagModScale = 0.01f * (config.caveFrequency / 0.015f);
   float spagNoiseScale = 0.03f * (config.caveFrequency / 0.015f);
 
-  float spaghettiSizeMod = glm::perlin(pos * spagModScale);
+  float spaghettiSizeMod = generator->FastNoise3D(
+      pos.x * spagModScale, pos.y * spagModScale, pos.z * spagModScale, 2000);
   float spaghettiWidthBonus = (spaghettiSizeMod * 0.045f * config.caveSize);
 
   // Use ridged noise (abs) for tunnel-like structures
-  float spaghettiNoise1 = glm::perlin(pos * spagNoiseScale);
-  float spaghettiNoise2 =
-      glm::perlin(pos * spagNoiseScale + glm::vec3(100.0f, 100.0f, 100.0f));
+  float spaghettiNoise1 =
+      generator->FastNoise3D(pos.x * spagNoiseScale, pos.y * spagNoiseScale,
+                             pos.z * spagNoiseScale, 3000);
+  float spaghettiNoise2 = generator->FastNoise3D(
+      (pos.x + 100.0f) * spagNoiseScale, (pos.y + 100.0f) * spagNoiseScale,
+      (pos.z + 100.0f) * spagNoiseScale, 3000);
 
   // Base threshold is 0.05f. Higher = wider tunnels.
   float spaghettiThreshold = (0.05f * config.caveSize) +

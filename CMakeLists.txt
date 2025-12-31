@@ -107,6 +107,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(json)
 
+# FastNoise2
+FetchContent_Declare(
+    FastNoise2
+    GIT_REPOSITORY https://github.com/Auburn/FastNoise2.git
+    GIT_TAG v0.10.0-alpha
+)
+FetchContent_MakeAvailable(FastNoise2)
+
 # ImGui
 FetchContent_Declare(
     imgui
@@ -187,6 +195,7 @@ target_link_libraries(lithos PRIVATE
     nlohmann_json::nlohmann_json
     spdlog::spdlog
     argparse::argparse
+    FastNoise
 )
 
 if(WIN32)
