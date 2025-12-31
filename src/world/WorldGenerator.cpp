@@ -786,22 +786,40 @@ BlockType WorldGenerator::GetStrataBlock(int x, int y, int z) {
 
 void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
   PROFILE_SCOPE_CONDITIONAL("GenColumn", m_ProfilingEnabled);
+
+  int startGx = cx * CHUNK_SIZE;
+  int startGz = cz * CHUNK_SIZE;
+
+  // Batch generate temperature map (256 values in one call)
+  float tempGrid[CHUNK_SIZE * CHUNK_SIZE];
+  int seedT = (seed * 777) % 65536;
+  FastNoiseGrid2D(tempGrid, startGx + seedT, startGz + seedT, CHUNK_SIZE,
+                  CHUNK_SIZE, config.tempScale, 100);
+
+  // Batch generate humidity map
+  float humidGrid[CHUNK_SIZE * CHUNK_SIZE];
+  int seedH = (seed * 888) % 65536;
+  FastNoiseGrid2D(humidGrid, startGx + seedH, startGz + seedH, CHUNK_SIZE,
+                  CHUNK_SIZE, config.humidityScale, 200);
+
+  // Batch generate beach noise
+  float beachGrid[CHUNK_SIZE * CHUNK_SIZE];
+  int beachOffX = (seed * 5432) % 65536;
+  int beachOffZ = (seed * 1234) % 65536;
+  FastNoiseGrid2D(beachGrid, startGx + beachOffX, startGz + beachOffZ,
+                  CHUNK_SIZE, CHUNK_SIZE, 0.05f, 400);
+
+  // Now fill column data from batch-generated grids
   for (int x = 0; x < CHUNK_SIZE; ++x) {
     for (int z = 0; z < CHUNK_SIZE; ++z) {
-      int gx = cx * CHUNK_SIZE + x;
-      int gz = cz * CHUNK_SIZE + z;
+      int gx = startGx + x;
+      int gz = startGz + z;
+      int idx = x + z * CHUNK_SIZE;
+
       column.heightMap[x][z] = GetHeight(gx, gz);
-      // Cache climate data
-      column.temperatureMap[x][z] = GetTemperature(gx, gz, -1);
-      column.humidityMap[x][z] = GetHumidity(gx, gz);
-
-      // Cache beach noise
-      int beachOffX = (seed * 5432) % 65536;
-      int beachOffZ = (seed * 1234) % 65536;
-      column.beachNoiseMap[x][z] =
-          glm::perlin(glm::vec3(((float)gx + beachOffX) * 0.05f, 0.0f,
-                                ((float)gz + beachOffZ) * 0.05f));
-
+      column.temperatureMap[x][z] = tempGrid[idx];
+      column.humidityMap[x][z] = humidGrid[idx];
+      column.beachNoiseMap[x][z] = beachGrid[idx];
       column.biomeMap[x][z] = GetBiomeAtHeight(gx, gz, column.heightMap[x][z]);
     }
   }
@@ -1004,4 +1022,32 @@ float WorldGenerator::FastNoise3D(float x, float y, float z, int seedOffset) {
 
   // FastNoise2 returns float directly
   return m_PerlinNoise3D->GenSingle3D(x, y, z, seed + seedOffset);
+}
+
+// Batch grid generation - SIMD optimized
+void WorldGenerator::FastNoiseGrid2D(float *output, int startX, int startZ,
+                                     int width, int height, float frequency,
+                                     int seedOffset) {
+  if (!m_PerlinNoise2D) {
+    InitializeFastNoise();
+  }
+
+  // Generate entire grid at once using SIMD
+  m_PerlinNoise2D->GenUniformGrid2D(output, startX, startZ, width, height,
+                                    frequency, seed + seedOffset);
+}
+
+// Batch 3D grid generation - SIMD optimized for caves
+void WorldGenerator::FastNoiseGrid3D(float *output, int startX, int startY,
+                                     int startZ, int width, int height,
+                                     int depth, float frequency,
+                                     int seedOffset) {
+  if (!m_PerlinNoise3D) {
+    InitializeFastNoise();
+  }
+
+  // Generate entire 3D grid at once using SIMD
+  m_PerlinNoise3D->GenUniformGrid3D(output, startX, startY, startZ, width,
+                                    height, depth, frequency,
+                                    seed + seedOffset);
 }

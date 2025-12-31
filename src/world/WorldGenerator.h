@@ -101,6 +101,13 @@ public:
   float FastNoise2D(float x, float y, int seed = 0);
   float FastNoise3D(float x, float y, float z, int seed = 0);
 
+  // Batch grid generation (SIMD optimized)
+  void FastNoiseGrid2D(float *output, int startX, int startZ, int width,
+                       int height, float frequency, int seedOffset = 0);
+  void FastNoiseGrid3D(float *output, int startX, int startY, int startZ,
+                       int width, int height, int depth, float frequency,
+                       int seedOffset = 0);
+
 private:
   BlockType GetStrataBlock(int x, int y, int z);
 

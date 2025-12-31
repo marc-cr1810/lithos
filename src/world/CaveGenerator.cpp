@@ -21,7 +21,7 @@ bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth) {
     // (entrances) Slightly lower frequency for larger "entrance regions" (0.015
     // -> 0.012)
     float entranceNoise =
-        glm::perlin(glm::vec2((float)x * 0.012f, (float)z * 0.012f));
+        generator->FastNoise2D((float)x * 0.012f, (float)z * 0.012f, 5000);
 
     // Broader entrance zones (0.4 -> caveEntranceNoise)
     if (entranceNoise < config.caveEntranceNoise) {
