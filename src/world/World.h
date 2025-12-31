@@ -61,6 +61,9 @@ public:
   // Get terrain height from column (cached)
   int getHeight(int x, int z) const;
 
+  // Manual chunk insertion (for benchmark preview)
+  void insertChunk(std::shared_ptr<Chunk> chunk);
+
   // Updates
   void scheduleBlockUpdate(int x, int y, int z, int delay);
   void updateBlocks();

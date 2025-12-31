@@ -2,11 +2,17 @@
 
 #include "../core/State.h"
 #include "../world/WorldGenConfig.h"
+#include <memory>
 #include <string>
 #include <vector>
 
+#include "../render/Camera.h"
+#include <glm/glm.hpp>
+
 class MenuState : public State {
 public:
+  MenuState();
+  virtual ~MenuState();
   void Init(Application *app) override;
   void HandleInput(Application *app) override;
   void Update(Application *app, float dt) override;
@@ -48,4 +54,23 @@ private:
   int m_BenchmarkSize = 4; // Side length for NxN benchmark (e.g. 4x4)
   int m_PrevSeaLevel = 60; // Default startup value before config load
   bool m_ShouldOpenResults = false;
+  bool m_IsBenchmarkResultsOpen = false;
+
+  // 3D Preview
+  std::unique_ptr<class World> m_PreviewWorld;
+  std::vector<std::shared_ptr<class Chunk>> m_BenchmarkChunks;
+  std::unique_ptr<class Framebuffer> m_PreviewFBO;
+  std::unique_ptr<class Shader> m_PreviewShader;
+  std::unique_ptr<class TextureAtlas> m_PreviewAtlas;
+  glm::vec3 m_PreviewTarget{0.0f, 80.0f, 0.0f}; // Target for camera to look at
+  std::unique_ptr<class Texture> m_PreviewTexture;
+  class Camera m_PreviewCamera;
+  float m_PreviewYaw = -45.0f;
+  float m_PreviewPitch = -30.0f;
+  float m_PreviewDistance = 80.0f;
+  glm::vec2 m_LastMousePos = {0.0f, 0.0f};
+  bool m_IsDraggingPreview = false;
+
+  void InitPreview();
+  void UpdatePreview3D();
 };

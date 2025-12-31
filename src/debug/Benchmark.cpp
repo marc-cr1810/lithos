@@ -38,6 +38,10 @@ void StartBenchmarkAsync(const WorldGenConfig &config, int sideSize) {
     int totalColumns = sideSize * sideSize;
     int processedCols = 0;
 
+    // Store generated chunks to pass back
+    std::vector<std::shared_ptr<Chunk>> generatedChunks;
+    generatedChunks.reserve(totalColumns * (config.worldHeight / CHUNK_SIZE));
+
     for (int cx = 0; cx < sideSize; ++cx) {
       for (int cz = 0; cz < sideSize; ++cz) {
         ChunkColumn column;
@@ -45,10 +49,12 @@ void StartBenchmarkAsync(const WorldGenConfig &config, int sideSize) {
 
         int chunksY = config.worldHeight / CHUNK_SIZE;
         for (int cy = 0; cy < chunksY; ++cy) {
-          Chunk c;
-          c.chunkPosition = glm::ivec3(cx, cy, cz);
-          c.setWorld(nullptr);
-          generator.GenerateChunk(c, column);
+          auto c = std::make_shared<Chunk>();
+          c->chunkPosition = glm::ivec3(cx, cy, cz);
+          c->setWorld(nullptr);
+          generator.GenerateChunk(*c, column); // Pass reference
+
+          generatedChunks.push_back(c);
           count++;
         }
 
@@ -62,6 +68,7 @@ void StartBenchmarkAsync(const WorldGenConfig &config, int sideSize) {
 
     result.totalTimeMs = duration.count();
     result.chunksGenerated = count;
+    result.generatedChunks = generatedChunks;
     result.avgChunkTimeMs = (count > 0) ? (result.totalTimeMs / count) : 0.0f;
 
     // Gather granular data from Profiler

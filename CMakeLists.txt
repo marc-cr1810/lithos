@@ -155,6 +155,7 @@ add_executable(lithos
     src/render/Camera.cpp
     src/render/Texture.cpp
     src/render/TextureAtlas.cpp
+    src/render/Framebuffer.cpp
     src/render/ModelLoader.cpp
     src/world/Chunk.cpp
     src/world/WorldGenerator.cpp

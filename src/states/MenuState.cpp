@@ -2,16 +2,25 @@
 #include "../core/Application.h"
 #include "../debug/Benchmark.h"
 #include "../debug/Logger.h"
-#include "../world/WorldGenerator.h"
+#include "../render/Framebuffer.h"
+#include "../render/Shader.h"
+#include "../render/Texture.h"
+#include "../render/TextureAtlas.h"
+#include "../world/Block.h" // For BlockRegistry
+#include "../world/World.h"
+#include "GameState.h"
 #include "LoadingState.h"
-#include "backends/imgui_impl_glfw.h"
-#include "backends/imgui_impl_opengl3.h"
 #include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
 #include <GLFW/glfw3.h>
 #include <cstdio>
-#include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <glm/gtc/matrix_transform.hpp>
+
+MenuState::MenuState() = default;
+MenuState::~MenuState() = default;
 
 // Helper to display a little (?) mark which shows a tooltip when hovered.
 static void HelpMarker(const char *desc) {
@@ -26,11 +35,131 @@ static void HelpMarker(const char *desc) {
   }
 }
 
+void MenuState::InitPreview() {
+  m_PreviewFBO = std::make_unique<Framebuffer>(512, 512);
+
+  // Initialize Camera
+  m_PreviewCamera = Camera(glm::vec3(0.0f, 140.0f, 80.0f),
+                           glm::vec3(0.0f, 1.0f, 0.0f), -45.0f, -30.0f);
+  m_PreviewDistance = 80.0f;
+  m_PreviewYaw = -45.0f;   // 45 degrees
+  m_PreviewPitch = -30.0f; // Look down slightly
+
+  // Initialize Resources (Shader & Atlas)
+  // Ensure we use the correct paths (relative to executable usually, so
+  // 'src/shaders' might need adjustment if running from bin) GameState says:
+  // src/shaders/basic.vs
+  m_PreviewShader =
+      std::make_unique<Shader>("src/shaders/basic.vs", "src/shaders/basic.fs");
+
+  m_PreviewAtlas = std::make_unique<TextureAtlas>(1024, 1024, 16);
+  m_PreviewAtlas->Load("assets/textures/block");
+  // Assuming BlockRegistry is singleton and already resolved?
+  // If not, we might need to re-resolve or share.
+  // GameState resolves uvs. UVs are static in Block definitions?
+  // No, BlockRegistry stores blocks. Blocks seemingly don't store UVs? The Mesh
+  // generator uses them. We should call resolveUVs again OR share the atlas.
+  // For safety, let's load and resolve.
+  BlockRegistry::getInstance().resolveUVs(*m_PreviewAtlas);
+
+  m_PreviewTexture = std::make_unique<Texture>(m_PreviewAtlas->GetWidth(),
+                                               m_PreviewAtlas->GetHeight(),
+                                               m_PreviewAtlas->GetData(), 4);
+
+  m_PreviewShader->use();
+  m_PreviewShader->setInt("texture1", 0);
+  // Calculate uvScale
+  float uScale = 16.0f / m_PreviewAtlas->GetWidth();
+  float vScale = 16.0f / m_PreviewAtlas->GetHeight();
+  m_PreviewShader->setVec2("uvScale", uScale, vScale);
+
+  // Initial World Update
+  UpdatePreview3D();
+}
+
+void MenuState::UpdatePreview3D() {
+  bool useBenchmark = !m_BenchmarkChunks.empty();
+  if (!m_PreviewWorld || m_PreviewWorld->worldSeed != m_Config.seed ||
+      useBenchmark) {
+    m_PreviewWorld = std::make_unique<World>(m_Config);
+
+    if (useBenchmark) {
+      for (auto &c : m_BenchmarkChunks) {
+        m_PreviewWorld->insertChunk(c);
+      }
+
+      // Focus on center of benchmark bounds
+      int minX = 100000, maxX = -100000;
+      int minZ = 100000, maxZ = -100000;
+
+      for (const auto &c : m_BenchmarkChunks) {
+        if (c->chunkPosition.x < minX)
+          minX = c->chunkPosition.x;
+        if (c->chunkPosition.x > maxX)
+          maxX = c->chunkPosition.x;
+        if (c->chunkPosition.z < minZ)
+          minZ = c->chunkPosition.z;
+        if (c->chunkPosition.z > maxZ)
+          maxZ = c->chunkPosition.z;
+      }
+
+      // Geometric center: Average of min edge and max edge
+      // Min edge x: minX * CHUNK_SIZE
+      // Max edge x: (maxX + 1) * CHUNK_SIZE
+      float size = (float)CHUNK_SIZE;
+      float cx = (minX * size + (maxX + 1) * size) / 2.0f;
+      float cz = (minZ * size + (maxZ + 1) * size) / 2.0f;
+
+      m_PreviewTarget = glm::vec3(cx, (float)m_Config.seaLevel, cz);
+
+    } else {
+      // Default target if live previewing
+      m_PreviewTarget = glm::vec3(0.0f, 80.0f, 0.0f);
+    }
+
+    // Calculate ViewProjection for loading chunks
+    // Use the same logic as Render() to ensure Frustum Culling allows these
+    // chunks
+    float aspect = 1.0f; // Default square assumed for loading context
+    if (m_PreviewFBO)
+      aspect = (float)m_PreviewFBO->m_Width / (float)m_PreviewFBO->m_Height;
+
+    // Note: Render() will use m_PreviewTarget for camera position.
+    // Here we need a temporary view matrix using the same target to ensure
+    // loadChunks (if called) uses the correct frustum.
+
+    glm::vec3 target = m_PreviewTarget;
+    float camX = sin(glm::radians(m_PreviewYaw)) * m_PreviewDistance *
+                 cos(glm::radians(m_PreviewPitch));
+    float camY = -sin(glm::radians(m_PreviewPitch)) * m_PreviewDistance;
+    float camZ = cos(glm::radians(m_PreviewYaw)) * m_PreviewDistance *
+                 cos(glm::radians(m_PreviewPitch));
+    glm::vec3 pos = target + glm::vec3(camX, camY, camZ);
+
+    glm::mat4 view = glm::lookAt(pos, target, glm::vec3(0, 1, 0));
+    glm::mat4 projection =
+        glm::perspective(glm::radians(45.0f), aspect, 0.1f, 1000.0f);
+
+    if (!useBenchmark) {
+      m_PreviewWorld->loadChunks(glm::vec3(0, 0, 0), 4, projection * view);
+    }
+  }
+}
+
 void MenuState::Init(Application *app) {
   glfwSetInputMode(app->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
   // Inherit seed from app config (allows CLI to work)
   m_Config.seed = app->GetConfig().seed;
+  m_ConfigName[0] = '\0';
+  LoadConfig("default"); // Try load default
+
+  // Pre-calculate benchmarks or similar? No.
+
+  // Init Preview
+  InitPreview();
+
+  // Initial seed buffer
   snprintf(m_SeedBuffer, sizeof(m_SeedBuffer), "%d", m_Config.seed);
 
   // Initialize landform overrides with default amplitudes if not already
@@ -95,6 +224,10 @@ void MenuState::UpdatePreview() {
       m_CaveSliceData[i + j * 256] = tempGen.IsCaveAt(x, y, 0) ? 1.0f : 0.0f;
     }
   }
+
+  // Clear any benchmark results if we are live-editing
+  m_BenchmarkChunks.clear();
+  UpdatePreview3D();
 }
 
 void MenuState::HandleInput(Application *app) {}
@@ -107,6 +240,68 @@ void MenuState::Render(Application *app) {
   glViewport(0, 0, width, height);
   glClearColor(0.05f, 0.05f, 0.1f, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+  // 1. Update Preview World (Meshing etc)
+  if (m_IsBenchmarkResultsOpen && m_PreviewWorld) {
+    m_PreviewWorld->Update(); // Main thread update (Mesh Uploads)
+    // Re-trigger load to ensure chunks are kept loaded
+    // (Though loadChunks does checks, it might be fine)
+  }
+
+  // 2. Render to FBO
+  if (m_IsBenchmarkResultsOpen && m_PreviewFBO && m_PreviewWorld) {
+    m_PreviewFBO->Bind();
+    glEnable(GL_DEPTH_TEST);              // Enable depth test for 3D rendering
+    glClearColor(0.5f, 0.7f, 1.0f, 1.0f); // Sky color
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    // Camera Orbit Logic
+    float camX = sin(glm::radians(m_PreviewYaw)) * m_PreviewDistance *
+                 cos(glm::radians(m_PreviewPitch));
+    float camY = -sin(glm::radians(m_PreviewPitch)) * m_PreviewDistance;
+    float camZ = cos(glm::radians(m_PreviewYaw)) * m_PreviewDistance *
+                 cos(glm::radians(m_PreviewPitch));
+
+    glm::vec3 target = m_PreviewTarget;
+    m_PreviewCamera.Position = target + glm::vec3(camX, camY, camZ);
+    m_PreviewCamera.Yaw = m_PreviewYaw + 180.0f; // Look back at center
+    m_PreviewCamera.Pitch = m_PreviewPitch;
+
+    glm::mat4 view =
+        glm::lookAt(m_PreviewCamera.Position, target, glm::vec3(0, 1, 0));
+
+    // Fix perspective call using correct FBO aspect
+    float aspect = (float)m_PreviewFBO->m_Width / (float)m_PreviewFBO->m_Height;
+    if (aspect < 0.1f)
+      aspect = 0.1f;
+    glm::mat4 projection =
+        glm::perspective(glm::radians(45.0f), aspect, 0.1f, 1000.0f);
+
+    // Continuous chunk loading for preview (ONLY if not viewing fixed benchmark
+    // result)
+    if (m_BenchmarkChunks.empty()) {
+      m_PreviewWorld->loadChunks(target, 4, projection * view);
+    }
+
+    // Use local shader
+    m_PreviewShader->use();
+    m_PreviewShader->setMat4("view", view);
+    m_PreviewShader->setMat4("projection", projection);
+    m_PreviewShader->setVec3("viewPos", m_PreviewCamera.Position);
+    m_PreviewShader->setFloat("fogDist", 200.0f); // Small fog for preview
+
+    // Bind Texture
+    glActiveTexture(GL_TEXTURE0);
+    if (m_PreviewTexture)
+      m_PreviewTexture->bind();
+
+    // Render World
+    m_PreviewWorld->render(*m_PreviewShader, projection * view,
+                           m_PreviewCamera.Position, 4);
+
+    glDisable(GL_DEPTH_TEST);
+    m_PreviewFBO->Unbind();
+  }
 }
 
 void MenuState::RenderUI(Application *app) {
@@ -238,7 +433,9 @@ void MenuState::RenderUI(Application *app) {
             "Size of the area to generate for benchmarking. Larger sizes "
             "provide more stable averages but take longer.");
 
-        if (ImGui::Button("Run Benchmark", ImVec2(-1, 0))) {
+        if (ImGui::Button("Run Benchmark")) {
+          // Close config window to let benchmark run (optional, but cleaner)
+          // Actually, we show a popup, so it's fine.
           StartBenchmarkAsync(m_Config, m_BenchmarkSize);
           ImGui::OpenPopup("Running Benchmark...");
         }
@@ -270,6 +467,7 @@ void MenuState::RenderUI(Application *app) {
                   " - " + kv.first + ": " + std::to_string(kv.second) + " ms\n";
             }
             m_BenchmarkResult = msg;
+            m_BenchmarkChunks = res.generatedChunks;
 
             // Log to console for easy copy/paste
             spdlog::info("=== Benchmark Results ===");
@@ -278,6 +476,8 @@ void MenuState::RenderUI(Application *app) {
 
             ImGui::CloseCurrentPopup();
             m_ShouldOpenResults = true;
+            m_IsBenchmarkResultsOpen = true;
+            UpdatePreview3D(); // Generate preview for the benchmarked config
           }
 
           ImGui::EndPopup();
@@ -295,11 +495,60 @@ void MenuState::RenderUI(Application *app) {
           ImGui::Text("%s", m_BenchmarkResult.c_str());
           ImGui::Separator();
 
+          // 3D Preview inside Result Popup
+          if (m_PreviewFBO) {
+            // Force a size for now to avoid layout loops in auto-resize popup.
+            ImVec2 size(512, 384);
+            if (size.x != m_PreviewFBO->m_Width ||
+                size.y != m_PreviewFBO->m_Height) {
+              m_PreviewFBO->Resize((int)size.x, (int)size.y);
+            }
+
+            ImGui::Image((void *)(intptr_t)m_PreviewFBO->GetTextureID(), size,
+                         ImVec2(0, 1), ImVec2(1, 0));
+            bool isHovered = ImGui::IsItemHovered();
+
+            // Debug Overlay: Camera Info
+            ImVec2 overlayPos = ImGui::GetItemRectMin();
+            ImGui::SetCursorScreenPos(
+                ImVec2(overlayPos.x + 5, overlayPos.y + 5));
+            ImGui::TextColored(
+                ImVec4(1, 1, 0, 1),
+                "Cam: Yaw %.1f, Pitch %.1f, Dist %.1f\nChunks: %zu",
+                m_PreviewYaw, m_PreviewPitch, m_PreviewDistance,
+                m_PreviewWorld ? m_PreviewWorld->getChunkCount() : 0);
+
+            // Input Handling for Orbit
+            if (isHovered) {
+              if (ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
+                ImVec2 delta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Right);
+                m_PreviewYaw += delta.x * 0.5f;
+                m_PreviewPitch += delta.y * 0.5f;
+                if (m_PreviewPitch > 89.0f)
+                  m_PreviewPitch = 89.0f;
+                if (m_PreviewPitch < -89.0f)
+                  m_PreviewPitch = -89.0f;
+                ImGui::ResetMouseDragDelta(ImGuiMouseButton_Right);
+              }
+              // Zoom
+              float wheel = ImGui::GetIO().MouseWheel;
+              if (wheel != 0) {
+                m_PreviewDistance -= wheel * 5.0f;
+                if (m_PreviewDistance < 10.0f)
+                  m_PreviewDistance = 10.0f;
+                if (m_PreviewDistance > 200.0f)
+                  m_PreviewDistance = 200.0f;
+              }
+            }
+            ImGui::Separator();
+          }
+
           if (ImGui::Button("Copy to Clipboard", ImVec2(150, 0))) {
             ImGui::SetClipboardText(m_BenchmarkResult.c_str());
           }
           ImGui::SameLine();
           if (ImGui::Button("OK", ImVec2(120, 0))) {
+            m_IsBenchmarkResultsOpen = false;
             ImGui::CloseCurrentPopup();
           }
           ImGui::EndPopup();

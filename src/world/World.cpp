@@ -612,9 +612,8 @@ void World::addChunk(int x, int y, int z) {
     int dz[] = {1, -1, 0, 0, 0, 0};
     int dirs[] = {Chunk::DIR_FRONT, Chunk::DIR_BACK, Chunk::DIR_LEFT,
                   Chunk::DIR_RIGHT, Chunk::DIR_TOP,  Chunk::DIR_BOTTOM};
-    int opps[] = {Chunk::DIR_BACK,   Chunk::DIR_FRONT,
-                  Chunk::DIR_RIGHT,  Chunk::DIR_LEFT,
-                  Chunk::DIR_BOTTOM, Chunk::DIR_TOP}; // Opposites
+    int opps[] = {Chunk::DIR_BACK, Chunk::DIR_FRONT,  Chunk::DIR_RIGHT,
+                  Chunk::DIR_LEFT, Chunk::DIR_BOTTOM, Chunk::DIR_TOP};
 
     for (int i = 0; i < 6; ++i) {
       auto it = chunks.find(std::make_tuple(x + dx[i], y + dy[i], z + dz[i]));
@@ -625,25 +624,46 @@ void World::addChunk(int x, int y, int z) {
       }
     }
 
-    lock.unlock(); // Safe to unlock now
+    // Not generating, just adding empty struct for now?
+    // Actually addChunk is usually called by generator?
+    // Wait, typical usage: addChunk -> then generator populates it?
+    // In this file, addChunk is expected to create a fresh one.
+  }
+}
 
-    // Queue initial mesh generation
-    QueueMeshUpdate(c, false);
+void World::insertChunk(std::shared_ptr<Chunk> chunk) {
+  if (!chunk)
+    return;
+  std::unique_lock<std::mutex> lock(worldMutex);
+  auto key = std::make_tuple(chunk->chunkPosition.x, chunk->chunkPosition.y,
+                             chunk->chunkPosition.z);
 
-    // Mark neighbors as dirty
-    // Mark neighbors as dirty
-    for (int i = 0; i < 6; ++i) {
-      Chunk *n = c->neighbors[dirs[i]];
-      if (n) {
-        if (dirs[i] == Chunk::DIR_BOTTOM) {
-          n->calculateSunlight();
-          n->calculateBlockLight();
-        }
-        n->spreadLight();
-        QueueMeshUpdate(n);
-      }
+  // Replace or insert
+  chunks[key] = chunk;
+  chunk->setWorld(this);
+
+  // Link Neighbors
+  int dx[] = {0, 0, -1, 1, 0, 0};
+  int dy[] = {0, 0, 0, 0, 1, -1};
+  int dz[] = {1, -1, 0, 0, 0, 0};
+  int dirs[] = {Chunk::DIR_FRONT, Chunk::DIR_BACK, Chunk::DIR_LEFT,
+                Chunk::DIR_RIGHT, Chunk::DIR_TOP,  Chunk::DIR_BOTTOM};
+  int opps[] = {Chunk::DIR_BACK, Chunk::DIR_FRONT,  Chunk::DIR_RIGHT,
+                Chunk::DIR_LEFT, Chunk::DIR_BOTTOM, Chunk::DIR_TOP};
+
+  for (int i = 0; i < 6; ++i) {
+    auto it = chunks.find(std::make_tuple(chunk->chunkPosition.x + dx[i],
+                                          chunk->chunkPosition.y + dy[i],
+                                          chunk->chunkPosition.z + dz[i]));
+    if (it != chunks.end()) {
+      Chunk *n = it->second.get();
+      chunk->neighbors[dirs[i]] = n;
+      n->neighbors[opps[i]] = chunk.get();
     }
   }
+
+  // Queue for mesh update immediately so it shows up
+  QueueMeshUpdate(chunk.get(), true);
 }
 
 Chunk *World::getChunk(int chunkX, int chunkY, int chunkZ) {

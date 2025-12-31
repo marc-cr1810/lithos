@@ -6,13 +6,19 @@
 #include <string>
 
 #include <atomic>
+#include <memory>
 #include <mutex>
+#include <vector>
+
+
+class Chunk;
 
 struct BenchmarkResult {
   float totalTimeMs;
   float avgChunkTimeMs;
   int chunksGenerated;
   std::map<std::string, float> stepAvgTimes;
+  std::vector<std::shared_ptr<Chunk>> generatedChunks;
 };
 
 struct BenchmarkStatus {
