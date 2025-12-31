@@ -664,10 +664,23 @@ BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz, int height,
     bool preserveCrust = false;
 
     // Consistency check with GenerateChunk carving logic
-    if (isUnderwater && gy > height - 3)
+    if (gy <= 0) {
       preserveCrust = true;
-    if (gy <= 0)
-      preserveCrust = true;
+    } else if (isUnderwater) {
+      if (gy > height - 3)
+        preserveCrust = true;
+    } else {
+      // Smart Crust: Protect top 2 blocks unless in an entrance zone
+      if (gy >= height - 2) {
+        int sX = (m_Seed * 7777) % 65536;
+        int sZ = (m_Seed * 9999) % 65536;
+        float entrance = FastNoise2D((float)(gx + sX) * 0.012f,
+                                     (float)(gz + sZ) * 0.012f, 5000);
+        if (entrance < config.caveEntranceNoise) {
+          preserveCrust = true;
+        }
+      }
+    }
 
     if (!preserveCrust) {
       if (caveGenerator->IsCaveAt(gx, gy, gz, height) ||

@@ -99,9 +99,13 @@ bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth) {
   float surfaceDeterrent = 0.0f;
   float grandEntranceBonus = 0.0f;
 
+  int seedX = (seed * 7777) % 65536;
+  int seedY = (seed * 8888) % 65536;
+  int seedZ = (seed * 9999) % 65536;
+
   if (y > maxDepth - 15) {
-    float entranceNoise =
-        generator->FastNoise2D((float)x * 0.012f, (float)z * 0.012f, 5000);
+    float entranceNoise = generator->FastNoise2D(
+        (float)(x + seedX) * 0.012f, (float)(z + seedZ) * 0.012f, 5000);
     if (entranceNoise < config.caveEntranceNoise) {
       // Stronger deterrent: 0.15f per block (was 0.1f)
       surfaceDeterrent = (float)(y - (maxDepth - 15)) * 0.15f;
@@ -110,9 +114,6 @@ bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth) {
     }
   }
 
-  int seedX = (seed * 7777) % 65536;
-  int seedY = (seed * 8888) % 65536;
-  int seedZ = (seed * 9999) % 65536;
   glm::vec3 pos((float)(x + seedX), (float)(y + seedY), (float)(z + seedZ));
 
   float depthFactor = 1.0f - ((float)y / (float)maxDepth);
@@ -173,8 +174,10 @@ bool CaveGenerator::IsRavineAt(int gx, int gy, int gz, int surfaceHeight) {
   // Surface Deterrent for Ravines: Pierce top 1 block ONLY if in an entrance
   // zone
   if (gy >= surfaceHeight - 1) {
-    float entranceNoise =
-        generator->FastNoise2D((float)gx * 0.012f, (float)gz * 0.012f, 5000);
+    int seedX = (seed * 7777) % 65536;
+    int seedZ = (seed * 9999) % 65536;
+    float entranceNoise = generator->FastNoise2D(
+        (float)(gx + seedX) * 0.012f, (float)(gz + seedZ) * 0.012f, 5000);
     if (entranceNoise < config.caveEntranceNoise) {
       return false;
     }
