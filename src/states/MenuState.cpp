@@ -29,8 +29,8 @@ static void HelpMarker(const char *desc) {
 void MenuState::Init(Application *app) {
   glfwSetInputMode(app->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
-  // Randomize seed on init
-  m_Config.seed = rand();
+  // Inherit seed from app config (allows CLI to work)
+  m_Config.seed = app->GetConfig().seed;
   snprintf(m_SeedBuffer, sizeof(m_SeedBuffer), "%d", m_Config.seed);
 
   // Initialize landform overrides with default amplitudes if not already
