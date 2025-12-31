@@ -74,7 +74,7 @@ public:
                   bool checkCarving = false); // Check for subterranean features
   BlockType GetSurfaceBlock(int gx, int gy, int gz, int cachedHeight,
                             float cachedBaseTemp, float cachedHumid,
-                            bool checkCarving = false);
+                            float cachedBeachNoise, bool checkCarving = false);
   bool IsCaveAt(int x, int y, int z);
   float GetCaveProbability(int x, int z);
   int GetSeed() const { return seed; }

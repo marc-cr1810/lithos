@@ -473,14 +473,20 @@ BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz,
   int height = GetHeight(gx, gz);
   float temp = GetTemperature(gx, gz, -1);
   float humid = GetHumidity(gx, gz);
-  return GetSurfaceBlock(gx, gy, gz, height, temp, humid, checkCarving);
+
+  int beachOffX = (seed * 5432) % 65536;
+  int beachOffZ = (seed * 1234) % 65536;
+  float beachNoise = glm::perlin(glm::vec3(
+      ((float)gx + beachOffX) * 0.05f, 0.0f, ((float)gz + beachOffZ) * 0.05f));
+
+  return GetSurfaceBlock(gx, gy, gz, height, temp, humid, beachNoise,
+                         checkCarving);
 }
 
-BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz,
-                                          int cachedHeight,
-                                          float cachedBaseTemp,
-                                          float cachedHumid,
-                                          bool checkCarving) {
+BlockType
+WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz, int cachedHeight,
+                                float cachedBaseTemp, float cachedHumid,
+                                float cachedBeachNoise, bool checkCarving) {
   int height = cachedHeight;
   if (gy > height)
     return AIR;
@@ -534,11 +540,8 @@ BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz,
     }
   }
 
-  // Beach Logic
-  int beachOffX = (seed * 5432) % 65536;
-  int beachOffZ = (seed * 1234) % 65536;
-  float beachNoise = glm::perlin(glm::vec3(
-      ((float)gx + beachOffX) * 0.05f, 0.0f, ((float)gz + beachOffZ) * 0.05f));
+  // Beach Logic (use cached value)
+  float beachNoise = cachedBeachNoise;
   int beachHeightLimit = config.seaLevel + (int)(beachNoise * 4.0f);
   BlockType beachBlock = (beachNoise > 0.4f) ? GRAVEL : SAND;
 
@@ -791,6 +794,13 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
       column.temperatureMap[x][z] = GetTemperature(gx, gz, -1);
       column.humidityMap[x][z] = GetHumidity(gx, gz);
 
+      // Cache beach noise
+      int beachOffX = (seed * 5432) % 65536;
+      int beachOffZ = (seed * 1234) % 65536;
+      column.beachNoiseMap[x][z] =
+          glm::perlin(glm::vec3(((float)gx + beachOffX) * 0.05f, 0.0f,
+                                ((float)gz + beachOffZ) * 0.05f));
+
       column.biomeMap[x][z] = GetBiomeAtHeight(gx, gz, column.heightMap[x][z]);
     }
   }
@@ -812,10 +822,12 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
         int height = column.heightMap[x][z];
         float baseTemp = column.temperatureMap[x][z];
         float humid = column.humidityMap[x][z];
+        float beachNoise = column.beachNoiseMap[x][z];
 
         for (int y = 0; y < CHUNK_SIZE; ++y) {
           int gy = pos.y * CHUNK_SIZE + y;
-          BlockType type = GetSurfaceBlock(gx, gy, gz, height, baseTemp, humid);
+          BlockType type =
+              GetSurfaceBlock(gx, gy, gz, height, baseTemp, humid, beachNoise);
           chunk.setBlock(x, y, z, type);
         }
       }
@@ -911,6 +923,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
         int height = column.heightMap[x][z];
         float baseTemp = column.temperatureMap[x][z];
         float humid = column.humidityMap[x][z];
+        float beachNoise = column.beachNoiseMap[x][z];
 
         for (int y = 0; y < CHUNK_SIZE; ++y) {
           int gy = pos.y * CHUNK_SIZE + y;
@@ -924,8 +937,8 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
                 // Re-call Surface Block gen for bedrock replacement?
                 // Original logic called GetSurfaceBlock again.
                 // We can use cached args.
-                BlockType type =
-                    GetSurfaceBlock(gx, gy, gz, height, baseTemp, humid);
+                BlockType type = GetSurfaceBlock(gx, gy, gz, height, baseTemp,
+                                                 humid, beachNoise);
                 chunk.setBlock(x, y, z, type);
               }
             }
