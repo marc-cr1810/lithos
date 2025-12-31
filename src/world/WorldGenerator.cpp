@@ -268,17 +268,12 @@ int WorldGenerator::GetHeight(int gx, int gz) {
   if (!m_HeightFractal)
     InitializeFastNoise();
 
+  float lNoise = GetLandformNoise(gx, gz);
   float nx = (float)gx * config.terrainScale;
   float nz = (float)gz * config.terrainScale;
+  float hNoise = m_HeightFractal->GenSingle2D(nx, nz, m_Seed);
 
-  // Single Fractal call replaces 10 manual noise calls
-  float noise = m_HeightFractal->GenSingle2D(nx, nz, m_Seed);
-
-  // Apply terrain smoothing/scaling
-  float heightValue = (noise + 1.0f) * 0.5f;
-  heightValue = pow(heightValue, 1.2f);
-
-  int baseFinalHeight = (int)(heightValue * 128.0f) + 60;
+  int baseFinalHeight = CalculateHeightFromNoise(hNoise, lNoise);
 
   // River Carving
   if (config.enableRivers) {
@@ -292,6 +287,40 @@ int WorldGenerator::GetHeight(int gx, int gz) {
   }
 
   return baseFinalHeight;
+}
+
+int WorldGenerator::CalculateHeightFromNoise(float hNoise, float lNoise) const {
+  std::string primary_name, secondary_name;
+  float blendFactor;
+  if (lNoise < -0.4f) {
+    primary_name = "oceans";
+    secondary_name = "valleys";
+    blendFactor = (lNoise + 0.6f) / 0.2f;
+  } else if (lNoise < 0.0f) {
+    primary_name = "valleys";
+    secondary_name = "plains";
+    blendFactor = (lNoise + 0.4f) / 0.4f;
+  } else if (lNoise < 0.4f) {
+    primary_name = "plains";
+    secondary_name = "hills";
+    blendFactor = (lNoise - 0.0f) / 0.4f;
+  } else {
+    primary_name = "hills";
+    secondary_name = "mountains";
+    blendFactor = (lNoise - 0.4f) / 0.4f;
+  }
+  blendFactor = std::max(0.0f, std::min(1.0f, blendFactor));
+
+  const auto &pConfig = config.landformOverrides.at(primary_name);
+  const auto &sConfig = config.landformOverrides.at(secondary_name);
+
+  // Apply terrain smoothing
+  float smoothedH = (hNoise + 1.0f) * 0.5f;
+  smoothedH = pow(smoothedH, 1.2f);
+
+  float h1 = pConfig.baseHeight + smoothedH * pConfig.heightVariation;
+  float h2 = sConfig.baseHeight + smoothedH * sConfig.heightVariation;
+  return (int)(h1 * (1.0f - blendFactor) + h2 * blendFactor);
 }
 
 void WorldGenerator::GetLandformBlend(int x, int z, std::string &primary,
@@ -328,7 +357,6 @@ float WorldGenerator::ComputeTemperature(int x, int z, int y) {
   int seedT = (m_Seed * 555) % 65536;
   float nx = (float)x + (float)seedT;
   float nz = (float)z + (float)seedT;
-  // Scale 0.001f means biomes are ~1000 blocks wide
   float temp = m_TemperatureNoise->GenSingle2D(
       nx * config.tempScale, nz * config.tempScale, m_Seed + 100);
 
@@ -702,7 +730,8 @@ float WorldGenerator::GetLandformNoise(int x, int z) {
   int seedL = (m_Seed * 1111) % 65536;
   float nx = (float)x + (float)seedL;
   float nz = (float)z + (float)seedL;
-  return FastNoise2D(nx * config.landformScale, nz * config.landformScale, 300);
+  return m_LandformNoise->GenSingle2D(nx * config.landformScale,
+                                      nz * config.landformScale, m_Seed + 500);
 }
 
 float WorldGenerator::GetClimateNoise(int x, int z) {
@@ -720,9 +749,8 @@ float WorldGenerator::GetGeologicNoise(int x, int z) {
   int seedG = (m_Seed * 3333) % 65536;
   float nx = (float)x + (float)seedG;
   float nz = (float)z + (float)seedG;
-  float noise =
-      FastNoise2D(nx * config.geologicScale, nz * config.geologicScale, 333);
-  return noise;
+  return m_PerlinNoise2D->GenSingle2D(nx * config.geologicScale,
+                                      nz * config.geologicScale, m_Seed + 333);
 }
 
 std::string WorldGenerator::GetLandformType(int x, int z) {
@@ -877,25 +905,34 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
 
   // 2. Batch generate Temperature Map
   std::vector<float> tempNoise(CHUNK_SIZE * CHUNK_SIZE);
+  int seedT = (m_Seed * 555) % 65536;
   m_TemperatureNoise->GenUniformGrid2D(
-      tempNoise.data(), startX + (m_Seed * 555) % 65536,
-      startZ + (m_Seed * 555) % 65536, CHUNK_SIZE, CHUNK_SIZE, config.tempScale,
-      m_Seed + 100);
+      tempNoise.data(), (float)startX + seedT, (float)startZ + seedT,
+      CHUNK_SIZE, CHUNK_SIZE, config.tempScale, m_Seed + 100);
 
   // 3. Batch generate Humidity Map
   std::vector<float> humidNoise(CHUNK_SIZE * CHUNK_SIZE);
+  int seedH = (m_Seed * 888) % 65536;
   m_HumidityNoise->GenUniformGrid2D(
-      humidNoise.data(), startX + (m_Seed * 888) % 65536,
-      startZ + (m_Seed * 888) % 65536, CHUNK_SIZE, CHUNK_SIZE,
-      config.humidityScale, m_Seed + 200);
+      humidNoise.data(), (float)startX + seedH, (float)startZ + seedH,
+      CHUNK_SIZE, CHUNK_SIZE, config.humidityScale, m_Seed + 200);
 
   // 4. Batch generate Beach Noise Map
   std::vector<float> beachNoise(CHUNK_SIZE * CHUNK_SIZE);
-  m_BeachNoise->GenUniformGrid2D(
-      beachNoise.data(), startX + (m_Seed * 5432) % 65536,
-      startZ + (m_Seed * 1234) % 65536, CHUNK_SIZE, CHUNK_SIZE, 0.05f, m_Seed);
+  int seedBX = (m_Seed * 5432) % 65536;
+  int seedBZ = (m_Seed * 1234) % 65536;
+  m_BeachNoise->GenUniformGrid2D(beachNoise.data(), (float)startX + seedBX,
+                                 (float)startZ + seedBZ, CHUNK_SIZE, CHUNK_SIZE,
+                                 0.05f, m_Seed);
 
-  // 5. Batch generate Strata Noise Maps
+  // 5. Batch generate Landform Noise Map
+  std::vector<float> landformNoise(CHUNK_SIZE * CHUNK_SIZE);
+  int seedL = (m_Seed * 1111) % 65536;
+  m_LandformNoise->GenUniformGrid2D(
+      landformNoise.data(), (float)startX + seedL, (float)startZ + seedL,
+      CHUNK_SIZE, CHUNK_SIZE, config.landformScale, m_Seed + 500);
+
+  // 6. Batch generate Strata Noise Maps
   std::vector<float> strataWave(CHUNK_SIZE * CHUNK_SIZE);
   int seedS = (m_Seed * 777) % 65536;
   m_PerlinNoise2D->GenUniformGrid2D(strataWave.data(), (float)startX + seedS,
@@ -912,10 +949,10 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
     for (int x = 0; x < CHUNK_SIZE; ++x) {
       int idx = x + z * CHUNK_SIZE;
 
-      // Convert height noise to block height
-      float hVal = (heightNoise[idx] + 1.0f) * 0.5f;
-      hVal = pow(hVal, 1.2f);
-      int height = (int)(hVal * 128.0f) + 60;
+      // Determine height with landform variety
+      float lNoise = landformNoise[idx];
+      float hNoise = heightNoise[idx];
+      int height = CalculateHeightFromNoise(hNoise, lNoise);
 
       // Apply River Carving (individual check for now, but could be batched)
       if (config.enableRivers) {
@@ -1176,6 +1213,61 @@ void WorldGenerator::FastNoiseGrid2D(float *output, int startX, int startZ,
   // Generate entire grid at once using SIMD
   m_PerlinNoise2D->GenUniformGrid2D(output, startX, startZ, width, height,
                                     frequency, m_Seed + seedOffset);
+}
+
+void WorldGenerator::GenerateTemperatureGrid(float *output, int startX,
+                                             int startZ, int width,
+                                             int height) const {
+  if (!m_TemperatureNoise)
+    const_cast<WorldGenerator *>(this)->InitializeFastNoise();
+
+  int seedT = (m_Seed * 555) % 65536;
+  m_TemperatureNoise->GenUniformGrid2D(output, (float)startX + seedT,
+                                       (float)startZ + seedT, width, height,
+                                       config.tempScale, m_Seed + 100);
+}
+
+void WorldGenerator::GenerateHumidityGrid(float *output, int startX, int startZ,
+                                          int width, int height) const {
+  if (!m_HumidityNoise)
+    const_cast<WorldGenerator *>(this)->InitializeFastNoise();
+
+  int seedH = (m_Seed * 888) % 65536;
+  m_HumidityNoise->GenUniformGrid2D(output, (float)startX + seedH,
+                                    (float)startZ + seedH, width, height,
+                                    config.humidityScale, m_Seed + 200);
+}
+
+void WorldGenerator::GenerateBeachGrid(float *output, int startX, int startZ,
+                                       int width, int height) const {
+  if (!m_BeachNoise)
+    const_cast<WorldGenerator *>(this)->InitializeFastNoise();
+
+  int seedBX = (m_Seed * 5432) % 65536;
+  int seedBZ = (m_Seed * 1234) % 65536;
+  m_BeachNoise->GenUniformGrid2D(output, (float)startX + seedBX,
+                                 (float)startZ + seedBZ, width, height, 0.05f,
+                                 m_Seed);
+}
+
+void WorldGenerator::GenerateHeightGrid(float *output, int startX, int startZ,
+                                        int width, int height) const {
+  if (!m_HeightFractal)
+    const_cast<WorldGenerator *>(this)->InitializeFastNoise();
+
+  m_HeightFractal->GenUniformGrid2D(output, startX, startZ, width, height,
+                                    config.terrainScale, m_Seed);
+}
+
+void WorldGenerator::GenerateLandformGrid(float *output, int startX, int startZ,
+                                          int width, int height) const {
+  if (!m_LandformNoise)
+    const_cast<WorldGenerator *>(this)->InitializeFastNoise();
+
+  int seedL = (m_Seed * 1111) % 65536;
+  m_LandformNoise->GenUniformGrid2D(output, (float)startX + seedL,
+                                    (float)startZ + seedL, width, height,
+                                    config.landformScale, m_Seed + 500);
 }
 
 // Batch 3D grid generation - SIMD optimized for caves

@@ -8,7 +8,6 @@
 #include <glm/glm.hpp>
 #include <vector>
 
-
 // Helper for deterministic random based on position and seed
 static int GetPosRand(int x, int z, int seed, int salt) {
   unsigned int h = (unsigned int)x * 73856093 ^ (unsigned int)z * 19349663 ^
@@ -153,40 +152,42 @@ void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
   int startGX = cp.x * CHUNK_SIZE - searchRadius;
   int startGZ = cp.z * CHUNK_SIZE - searchRadius;
 
-  // 1. Batch generate noise for the entire search area
+  // 1. Batch generate noise for the entire search area using synced methods
   std::vector<float> heightGrid(GRID_SIZE * GRID_SIZE);
   std::vector<float> tempGrid(GRID_SIZE * GRID_SIZE);
   std::vector<float> humidGrid(GRID_SIZE * GRID_SIZE);
   std::vector<float> beachGrid(GRID_SIZE * GRID_SIZE);
 
-  // We need the raw nodes or we can use the wrapper methods
-  // Using the wrapper methods which are already SIMD optimized
-  generator.FastNoiseGrid2D(heightGrid.data(), startGX, startGZ, GRID_SIZE,
-                            GRID_SIZE, 0.01f, 0); // Need fractal for height?
-  // Actually, height is FractalFBM in modern WG.
-  // Wait, I should use the specific nodes if I want to match exactly.
-  // But TreeDecorator just needs a reasonable height approximation?
-  // No, it needs the EXACT height to place trees on the ground.
-  // generator.GetHeight(gx, gz) calls ComputeHeight() which uses
-  // m_HeightFractal.
-
-  // Let's use a helper to fill the grids using the correct nodes
-  // I'll add a specialized batch method to WorldGenerator for this if needed,
-  // but for now let's just use the ones we have.
-  generator.FastNoiseGrid2D(tempGrid.data(), startGX, startGZ, GRID_SIZE,
-                            GRID_SIZE, 0.01f, 100);
-  generator.FastNoiseGrid2D(humidGrid.data(), startGX, startGZ, GRID_SIZE,
-                            GRID_SIZE, 0.01f, 200);
-  generator.FastNoiseGrid2D(beachGrid.data(), startGX, startGZ, GRID_SIZE,
-                            GRID_SIZE, 0.05f, 500);
+  generator.GenerateHeightGrid(heightGrid.data(), startGX, startGZ, GRID_SIZE,
+                               GRID_SIZE);
+  generator.GenerateTemperatureGrid(tempGrid.data(), startGX, startGZ,
+                                    GRID_SIZE, GRID_SIZE);
+  generator.GenerateHumidityGrid(humidGrid.data(), startGX, startGZ, GRID_SIZE,
+                                 GRID_SIZE);
+  generator.GenerateBeachGrid(beachGrid.data(), startGX, startGZ, GRID_SIZE,
+                              GRID_SIZE);
 
   for (int gx = startGX; gx < startGX + GRID_SIZE; ++gx) {
     for (int gz = startGZ; gz < startGZ + GRID_SIZE; ++gz) {
       int localIdx = (gx - startGX) + (gz - startGZ) * GRID_SIZE;
 
-      // Fallback height for now since height is fractal
-      // (Batching fractal is harder without exposing the node)
-      int height = generator.GetHeight(gx, gz);
+      // Use batched noise for EXACT synchronization
+      float hNoise = heightGrid[localIdx];
+      float lNoise =
+          generator.GetLandformNoise(gx, gz); // Single lookup ok here
+      int height = generator.CalculateHeightFromNoise(hNoise, lNoise);
+
+      // Apply River Carving for total height alignment
+      if (generator.GetConfig().enableRivers) {
+        float carve = generator.GetRiverCarveFactor(gx, gz);
+        if (carve > 0.0f) {
+          float hToSea = (float)(height - generator.GetConfig().seaLevel);
+          height -=
+              (int)(std::max(generator.GetConfig().riverDepth, hToSea + 2.0f) *
+                    carve);
+        }
+      }
+
       float temp = tempGrid[localIdx];
       float humid = humidGrid[localIdx];
       float beach = beachGrid[localIdx];

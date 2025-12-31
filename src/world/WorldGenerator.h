@@ -109,6 +109,8 @@ public:
   const WorldGenConfig &GetConfig() const { return config; }
   // Returns 0.0 to 1.0 intensity of the river channel
   float GetRiverCarveFactor(int x, int z);
+  float GetLandformNoise(int x, int z);
+  int CalculateHeightFromNoise(float hNoise, float lNoise) const;
 
   // Get height for a specific landform without blending
   int GetHeightForLandform(const std::string &name, int x, int z);
@@ -132,13 +134,24 @@ public:
                        int width, int height, int depth, float frequency,
                        int seedOffset = 0);
 
+  // Synced batch methods for decorators
+  void GenerateTemperatureGrid(float *output, int startX, int startZ, int width,
+                               int height) const;
+  void GenerateHumidityGrid(float *output, int startX, int startZ, int width,
+                            int height) const;
+  void GenerateBeachGrid(float *output, int startX, int startZ, int width,
+                         int height) const;
+  void GenerateHeightGrid(float *output, int startX, int startZ, int width,
+                          int height) const;
+  void GenerateLandformGrid(float *output, int startX, int startZ, int width,
+                            int height) const;
+
   // Generate all cave noise grids for a chunk at once (SIMD batch)
   void GenerateCaveNoiseData(CaveNoiseData &data, int chunkX, int chunkZ,
                              int chunkY);
 
 private:
   BlockType GetStrataBlock(int x, int y, int z);
-
   // Compute methods (On-the-fly calculation)
   int ComputeHeight(int x, int z);
   float ComputeTemperature(int x, int z, int y = -1);
@@ -147,7 +160,6 @@ private:
                      float preHumid = -1.0f);
 
   // Noise map methods
-  float GetLandformNoise(int x, int z);
   float GetClimateNoise(int x, int z);
   float GetGeologicNoise(int x, int z);
   std::string GetLandformType(int x, int z);
