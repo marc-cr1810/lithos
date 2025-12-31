@@ -7,6 +7,7 @@
 #include <glm/glm.hpp>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -24,6 +25,24 @@ enum Biome {
 
 struct ChunkColumn;
 
+// Pre-computed noise data for batch cave generation
+struct CaveNoiseData {
+  static constexpr int SIZE = 32 + 4; // CHUNK_SIZE + padding for nearby samples
+  float cheeseNoise[SIZE * SIZE * SIZE];
+  float spaghettiMod[SIZE * SIZE * SIZE];
+  float spaghettiNoise1[SIZE * SIZE * SIZE];
+  float spaghettiNoise2[SIZE * SIZE * SIZE];
+  float entranceNoise[SIZE * SIZE]; // 2D for surface
+
+  // Helper to get 3D index
+  inline int Index3D(int x, int y, int z) const {
+    return x + y * SIZE + z * SIZE * SIZE;
+  }
+
+  // Helper to get 2D index
+  inline int Index2D(int x, int z) const { return x + z * SIZE; }
+};
+
 // Landform configuration for octave-based terrain
 struct LandformConfig {
   std::vector<float> octaveAmplitudes; // 8 values, 0.0-1.0
@@ -38,7 +57,11 @@ class CaveGenerator {
 public:
   CaveGenerator(const WorldGenConfig &config);
 
-  // Check if position should be a cave
+  // Check if position should be a cave (using pre-computed noise)
+  bool IsCaveAt(int x, int y, int z, int maxDepth,
+                const CaveNoiseData &noiseData);
+
+  // Check if position should be a cave (single point - slow path)
   bool IsCaveAt(int x, int y, int z, int maxDepth);
 
   // Check if position should be a ravine
@@ -70,18 +93,18 @@ public:
   float GetTemperature(int x, int z, int y = -1);
   float GetHumidity(int x, int z);
   Biome GetBiome(int x, int z, int y = -1);
-  Biome
-  GetBiomeAtHeight(int x, int z,
-                   int height); // Height-aware biome (considers water level)
+  Biome GetBiomeAtHeight(int x, int z, int height, float temp = -1.0f,
+                         float humid = -1.0f); // Height-aware biome
   BlockType
   GetSurfaceBlock(int gx, int gy, int gz,
                   bool checkCarving = false); // Check for subterranean features
   BlockType GetSurfaceBlock(int gx, int gy, int gz, int cachedHeight,
                             float cachedBaseTemp, float cachedHumid,
                             float cachedBeachNoise, bool checkCarving = false);
+  float GetBeachNoise(int gx, int gz);
   bool IsCaveAt(int x, int y, int z);
   float GetCaveProbability(int x, int z);
-  int GetSeed() const { return seed; }
+  int GetSeed() const { return m_Seed; }
   const WorldGenConfig &GetConfig() const { return config; }
   // Returns 0.0 to 1.0 intensity of the river channel
   float GetRiverCarveFactor(int x, int z);
@@ -108,6 +131,10 @@ public:
                        int width, int height, int depth, float frequency,
                        int seedOffset = 0);
 
+  // Generate all cave noise grids for a chunk at once (SIMD batch)
+  void GenerateCaveNoiseData(CaveNoiseData &data, int chunkX, int chunkZ,
+                             int chunkY);
+
 private:
   BlockType GetStrataBlock(int x, int y, int z);
 
@@ -115,7 +142,8 @@ private:
   int ComputeHeight(int x, int z);
   float ComputeTemperature(int x, int z, int y = -1);
   float ComputeHumidity(int x, int z);
-  Biome ComputeBiome(int x, int z, int y = -1);
+  Biome ComputeBiome(int x, int z, int y = -1, float preTemp = -1.0f,
+                     float preHumid = -1.0f);
 
   // Noise map methods
   float GetLandformNoise(int x, int z);
@@ -134,12 +162,19 @@ private:
   std::map<std::string, LandformConfig> landforms;
   CaveGenerator *caveGenerator;
   WorldGenConfig config;
-  int seed;
-  bool m_ProfilingEnabled = false;
+  int m_Seed;
+  bool m_Initialized = false;
+  bool m_ProfilingEnabled = true;
+  std::mutex m_InitMutex;
 
   // FastNoise2 nodes
   FastNoise::SmartNode<> m_PerlinNoise2D;
   FastNoise::SmartNode<> m_PerlinNoise3D;
+  FastNoise::SmartNode<> m_HeightFractal;
+  FastNoise::SmartNode<> m_TemperatureNoise;
+  FastNoise::SmartNode<> m_HumidityNoise;
+  FastNoise::SmartNode<> m_BeachNoise;
+  FastNoise::SmartNode<> m_LandformNoise;
 
   // Fixed world maps (Linearized 2D arrays: index = x + z * size)
   std::vector<int> fixedHeightMap;

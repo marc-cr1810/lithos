@@ -10,18 +10,17 @@ CaveGenerator::CaveGenerator(const WorldGenConfig &config)
     : seed(config.seed), caveFrequency(config.caveFrequency),
       caveThreshold(config.caveThreshold), config(config) {}
 
-bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth) {
+bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth,
+                             const CaveNoiseData &noiseData) {
   // Surface deterrent: instead of a hard cutoff, use a dynamic deterrent
   // We want SOME caves to reach the surface, but not all.
   float surfaceDeterrent = 0.0f;
   float grandEntranceBonus = 0.0f; // Added for larger openings
 
   if (y > maxDepth - 15) {
-    // 2D noise to decide where caves ARE allowed to reach the surface
-    // (entrances) Slightly lower frequency for larger "entrance regions" (0.015
-    // -> 0.012)
-    float entranceNoise =
-        generator->FastNoise2D((float)x * 0.012f, (float)z * 0.012f, 5000);
+    // Read pre-computed entrance noise (2D)
+    int idx2D = noiseData.Index2D(x + 2, z + 2); // +2 offset for padding
+    float entranceNoise = noiseData.entranceNoise[idx2D];
 
     // Broader entrance zones (0.4 -> caveEntranceNoise)
     if (entranceNoise < config.caveEntranceNoise) {
@@ -33,21 +32,12 @@ bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth) {
     }
   }
 
-  // 3D Perlin noise for cave placement
-  int seedX = (seed * 7777) % 65536;
-  int seedY = (seed * 8888) % 65536;
-  int seedZ = (seed * 9999) % 65536;
-
-  glm::vec3 pos((float)(x + seedX), (float)(y + seedY), (float)(z + seedZ));
-
   // Depth-based interconnectivity: more caves deeper
   float depthFactor = 1.0f - ((float)y / (float)maxDepth);
 
-  // Layer 1: "Cheese" caves - Swiss cheese style, larger caverns
-  // Low frequency, creates large blob-like caves. Base is 0.01f
-  float cheeseScale = 0.01f * (config.caveFrequency / 0.015f);
-  float cheeseNoise = generator->FastNoise3D(
-      pos.x * cheeseScale, pos.y * cheeseScale, pos.z * cheeseScale, 1000);
+  // Read pre-computed cheese cave noise (with +2 offset for padding)
+  int idx = noiseData.Index3D(x + 2, y + 2, z + 2);
+  float cheeseNoise = noiseData.cheeseNoise[idx];
 
   // Base threshold is 0.68f. Lower threshold = bigger caves.
   float cheeseThreshold = (0.68f / config.caveSize) - (depthFactor * 0.12f) +
@@ -58,15 +48,13 @@ bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth) {
   bool isCheeseCave = false;
   if (cheeseNoise > cheeseThreshold) {
     // Sample a few nearby points to ensure this is part of a larger cave
-    float nearby1 =
-        generator->FastNoise3D((pos.x + 2.0f) * cheeseScale,
-                               pos.y * cheeseScale, pos.z * cheeseScale, 1000);
-    float nearby2 = generator->FastNoise3D(pos.x * cheeseScale,
-                                           (pos.y + 2.0f) * cheeseScale,
-                                           pos.z * cheeseScale, 1000);
-    float nearby3 =
-        generator->FastNoise3D(pos.x * cheeseScale, pos.y * cheeseScale,
-                               (pos.z + 2.0f) * cheeseScale, 1000);
+    int idx1 = noiseData.Index3D(x + 4, y + 2, z + 2); // +2 blocks in X
+    int idx2 = noiseData.Index3D(x + 2, y + 4, z + 2); // +2 blocks in Y
+    int idx3 = noiseData.Index3D(x + 2, y + 2, z + 4); // +2 blocks in Z
+
+    float nearby1 = noiseData.cheeseNoise[idx1];
+    float nearby2 = noiseData.cheeseNoise[idx2];
+    float nearby3 = noiseData.cheeseNoise[idx3];
 
     // Only create cave if at least 2 out of 3 nearby points also pass threshold
     int nearbyCount = 0;
@@ -80,16 +68,85 @@ bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth) {
     isCheeseCave = (nearbyCount >= 2);
   }
 
-  // Layer 2: "Spaghetti" caves - Varied width winding tunnels
-  // Base scale is 0.01f for mod, 0.03f for noise
+  // Read pre-computed spaghetti cave noise
+  float spaghettiSizeMod = noiseData.spaghettiMod[idx];
+  float spaghettiWidthBonus = (spaghettiSizeMod * 0.045f * config.caveSize);
+  // float spaghettiWidthBonus = (spaghettiSizeMod * 0.045f * config.caveSize);
+  // // Removed
+
+  float spaghettiNoise1 = noiseData.spaghettiNoise1[idx];
+  float spaghettiNoise2 = noiseData.spaghettiNoise2[idx];
+
+  // Base threshold is 0.05f. Higher = wider tunnels.
+  float spaghettiThreshold = (0.05f * config.caveSize) + (depthFactor * 0.08f) -
+                             surfaceDeterrent + grandEntranceBonus;
+
+  // if (spaghettiThreshold < 0.005f) // Removed
+  //   spaghettiThreshold =
+  //       0.0f; // Effectively disable if too low (narrowed to nothing) //
+  //       Removed
+
+  bool isSpaghettiCave = (std::abs(spaghettiNoise1) < spaghettiThreshold) &&
+                         (std::abs(spaghettiNoise2) < spaghettiThreshold);
+
+  // Combine cave types (cheese + spaghetti only)
+  return isCheeseCave || isSpaghettiCave;
+}
+
+// Single-point IsCaveAt (slow path fallback)
+bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth) {
+  float surfaceDeterrent = 0.0f;
+  float grandEntranceBonus = 0.0f;
+
+  if (y > maxDepth - 15) {
+    float entranceNoise =
+        generator->FastNoise2D((float)x * 0.012f, (float)z * 0.012f, 5000);
+    if (entranceNoise < config.caveEntranceNoise) {
+      surfaceDeterrent = (float)(y - (maxDepth - 15)) * 0.1f;
+    } else {
+      grandEntranceBonus = (entranceNoise - config.caveEntranceNoise) * 0.3f;
+    }
+  }
+
+  int seedX = (seed * 7777) % 65536;
+  int seedY = (seed * 8888) % 65536;
+  int seedZ = (seed * 9999) % 65536;
+  glm::vec3 pos((float)(x + seedX), (float)(y + seedY), (float)(z + seedZ));
+
+  float depthFactor = 1.0f - ((float)y / (float)maxDepth);
+  float cheeseScale = 0.01f * (config.caveFrequency / 0.015f);
+  float cheeseNoise = generator->FastNoise3D(
+      pos.x * cheeseScale, pos.y * cheeseScale, pos.z * cheeseScale, 1000);
+  float cheeseThreshold = (0.68f / config.caveSize) - (depthFactor * 0.12f) +
+                          surfaceDeterrent - grandEntranceBonus;
+
+  bool isCheeseCave = false;
+  if (cheeseNoise > cheeseThreshold) {
+    float n1 =
+        generator->FastNoise3D((pos.x + 2.0f) * cheeseScale,
+                               pos.y * cheeseScale, pos.z * cheeseScale, 1000);
+    float n2 = generator->FastNoise3D(pos.x * cheeseScale,
+                                      (pos.y + 2.0f) * cheeseScale,
+                                      pos.z * cheeseScale, 1000);
+    float n3 = generator->FastNoise3D(pos.x * cheeseScale, pos.y * cheeseScale,
+                                      (pos.z + 2.0f) * cheeseScale, 1000);
+
+    int count = 0;
+    if (n1 > cheeseThreshold)
+      count++;
+    if (n2 > cheeseThreshold)
+      count++;
+    if (n3 > cheeseThreshold)
+      count++;
+    isCheeseCave = (count >= 2);
+  }
+
   float spagModScale = 0.01f * (config.caveFrequency / 0.015f);
   float spagNoiseScale = 0.03f * (config.caveFrequency / 0.015f);
-
   float spaghettiSizeMod = generator->FastNoise3D(
       pos.x * spagModScale, pos.y * spagModScale, pos.z * spagModScale, 2000);
-  float spaghettiWidthBonus = (spaghettiSizeMod * 0.045f * config.caveSize);
-
-  // Use ridged noise (abs) for tunnel-like structures
+  // float spaghettiWidthBonus = (spaghettiSizeMod * 0.045f * config.caveSize);
+  // // Not used in slow path
   float spaghettiNoise1 =
       generator->FastNoise3D(pos.x * spagNoiseScale, pos.y * spagNoiseScale,
                              pos.z * spagNoiseScale, 3000);
@@ -97,19 +154,11 @@ bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth) {
       (pos.x + 100.0f) * spagNoiseScale, (pos.y + 100.0f) * spagNoiseScale,
       (pos.z + 100.0f) * spagNoiseScale, 3000);
 
-  // Base threshold is 0.05f. Higher = wider tunnels.
-  float spaghettiThreshold = (0.05f * config.caveSize) +
-                             (depthFactor * 0.025f) + spaghettiWidthBonus -
-                             surfaceDeterrent;
-
-  if (spaghettiThreshold < 0.005f)
-    spaghettiThreshold =
-        0.0f; // Effectively disable if too low (narrowed to nothing)
-
+  float spaghettiThreshold = (0.05f * config.caveSize) + (depthFactor * 0.08f) -
+                             surfaceDeterrent + grandEntranceBonus;
   bool isSpaghettiCave = (std::abs(spaghettiNoise1) < spaghettiThreshold) &&
                          (std::abs(spaghettiNoise2) < spaghettiThreshold);
 
-  // Combine cave types (cheese + spaghetti only)
   return isCheeseCave || isSpaghettiCave;
 }
 

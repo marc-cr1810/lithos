@@ -9,9 +9,10 @@
 #include "FloraDecorator.h"
 #include "OreDecorator.h"
 #include "TreeDecorator.h"
+#include <mutex>
 
 WorldGenerator::WorldGenerator(const WorldGenConfig &config)
-    : config(config), seed(config.seed) {
+    : config(config), m_Seed(config.seed) {
   if (config.enableOre)
     decorators.push_back(new OreDecorator());
   if (config.enableTrees)
@@ -39,8 +40,8 @@ int WorldGenerator::ComputeHeight(int x, int z) {
   // Get landform noise for blending
   float landformNoise = GetLandformNoise(x, z);
 
-  int seedX = (seed * 1337) % 65536;
-  int seedZ = (seed * 9999) % 65536;
+  int seedX = (m_Seed * 1337) % 65536;
+  int seedZ = (m_Seed * 9999) % 65536;
   float nx = (float)x + (float)seedX;
   float nz = (float)z + (float)seedZ;
 
@@ -148,11 +149,12 @@ float WorldGenerator::GetRiverCarveFactor(int x, int z) {
   if (!config.enableRivers)
     return 0.0f;
 
-  int seedR = (seed * 1234) % 65536;
+  int seedR = (m_Seed * 1234) % 65536;
   float rx = (float)x + (float)seedR;
   float rz = (float)z + (float)seedR;
 
-  float riverNoise = glm::perlin(glm::vec2(rx, rz) * config.riverScale);
+  float riverNoise =
+      FastNoise2D(rx * config.riverScale, rz * config.riverScale, 600);
   float riverVal = std::abs(riverNoise);
 
   if (riverVal < config.riverThreshold) {
@@ -171,17 +173,18 @@ int WorldGenerator::GetHeightForLandform(const std::string &name, int x,
 
   LandformConfig *landform = &it->second;
 
-  int seedX = (seed * 1337) % 65536;
-  int seedZ = (seed * 9999) % 65536;
-  float nx = (float)x + (float)seedX;
-  float nz = (float)z + (float)seedZ;
+  int seedOffX = (m_Seed * 1337) % 65536;
+  int seedOffZ = (m_Seed * 9999) % 65536;
+  float nx = (float)x + (float)seedOffX;
+  float nz = (float)z + (float)seedOffZ;
 
   const int numOctaves = 10;
   float noiseHeight = 0.0f;
   float frequency = config.terrainScale;
 
   for (int i = 0; i < numOctaves; ++i) {
-    float octaveValue = glm::perlin(glm::vec2(nx, nz) * frequency);
+    float octaveValue = m_PerlinNoise2D->GenSingle2D(
+        nx * frequency, nz * frequency, m_Seed + i);
 
     float amp = (i < landform->octaveAmplitudes.size())
                     ? landform->octaveAmplitudes[i]
@@ -259,19 +262,34 @@ void WorldGenerator::GenerateFixedMaps() {
   }
 }
 
-int WorldGenerator::GetHeight(int x, int z) {
-  if (config.fixedWorld && !fixedHeightMap.empty()) {
-    int halfSize = config.fixedWorldSize / 2;
-    int idxX = x + halfSize;
-    int idxZ = z + halfSize;
+int WorldGenerator::GetHeight(int gx, int gz) {
+  if (!m_HeightFractal)
+    InitializeFastNoise();
 
-    if (idxX >= 0 && idxX < config.fixedWorldSize && idxZ >= 0 &&
-        idxZ < config.fixedWorldSize) {
-      return fixedHeightMap[idxX + idxZ * config.fixedWorldSize];
+  float nx = (float)gx * config.terrainScale;
+  float nz = (float)gz * config.terrainScale;
+
+  // Single Fractal call replaces 10 manual noise calls
+  float noise = m_HeightFractal->GenSingle2D(nx, nz, m_Seed);
+
+  // Apply terrain smoothing/scaling
+  float heightValue = (noise + 1.0f) * 0.5f;
+  heightValue = pow(heightValue, 1.2f);
+
+  int baseFinalHeight = (int)(heightValue * 128.0f) + 60;
+
+  // River Carving
+  if (config.enableRivers) {
+    float carveFactor = GetRiverCarveFactor(gx, gz);
+    if (carveFactor > 0.0f) {
+      // Ensure it reaches sea level + some channel depth
+      float heightToSea = (float)(baseFinalHeight - config.seaLevel);
+      float dynamicDepth = std::max(config.riverDepth, heightToSea + 2.0f);
+      baseFinalHeight -= (int)(dynamicDepth * carveFactor);
     }
-    return 60; // Default ocean level outside bounds
   }
-  return ComputeHeight(x, z);
+
+  return baseFinalHeight;
 }
 
 void WorldGenerator::GetLandformBlend(int x, int z, std::string &primary,
@@ -301,13 +319,16 @@ void WorldGenerator::GetLandformBlend(int x, int z, std::string &primary,
 }
 
 float WorldGenerator::ComputeTemperature(int x, int z, int y) {
+  if (!m_TemperatureNoise)
+    InitializeFastNoise();
 
   // Very low frequency noise for large biomes
-  int seedT = (seed * 555) % 65536;
+  int seedT = (m_Seed * 555) % 65536;
   float nx = (float)x + (float)seedT;
   float nz = (float)z + (float)seedT;
   // Scale 0.001f means biomes are ~1000 blocks wide
-  float temp = FastNoise2D(nx * config.tempScale, nz * config.tempScale, 100);
+  float temp = m_TemperatureNoise->GenSingle2D(
+      nx * config.tempScale, nz * config.tempScale, m_Seed + 100);
 
   // Apply altitude-based temperature decrease (lapse rate)
   if (y != -1 && config.temperatureLapseRate > 0.0f && y > config.seaLevel) {
@@ -350,11 +371,14 @@ float WorldGenerator::GetTemperature(int x, int z, int y) {
 }
 
 float WorldGenerator::ComputeHumidity(int x, int z) {
+  if (!m_HumidityNoise)
+    InitializeFastNoise();
 
-  int seedH = (seed * 888) % 65536;
+  int seedH = (m_Seed * 888) % 65536;
   float nx = (float)x + (float)seedH;
   float nz = (float)z + (float)seedH;
-  return FastNoise2D(nx * config.humidityScale, nz * config.humidityScale, 200);
+  return m_HumidityNoise->GenSingle2D(nx * config.humidityScale,
+                                      nz * config.humidityScale, m_Seed + 200);
 }
 
 float WorldGenerator::GetHumidity(int x, int z) {
@@ -370,47 +394,6 @@ float WorldGenerator::GetHumidity(int x, int z) {
     return 0.5f;
   }
   return ComputeHumidity(x, z);
-}
-
-Biome WorldGenerator::ComputeBiome(int x, int z, int y) {
-  float temp = ComputeTemperature(
-      x, z, y); // Use Compute here to avoid double lookup if not needed
-  float humidity = ComputeHumidity(x, z); // Use Compute here
-
-  // Add high-frequency variation noise to break up smooth blobs
-  if (config.biomeVariation > 0.0f) {
-    int seedV = (seed * 5555) % 65536;
-    float vx = (float)x + (float)seedV;
-    float vz = (float)z + (float)seedV;
-
-    // Use much higher frequency noise for variation (0.05 instead of 0.02)
-    float varNoise1 = glm::perlin(glm::vec2(vx, vz) * 0.05f);
-    float varNoise2 = glm::perlin(glm::vec2(vx * 1.3f, vz * 1.3f) * 0.08f);
-
-    // Combine two noise layers for more complex patterns
-    float combinedNoise = (varNoise1 + varNoise2 * 0.5f) / 1.5f;
-
-    // Apply much stronger variation - multiply by 2 to make it very noticeable
-    temp += combinedNoise * config.biomeVariation * 2.0f;
-    humidity += combinedNoise * config.biomeVariation * 1.6f;
-  }
-
-  // Normalize logic slightly if needed, but perlin is approx -1 to 1
-
-  if (temp > 0.3f) {
-    // Hot
-    if (humidity < -0.2f)
-      return BIOME_DESERT; // Hot and Dry
-    return BIOME_FOREST;   // Hot and Wet (Jungle-ish)
-  } else if (temp < -0.3f) {
-    // Cold - significantly cold becomes Tundra
-    return BIOME_TUNDRA;
-  }
-
-  // Moderate Temp
-  if (humidity < -0.3f)
-    return BIOME_PLAINS;
-  return BIOME_FOREST;
 }
 
 Biome WorldGenerator::GetBiome(int x, int z, int y) {
@@ -446,12 +429,64 @@ Biome WorldGenerator::GetBiome(int x, int z, int y) {
     }
     return BIOME_OCEAN;
   }
-  return ComputeBiome(x, z, y);
+  return ComputeBiome(x, z, y, -1.0f, -1.0f);
 }
 
-Biome WorldGenerator::GetBiomeAtHeight(int x, int z, int height) {
+Biome WorldGenerator::ComputeBiome(int x, int z, int y, float preTemp,
+                                   float preHumid) {
+  float temperature = preTemp;
+  float humidity = preHumid;
+
+  if (temperature < -0.9f)
+    temperature = GetTemperature(x, z, y);
+  if (humidity < -0.9f)
+    humidity = GetHumidity(x, z);
+
+  // Add high-frequency variation noise to break up smooth blobs
+  if (config.biomeVariation > 0.0f) {
+    if (!m_PerlinNoise2D)
+      InitializeFastNoise();
+
+    int seedV = (m_Seed * 5555) % 65536;
+    float vx = (float)x + (float)seedV;
+    float vz = (float)z + (float)seedV;
+
+    // Use much higher frequency noise for variation (0.05 instead of 0.02)
+    float varNoise1 =
+        m_PerlinNoise2D->GenSingle2D(vx * 0.05f, vz * 0.05f, m_Seed + 1);
+    float varNoise2 = m_PerlinNoise2D->GenSingle2D(
+        vx * 1.3f * 0.08f, vz * 1.3f * 0.08f, m_Seed + 2);
+
+    // Combine two noise layers for more complex patterns
+    float combinedNoise = (varNoise1 + varNoise2 * 0.5f) / 1.5f;
+
+    // Apply much stronger variation - multiply by 2 to make it very noticeable
+    temperature += combinedNoise * config.biomeVariation * 2.0f;
+    humidity += combinedNoise * config.biomeVariation * 1.6f;
+  }
+
+  // Normalize logic slightly if needed, but perlin is approx -1 to 1
+
+  if (temperature > 0.3f) {
+    // Hot
+    if (humidity < -0.2f)
+      return BIOME_DESERT; // Hot and Dry
+    return BIOME_FOREST;   // Hot and Wet (Jungle-ish)
+  } else if (temperature < -0.3f) {
+    // Cold - significantly cold becomes Tundra
+    return BIOME_TUNDRA;
+  }
+
+  // Moderate Temp
+  if (humidity < -0.3f)
+    return BIOME_PLAINS;
+  return BIOME_FOREST;
+}
+
+Biome WorldGenerator::GetBiomeAtHeight(int x, int z, int height, float temp,
+                                       float humid) {
   // First get the base climate biome (pass height to account for lapse rate)
-  Biome climateBiome = GetBiome(x, z, height);
+  Biome climateBiome = ComputeBiome(x, z, height, temp, humid);
 
   // Check if this location is underwater
   if (height < config.seaLevel) {
@@ -474,57 +509,52 @@ BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz,
   int height = GetHeight(gx, gz);
   float temp = GetTemperature(gx, gz, -1);
   float humid = GetHumidity(gx, gz);
+  float beach = GetBeachNoise(gx, gz);
 
-  int beachOffX = (seed * 5432) % 65536;
-  int beachOffZ = (seed * 1234) % 65536;
-  float beachNoise = glm::perlin(glm::vec3(
-      ((float)gx + beachOffX) * 0.05f, 0.0f, ((float)gz + beachOffZ) * 0.05f));
-
-  return GetSurfaceBlock(gx, gy, gz, height, temp, humid, beachNoise,
-                         checkCarving);
+  return GetSurfaceBlock(gx, gy, gz, height, temp, humid, beach, checkCarving);
 }
 
-BlockType
-WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz, int cachedHeight,
-                                float cachedBaseTemp, float cachedHumid,
-                                float cachedBeachNoise, bool checkCarving) {
-  int height = cachedHeight;
+BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz, int height,
+                                          float temp, float humid,
+                                          float beachNoise, bool checkCarving) {
+  // Use pre-computed values for performance!
+  int beachHeightLimit = config.seaLevel + 3;
   if (gy > height)
     return AIR;
 
   // Re-calculate climate data logic locally to avoid noise calls
   // Apply altitude-based temperature decrease (lapse rate)
-  float temp = cachedBaseTemp;
+  float adjustedTemp = temp;
   if (gy != -1) {
     if (config.temperatureLapseRate > 0.0f && gy > config.seaLevel) {
       float altitudeAboveSeaLevel = (float)(gy - config.seaLevel);
-      temp -= altitudeAboveSeaLevel * config.temperatureLapseRate;
+      adjustedTemp -= altitudeAboveSeaLevel * config.temperatureLapseRate;
     } else if (config.geothermalGradient > 0.0f && gy < config.seaLevel) {
       float depthBelowSeaLevel = (float)(config.seaLevel - gy);
-      temp += depthBelowSeaLevel * config.geothermalGradient;
+      adjustedTemp += depthBelowSeaLevel * config.geothermalGradient;
     }
   }
 
-  float humidity = cachedHumid;
+  float adjustedHumidity = humid;
 
   BlockType surfaceBlock = GRASS;
   BlockType subsurfaceBlock = DIRT;
 
   // Determine surface blocks based on adjusted temperature and humidity
-  if (temp < -0.4f) {
+  if (adjustedTemp < -0.4f) {
     // Very cold - snow and ice
     surfaceBlock = SNOW;
     subsurfaceBlock = DIRT;
-  } else if (temp > 0.3f) {
-    if (humidity < -0.2f) {
+  } else if (adjustedTemp > 0.3f) {
+    if (adjustedHumidity < -0.2f) {
       surfaceBlock = SAND;
       subsurfaceBlock = SAND;
     } else {
       surfaceBlock = GRASS;
       subsurfaceBlock = DIRT;
     }
-  } else if (temp < -0.3f) {
-    if (humidity > 0.2f) {
+  } else if (adjustedTemp < -0.3f) {
+    if (adjustedHumidity > 0.2f) {
       surfaceBlock = PODZOL;
       subsurfaceBlock = DIRT;
     } else {
@@ -532,7 +562,7 @@ WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz, int cachedHeight,
       subsurfaceBlock = DIRT;
     }
   } else {
-    if (humidity > 0.4f) {
+    if (adjustedHumidity > 0.4f) {
       surfaceBlock = MUD;
       subsurfaceBlock = DIRT;
     } else {
@@ -542,15 +572,14 @@ WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz, int cachedHeight,
   }
 
   // Beach Logic (use cached value)
-  float beachNoise = cachedBeachNoise;
-  int beachHeightLimit = config.seaLevel + (int)(beachNoise * 4.0f);
+  int dynamicBeachHeight = config.seaLevel + (int)(beachNoise * 4.0f);
   BlockType beachBlock = (beachNoise > 0.4f) ? GRAVEL : SAND;
 
   BlockType type = AIR;
   if (gy == height) {
     if (gy < config.seaLevel)
       type = (beachNoise > 0.0f) ? GRAVEL : DIRT;
-    else if (gy <= beachHeightLimit)
+    else if (gy <= dynamicBeachHeight || gy <= beachHeightLimit)
       type = beachBlock;
     else
       type = surfaceBlock;
@@ -611,11 +640,12 @@ float WorldGenerator::GetCaveProbability(int x, int z) {
 
   // Use a simple 2D noise sample to show cave likelihood
   // This gives a more intuitive preview that responds to frequency changes
-  int seedC = (seed * 7777) % 65536;
+  int seedC = (m_Seed * 7777) % 65536;
   float nx = (float)x + (float)seedC;
   float nz = (float)z + (float)seedC;
 
-  float caveNoise = glm::perlin(glm::vec2(nx, nz) * config.caveFrequency);
+  float caveNoise =
+      FastNoise2D(nx * config.caveFrequency, nz * config.caveFrequency, 777);
 
   // Convert to 0-1 range and apply threshold
   // Higher values = more likely to have caves
@@ -631,7 +661,7 @@ float WorldGenerator::GetCaveProbability(int x, int z) {
 
 float WorldGenerator::GetLandformNoise(int x, int z) {
   // Very low frequency for large landform regions
-  int seedL = (seed * 1111) % 65536;
+  int seedL = (m_Seed * 1111) % 65536;
   float nx = (float)x + (float)seedL;
   float nz = (float)z + (float)seedL;
   return FastNoise2D(nx * config.landformScale, nz * config.landformScale, 300);
@@ -639,18 +669,22 @@ float WorldGenerator::GetLandformNoise(int x, int z) {
 
 float WorldGenerator::GetClimateNoise(int x, int z) {
   // Low frequency for climate variation
-  int seedC = (seed * 2222) % 65536;
+  int seedC = (m_Seed * 2222) % 65536;
   float nx = (float)x + (float)seedC;
   float nz = (float)z + (float)seedC;
-  return glm::perlin(glm::vec2(nx, nz) * config.climateScale);
+  float noise =
+      FastNoise2D(nx * config.climateScale, nz * config.climateScale, 222);
+  return noise;
 }
 
 float WorldGenerator::GetGeologicNoise(int x, int z) {
   // Medium frequency for rock type variation
-  int seedG = (seed * 3333) % 65536;
+  int seedG = (m_Seed * 3333) % 65536;
   float nx = (float)x + (float)seedG;
   float nz = (float)z + (float)seedG;
-  return glm::perlin(glm::vec2(nx, nz) * config.geologicScale);
+  float noise =
+      FastNoise2D(nx * config.geologicScale, nz * config.geologicScale, 333);
+  return noise;
 }
 
 std::string WorldGenerator::GetLandformType(int x, int z) {
@@ -732,7 +766,7 @@ BlockType WorldGenerator::GetStrataBlock(int x, int y, int z) {
   // Stylized stone layers
   // Primary: Stone, with horizontal layers of variants for visual interest
 
-  int seedS = (seed * 777) % 65536;
+  int seedS = (m_Seed * 777) % 65536;
   float nx = (float)x + (float)seedS;
   float ny = (float)y;
   float nz = (float)z + (float)seedS;
@@ -785,42 +819,64 @@ BlockType WorldGenerator::GetStrataBlock(int x, int y, int z) {
 #include "ChunkColumn.h"
 
 void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
+  if (!m_HeightFractal)
+    InitializeFastNoise();
   PROFILE_SCOPE_CONDITIONAL("GenColumn", m_ProfilingEnabled);
 
-  int startGx = cx * CHUNK_SIZE;
-  int startGz = cz * CHUNK_SIZE;
+  int startX = cx * CHUNK_SIZE;
+  int startZ = cz * CHUNK_SIZE;
 
-  // Batch generate temperature map (256 values in one call)
-  float tempGrid[CHUNK_SIZE * CHUNK_SIZE];
-  int seedT = (seed * 777) % 65536;
-  FastNoiseGrid2D(tempGrid, startGx + seedT, startGz + seedT, CHUNK_SIZE,
-                  CHUNK_SIZE, config.tempScale, 100);
+  // 1. Batch generate Height Map (use vector for alignment)
+  std::vector<float> heightNoise(CHUNK_SIZE * CHUNK_SIZE);
+  m_HeightFractal->GenUniformGrid2D(heightNoise.data(), startX, startZ,
+                                    CHUNK_SIZE, CHUNK_SIZE, config.terrainScale,
+                                    m_Seed);
 
-  // Batch generate humidity map
-  float humidGrid[CHUNK_SIZE * CHUNK_SIZE];
-  int seedH = (seed * 888) % 65536;
-  FastNoiseGrid2D(humidGrid, startGx + seedH, startGz + seedH, CHUNK_SIZE,
-                  CHUNK_SIZE, config.humidityScale, 200);
+  // 2. Batch generate Temperature Map
+  std::vector<float> tempNoise(CHUNK_SIZE * CHUNK_SIZE);
+  m_TemperatureNoise->GenUniformGrid2D(
+      tempNoise.data(), startX + (m_Seed * 555) % 65536,
+      startZ + (m_Seed * 555) % 65536, CHUNK_SIZE, CHUNK_SIZE, config.tempScale,
+      m_Seed + 100);
 
-  // Batch generate beach noise
-  float beachGrid[CHUNK_SIZE * CHUNK_SIZE];
-  int beachOffX = (seed * 5432) % 65536;
-  int beachOffZ = (seed * 1234) % 65536;
-  FastNoiseGrid2D(beachGrid, startGx + beachOffX, startGz + beachOffZ,
-                  CHUNK_SIZE, CHUNK_SIZE, 0.05f, 400);
+  // 3. Batch generate Humidity Map
+  std::vector<float> humidNoise(CHUNK_SIZE * CHUNK_SIZE);
+  m_HumidityNoise->GenUniformGrid2D(
+      humidNoise.data(), startX + (m_Seed * 888) % 65536,
+      startZ + (m_Seed * 888) % 65536, CHUNK_SIZE, CHUNK_SIZE,
+      config.humidityScale, m_Seed + 200);
 
-  // Now fill column data from batch-generated grids
-  for (int x = 0; x < CHUNK_SIZE; ++x) {
-    for (int z = 0; z < CHUNK_SIZE; ++z) {
-      int gx = startGx + x;
-      int gz = startGz + z;
+  // 4. Batch generate Beach Noise Map
+  std::vector<float> beachNoise(CHUNK_SIZE * CHUNK_SIZE);
+  m_BeachNoise->GenUniformGrid2D(
+      beachNoise.data(), startX + (m_Seed * 5432) % 65536,
+      startZ + (m_Seed * 1234) % 65536, CHUNK_SIZE, CHUNK_SIZE, 0.05f, m_Seed);
+
+  // Process and store in column
+  for (int z = 0; z < CHUNK_SIZE; ++z) {
+    for (int x = 0; x < CHUNK_SIZE; ++x) {
       int idx = x + z * CHUNK_SIZE;
 
-      column.heightMap[x][z] = GetHeight(gx, gz);
-      column.temperatureMap[x][z] = tempGrid[idx];
-      column.humidityMap[x][z] = humidGrid[idx];
-      column.beachNoiseMap[x][z] = beachGrid[idx];
-      column.biomeMap[x][z] = GetBiomeAtHeight(gx, gz, column.heightMap[x][z]);
+      // Convert height noise to block height
+      float hVal = (heightNoise[idx] + 1.0f) * 0.5f;
+      hVal = pow(hVal, 1.2f);
+      int height = (int)(hVal * 128.0f) + 60;
+
+      // Apply River Carving (individual check for now, but could be batched)
+      if (config.enableRivers) {
+        float carve = GetRiverCarveFactor(startX + x, startZ + z);
+        if (carve > 0.0f) {
+          float hToSea = (float)(height - config.seaLevel);
+          height -= (int)(std::max(config.riverDepth, hToSea + 2.0f) * carve);
+        }
+      }
+
+      column.heightMap[x][z] = height;
+      column.temperatureMap[x][z] = tempNoise[idx];
+      column.humidityMap[x][z] = humidNoise[idx];
+      column.beachNoiseMap[x][z] = beachNoise[idx];
+      column.biomeMap[x][z] = GetBiomeAtHeight(startX + x, startZ + z, height,
+                                               tempNoise[idx], humidNoise[idx]);
     }
   }
 }
@@ -884,20 +940,28 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
 
   // Pass 3: Caves & Ravines
   {
+    spdlog::debug("GenChunk Caves Start: {}, {}, {}", pos.x, pos.y, pos.z);
     PROFILE_SCOPE_CONDITIONAL("GenChunk_Caves", m_ProfilingEnabled);
+
+    // Generate all cave noise grids once using SIMD batch (massive speedup!)
+    // Allocated on HEAP to prevent stack overflow
+    auto caveNoise = std::make_unique<CaveNoiseData>();
+    GenerateCaveNoiseData(*caveNoise, pos.x, pos.z, pos.y);
+
     if (config.enableCaves || config.enableRavines) {
       for (int x = 0; x < CHUNK_SIZE; ++x) {
         for (int z = 0; z < CHUNK_SIZE; ++z) {
           int gx = pos.x * CHUNK_SIZE + x;
           int gz = pos.z * CHUNK_SIZE + z;
           int height = column.heightMap[x][z];
-          bool isUnderwater = (height <= config.seaLevel);
+          bool isUnderwater = (height < config.seaLevel);
 
           for (int y = 0; y < CHUNK_SIZE; ++y) {
             int gy = pos.y * CHUNK_SIZE + y;
+            if (gy > height || gy > CHUNK_SIZE * 8)
+              break;
 
-            // Optimization: Skip Air (unless we want caves in air? No)
-            // But caves carve stone.
+            // Only carve natural blocks, not air/water/lava.
             BlockType currentType =
                 (BlockType)chunk.getBlock(x, y, z).getType();
             if (currentType == AIR || currentType == WATER ||
@@ -913,7 +977,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
             if (!preserveCrust) {
               bool shouldCarve = false;
               if (config.enableCaves &&
-                  caveGenerator->IsCaveAt(gx, gy, gz, height))
+                  caveGenerator->IsCaveAt(x, y, z, height, *caveNoise))
                 shouldCarve = true;
               else if (config.enableRavines &&
                        caveGenerator->IsRavineAt(gx, gy, gz, height))
@@ -997,13 +1061,33 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
 
 // FastNoise2 Wrapper Implementation
 void WorldGenerator::InitializeFastNoise() {
-  // Create 2D Perlin noise generator
-  m_PerlinNoise2D = FastNoise::New<FastNoise::Perlin>();
+  std::lock_guard<std::mutex> lock(m_InitMutex);
+  if (m_Initialized)
+    return;
 
-  // Create 3D Perlin noise generator
+  // 1. Basic 2D/3D Perlin (Upcast to SmartNode<>)
+  m_PerlinNoise2D = FastNoise::New<FastNoise::Perlin>();
   m_PerlinNoise3D = FastNoise::New<FastNoise::Perlin>();
 
-  spdlog::info("FastNoise2 initialized");
+  // 2. Specialized Nodes
+  m_TemperatureNoise = FastNoise::New<FastNoise::Perlin>();
+  m_HumidityNoise = FastNoise::New<FastNoise::Perlin>();
+  m_BeachNoise = FastNoise::New<FastNoise::Perlin>();
+  m_LandformNoise = FastNoise::New<FastNoise::Perlin>();
+
+  // 3. Fractal FBM for Terrain (requires specialized configuration)
+  auto fractal = FastNoise::New<FastNoise::FractalFBm>();
+  auto terrainSource = FastNoise::New<FastNoise::Perlin>();
+
+  fractal->SetSource(terrainSource);
+  fractal->SetOctaveCount(10);
+  fractal->SetGain(0.5f);
+  fractal->SetLacunarity(2.0f);
+
+  m_HeightFractal = fractal;
+
+  m_Initialized = true;
+  spdlog::info("FastNoise2 SIMD nodes initialized");
 }
 
 float WorldGenerator::FastNoise2D(float x, float y, int seedOffset) {
@@ -1012,7 +1096,7 @@ float WorldGenerator::FastNoise2D(float x, float y, int seedOffset) {
   }
 
   // FastNoise2 returns float directly
-  return m_PerlinNoise2D->GenSingle2D(x, y, seed + seedOffset);
+  return m_PerlinNoise2D->GenSingle2D(x, y, m_Seed + seedOffset);
 }
 
 float WorldGenerator::FastNoise3D(float x, float y, float z, int seedOffset) {
@@ -1021,7 +1105,7 @@ float WorldGenerator::FastNoise3D(float x, float y, float z, int seedOffset) {
   }
 
   // FastNoise2 returns float directly
-  return m_PerlinNoise3D->GenSingle3D(x, y, z, seed + seedOffset);
+  return m_PerlinNoise3D->GenSingle3D(x, y, z, m_Seed + seedOffset);
 }
 
 // Batch grid generation - SIMD optimized
@@ -1034,7 +1118,7 @@ void WorldGenerator::FastNoiseGrid2D(float *output, int startX, int startZ,
 
   // Generate entire grid at once using SIMD
   m_PerlinNoise2D->GenUniformGrid2D(output, startX, startZ, width, height,
-                                    frequency, seed + seedOffset);
+                                    frequency, m_Seed + seedOffset);
 }
 
 // Batch 3D grid generation - SIMD optimized for caves
@@ -1049,5 +1133,63 @@ void WorldGenerator::FastNoiseGrid3D(float *output, int startX, int startY,
   // Generate entire 3D grid at once using SIMD
   m_PerlinNoise3D->GenUniformGrid3D(output, startX, startY, startZ, width,
                                     height, depth, frequency,
-                                    seed + seedOffset);
+                                    m_Seed + seedOffset);
+}
+
+// Generate all cave noise grids for a chunk in one batch (SIMD optimized)
+void WorldGenerator::GenerateCaveNoiseData(CaveNoiseData &data, int chunkX,
+                                           int chunkZ, int chunkY) {
+  const int SIZE = CaveNoiseData::SIZE; // 36x36x36
+  const int chunkWorldX = chunkX * 32;  // CHUNK_SIZE = 32
+  const int chunkWorldY = chunkY * 32;
+  const int chunkWorldZ = chunkZ * 32;
+
+  // Calculate seeds
+  if (!m_PerlinNoise3D)
+    InitializeFastNoise();
+
+  int seedX = (m_Seed * 7777) % 65536;
+  int seedY = (m_Seed * 8888) % 65536;
+  int seedZ = (m_Seed * 9999) % 65536;
+
+  // Calculate scales
+  float cheeseScale = 0.01f * (config.caveFrequency / 0.015f);
+  float spagModScale = 0.01f * (config.caveFrequency / 0.015f);
+  float spagNoiseScale = 0.03f * (config.caveFrequency / 0.015f);
+
+  // Generate all 4 3D noise grids using SIMD batch
+  // Start at -2 for padding, size 36 = 32 + 4
+  int startX = chunkWorldX - 2 + seedX;
+  int startY = chunkWorldY - 2 + seedY;
+  int startZ = chunkWorldZ - 2 + seedZ;
+
+  // 1. Cheese cave noise (seed offset 1000)
+  FastNoiseGrid3D(data.cheeseNoise, startX, startY, startZ, SIZE, SIZE, SIZE,
+                  cheeseScale, 1000);
+
+  // 2. Spaghetti size modifier (seed offset 2000)
+  FastNoiseGrid3D(data.spaghettiMod, startX, startY, startZ, SIZE, SIZE, SIZE,
+                  spagModScale, 2000);
+
+  // 3. Spaghetti noise 1 (seed offset 3000)
+  FastNoiseGrid3D(data.spaghettiNoise1, startX, startY, startZ, SIZE, SIZE,
+                  SIZE, spagNoiseScale, 3000);
+
+  // 4. Spaghetti noise 2 with offset (seed offset 3000)
+  FastNoiseGrid3D(data.spaghettiNoise2, startX + 100, startY + 98, startZ + 100,
+                  SIZE, SIZE, SIZE, spagNoiseScale, 3000);
+
+  // 5. Entrance noise (2D, seed offset 5000)
+  FastNoiseGrid2D(data.entranceNoise, chunkWorldX - 2 + seedX,
+                  chunkWorldZ - 2 + seedZ, SIZE, SIZE, 0.012f, 5000);
+}
+
+float WorldGenerator::GetBeachNoise(int gx, int gz) {
+  if (!m_BeachNoise)
+    InitializeFastNoise();
+
+  int beachOffX = (m_Seed * 5432) % 65536;
+  int beachOffZ = (m_Seed * 1234) % 65536;
+  return m_BeachNoise->GenSingle2D((float)gx + beachOffX, (float)gz + beachOffZ,
+                                   m_Seed);
 }

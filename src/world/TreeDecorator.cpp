@@ -151,14 +151,33 @@ void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
 
   for (int gx = minGX; gx < maxGX; ++gx) {
     for (int gz = minGZ; gz < maxGZ; ++gz) {
-      // Deterministic check if tree starts at (gx, gz)
-      int height = generator.GetHeight(gx, gz);
+      // Use column data if within bounds, otherwise fallback to generator
+      int lx = gx - cp.x * CHUNK_SIZE;
+      int lz = gz - cp.z * CHUNK_SIZE;
+
+      int height;
+      Biome biome;
+      float temp, humid, beach;
+
+      if (lx >= 0 && lx < CHUNK_SIZE && lz >= 0 && lz < CHUNK_SIZE) {
+        height = column.heightMap[lx][lz];
+        biome = column.biomeMap[lx][lz];
+        temp = column.temperatureMap[lx][lz];
+        humid = column.humidityMap[lx][lz];
+        beach = column.beachNoiseMap[lx][lz];
+      } else {
+        height = generator.GetHeight(gx, gz);
+        temp = generator.GetTemperature(gx, gz);
+        humid = generator.GetHumidity(gx, gz);
+        beach = generator.GetBeachNoise(gx, gz);
+        biome = generator.GetBiomeAtHeight(gx, gz, height, temp, humid);
+      }
+
       if (height < generator.GetConfig().seaLevel)
-        continue; // No trees in ocean/low beach
+        continue;
 
-      Biome biome = generator.GetBiome(gx, gz);
-      BlockType surface = generator.GetSurfaceBlock(gx, height, gz, true);
-
+      BlockType surface = generator.GetSurfaceBlock(gx, height, gz, height,
+                                                    temp, humid, beach, true);
       // We use different salts for different biomes to avoid identical layouts
       int roll = GetPosRand(gx, gz, seed, 100);
 
