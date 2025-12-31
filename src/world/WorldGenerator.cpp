@@ -961,6 +961,16 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
   {
     PROFILE_SCOPE_CONDITIONAL("Decorators", m_ProfilingEnabled);
     for (auto d : decorators) {
+      // Profile each decorator individually
+      const char *decoratorName = "Decorator_Unknown";
+      if (dynamic_cast<OreDecorator *>(d))
+        decoratorName = "Decorator_Ores";
+      else if (dynamic_cast<TreeDecorator *>(d))
+        decoratorName = "Decorator_Trees";
+      else if (dynamic_cast<FloraDecorator *>(d))
+        decoratorName = "Decorator_Flora";
+
+      PROFILE_SCOPE_CONDITIONAL(decoratorName, m_ProfilingEnabled);
       d->Decorate(chunk, *this, column);
     }
   }

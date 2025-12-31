@@ -259,6 +259,11 @@ void MenuState::RenderUI(Application *app) {
             }
             m_BenchmarkResult = msg;
 
+            // Log to console for easy copy/paste
+            spdlog::info("=== Benchmark Results ===");
+            spdlog::info("{}", msg);
+            spdlog::info("========================");
+
             ImGui::CloseCurrentPopup();
             m_ShouldOpenResults = true;
           }
@@ -278,6 +283,10 @@ void MenuState::RenderUI(Application *app) {
           ImGui::Text("%s", m_BenchmarkResult.c_str());
           ImGui::Separator();
 
+          if (ImGui::Button("Copy to Clipboard", ImVec2(150, 0))) {
+            ImGui::SetClipboardText(m_BenchmarkResult.c_str());
+          }
+          ImGui::SameLine();
           if (ImGui::Button("OK", ImVec2(120, 0))) {
             ImGui::CloseCurrentPopup();
           }
