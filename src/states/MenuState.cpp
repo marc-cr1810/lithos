@@ -275,7 +275,7 @@ void MenuState::Render(Application *app) {
     if (aspect < 0.1f)
       aspect = 0.1f;
     glm::mat4 projection =
-        glm::perspective(glm::radians(45.0f), aspect, 0.1f, 1000.0f);
+        glm::perspective(glm::radians(45.0f), aspect, 0.1f, 5000.0f);
 
     // Continuous chunk loading for preview (ONLY if not viewing fixed benchmark
     // result)
@@ -288,7 +288,7 @@ void MenuState::Render(Application *app) {
     m_PreviewShader->setMat4("view", view);
     m_PreviewShader->setMat4("projection", projection);
     m_PreviewShader->setVec3("viewPos", m_PreviewCamera.Position);
-    m_PreviewShader->setFloat("fogDist", 200.0f); // Small fog for preview
+    m_PreviewShader->setFloat("fogDist", 5000.0f); // Large fog for preview
 
     // Bind Texture
     glActiveTexture(GL_TEXTURE0);
@@ -296,8 +296,10 @@ void MenuState::Render(Application *app) {
       m_PreviewTexture->bind();
 
     // Render World
+    // Use large render distance for preview (256 chunks radius covers ~8000
+    // blocks)
     m_PreviewWorld->render(*m_PreviewShader, projection * view,
-                           m_PreviewCamera.Position, 4);
+                           m_PreviewCamera.Position, 256);
 
     glDisable(GL_DEPTH_TEST);
     m_PreviewFBO->Unbind();
@@ -536,8 +538,14 @@ void MenuState::RenderUI(Application *app) {
                 m_PreviewDistance -= wheel * 5.0f;
                 if (m_PreviewDistance < 10.0f)
                   m_PreviewDistance = 10.0f;
-                if (m_PreviewDistance > 200.0f)
-                  m_PreviewDistance = 200.0f;
+                // Dynamic max distance based on grid size
+                float maxDist =
+                    (float)m_BenchmarkSize * (float)CHUNK_SIZE * 2.5f;
+                if (maxDist < 200.0f)
+                  maxDist = 200.0f;
+
+                if (m_PreviewDistance > maxDist)
+                  m_PreviewDistance = maxDist;
               }
             }
             ImGui::Separator();
