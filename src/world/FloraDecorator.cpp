@@ -21,7 +21,7 @@ void FloraDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
 
       // Only decorate if the decoration block itself is in this chunk
       if (localY >= 0 && localY < CHUNK_SIZE) {
-        if (height < 60)
+        if (height < generator.GetConfig().seaLevel)
           continue; // Above water only
 
         Biome biome = column.getBiome(x, z);

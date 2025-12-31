@@ -153,7 +153,7 @@ void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
     for (int gz = minGZ; gz < maxGZ; ++gz) {
       // Deterministic check if tree starts at (gx, gz)
       int height = generator.GetHeight(gx, gz);
-      if (height < 60)
+      if (height < generator.GetConfig().seaLevel)
         continue; // No trees in ocean/low beach
 
       Biome biome = generator.GetBiome(gx, gz);

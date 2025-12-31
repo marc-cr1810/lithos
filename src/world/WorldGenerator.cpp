@@ -394,19 +394,19 @@ BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz,
   int beachOffZ = (seed * 1234) % 65536;
   float beachNoise = glm::perlin(glm::vec3(
       ((float)gx + beachOffX) * 0.05f, 0.0f, ((float)gz + beachOffZ) * 0.05f));
-  int beachHeightLimit = 60 + (int)(beachNoise * 4.0f);
+  int beachHeightLimit = config.seaLevel + (int)(beachNoise * 4.0f);
   BlockType beachBlock = (beachNoise > 0.4f) ? GRAVEL : SAND;
 
   BlockType type = AIR;
   if (gy == height) {
-    if (gy < 60)
+    if (gy < config.seaLevel)
       type = (beachNoise > 0.0f) ? GRAVEL : DIRT;
     else if (gy <= beachHeightLimit)
       type = beachBlock;
     else
       type = surfaceBlock;
   } else if (gy > height - config.surfaceDepth) {
-    if (gy < 60)
+    if (gy < config.seaLevel)
       type = DIRT;
     else
       type = subsurfaceBlock;
@@ -416,7 +416,7 @@ BlockType WorldGenerator::GetSurfaceBlock(int gx, int gy, int gz,
 
   // Cave/Ravine Carving Check
   if (checkCarving && type != AIR && type != WATER) {
-    bool isUnderwater = (height <= 60);
+    bool isUnderwater = (height <= config.seaLevel);
     bool preserveCrust = false;
 
     // Consistency check with GenerateChunk carving logic
@@ -641,7 +641,7 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
       int gx = cx * CHUNK_SIZE + x;
       int gz = cz * CHUNK_SIZE + z;
       column.heightMap[x][z] = GetHeight(gx, gz);
-      column.biomeMap[x][z] = GetBiome(gx, gz);
+      column.biomeMap[x][z] = GetBiomeAtHeight(gx, gz, column.heightMap[x][z]);
     }
   }
 }

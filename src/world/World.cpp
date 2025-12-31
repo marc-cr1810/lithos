@@ -407,13 +407,15 @@ void World::loadChunks(const glm::vec3 &playerPos, int renderDistance,
         if (distSq <= renderDistSq) {
           float distance = std::sqrt((float)distSq);
 
+          // Dynamic height limit based on config
+          int chunksY = config.worldHeight / CHUNK_SIZE;
+
           // Column Visibility Check
-          // Check if the entire column AABB is in frustum (0 to 160 height
-          // approx)
+          // Check if the entire column AABB is in frustum
           bool columnVisible = false;
           glm::vec3 colMin(x * CHUNK_SIZE, 0, z * CHUNK_SIZE);
-          glm::vec3 colMax = colMin + glm::vec3(CHUNK_SIZE, 5 * CHUNK_SIZE,
-                                                CHUNK_SIZE); // Height ~160
+          glm::vec3 colMax =
+              colMin + glm::vec3(CHUNK_SIZE, chunksY * CHUNK_SIZE, CHUNK_SIZE);
 
           if (isAABBInFrustum(colMin, colMax, planes)) {
             columnVisible = true;
@@ -430,7 +432,7 @@ void World::loadChunks(const glm::vec3 &playerPos, int renderDistance,
             basePriority *= 5.0f; // Urgent boost for spawn/player range
           }
 
-          for (int y = 0; y < 5; ++y) {
+          for (int y = 0; y < chunksY; ++y) {
             float priority = basePriority;
 
             // Minor adjustments to order within the column (Surface first, then
