@@ -148,6 +148,7 @@ add_executable(lithos
     src/main.cpp 
     src/core/StateManager.cpp
     src/core/Application.cpp
+    src/core/ResourceManager.cpp
     src/states/LoadingState.cpp
     src/states/GameState.cpp
     src/states/MenuState.cpp

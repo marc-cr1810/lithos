@@ -33,7 +33,7 @@ void GameState::Init(Application *app) {
   app->GetCamera().Position = m_SpawnPos + glm::vec3(0.0f, 1.6f, 0.0f);
 
   InitEntities(app);
-  InitRendering();
+  InitRendering(app);
 
   m_DbgTeleportPos[0] = m_SpawnPos.x;
   m_DbgTeleportPos[1] = m_SpawnPos.y;
@@ -59,25 +59,23 @@ void GameState::InitEntities(Application *app) {
   registry.emplace<PlayerTag>(m_PlayerEntity);
 }
 
-void GameState::InitRendering() {
-  m_Shader =
-      std::make_unique<Shader>(std::filesystem::path("src/shaders/basic.vs"),
-                               std::filesystem::path("src/shaders/basic.fs"));
+void GameState::InitRendering(Application *app) {
+  auto &rm = app->GetResourceManager();
+  m_Shader = rm.GetShader("basic");
+  m_Atlas = rm.GetTextureAtlas("blocks");
+  m_BlockTexture = rm.GetTexture("blocks");
 
-  LOG_RESOURCE_INFO("Generating Texture Atlas...");
-  m_Atlas = std::make_unique<TextureAtlas>(1024, 1024, 16);
-  m_Atlas->Load("assets/textures/block");
+  // Note: UVs are resolved in Application::Init globally.
 
-  BlockRegistry::getInstance().resolveUVs(*m_Atlas);
-
-  m_BlockTexture = std::make_unique<Texture>(
-      m_Atlas->GetWidth(), m_Atlas->GetHeight(), m_Atlas->GetData(), 4);
-
-  m_Shader->use();
-  m_Shader->setInt("texture1", 0);
-  float uScale = 16.0f / m_Atlas->GetWidth();
-  float vScale = 16.0f / m_Atlas->GetHeight();
-  m_Shader->setVec2("uvScale", uScale, vScale);
+  if (m_Shader) {
+    m_Shader->use();
+    m_Shader->setInt("texture1", 0);
+    if (m_Atlas) {
+      float uScale = 16.0f / m_Atlas->GetWidth();
+      float vScale = 16.0f / m_Atlas->GetHeight();
+      m_Shader->setVec2("uvScale", uScale, vScale);
+    }
+  }
 
   // Crosshair
   float crosshairVertices[] = {

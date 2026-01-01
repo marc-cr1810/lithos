@@ -10,8 +10,10 @@
 
 #include "../render/Camera.h"
 #include "../world/World.h"
+#include "ResourceManager.h"
 #include "StateManager.h"
 #include <entt/entt.hpp>
+
 
 struct AppConfig {
   int width = 1280;
@@ -45,6 +47,8 @@ public:
 
   const AppConfig &GetConfig() const { return m_Config; }
 
+  ResourceManager &GetResourceManager() { return m_ResourceManager; }
+
   // Callbacks
   void OnResize(int width, int height);
 
@@ -62,6 +66,8 @@ private:
   std::unique_ptr<World> m_World;
   entt::registry m_Registry;
   Camera m_Camera;
+
+  ResourceManager m_ResourceManager;
 
   bool m_Running = true;
 };

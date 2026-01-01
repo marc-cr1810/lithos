@@ -60,10 +60,10 @@ private:
   std::unique_ptr<class World> m_PreviewWorld;
   std::vector<std::shared_ptr<class Chunk>> m_BenchmarkChunks;
   std::unique_ptr<class Framebuffer> m_PreviewFBO;
-  std::unique_ptr<class Shader> m_PreviewShader;
-  std::unique_ptr<class TextureAtlas> m_PreviewAtlas;
+  class Shader *m_PreviewShader = nullptr;
+  class TextureAtlas *m_PreviewAtlas = nullptr;
   glm::vec3 m_PreviewTarget{0.0f, 80.0f, 0.0f}; // Target for camera to look at
-  std::unique_ptr<class Texture> m_PreviewTexture;
+  class Texture *m_PreviewTexture = nullptr;
   class Camera m_PreviewCamera;
   float m_PreviewYaw = -45.0f;
   float m_PreviewPitch = -30.0f;
@@ -71,6 +71,6 @@ private:
   glm::vec2 m_LastMousePos = {0.0f, 0.0f};
   bool m_IsDraggingPreview = false;
 
-  void InitPreview();
+  void InitPreview(Application *app);
   void UpdatePreview3D();
 };

@@ -10,7 +10,9 @@
 #include "backends/imgui_impl_opengl3.h"
 #include "imgui.h"
 
+#include "../world/Block.h"
 #include <iostream>
+
 
 void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
   auto app = reinterpret_cast<Application *>(glfwGetWindowUserPointer(window));
@@ -70,6 +72,17 @@ void Application::Init() {
   glCullFace(GL_BACK);
 
   InitImGui();
+
+  // Load Global Resources
+  // Basic Shader
+  m_ResourceManager.LoadShader("basic", "src/shaders/basic.vs",
+                               "src/shaders/basic.fs");
+  // Texture Atlas
+  m_ResourceManager.LoadTextureAtlas("blocks", "assets/textures/block");
+  // Resolve UVs for blocks globally once
+  if (auto *atlas = m_ResourceManager.GetTextureAtlas("blocks")) {
+    BlockRegistry::getInstance().resolveUVs(*atlas);
+  }
 
   // Apply Config
   m_Camera.Zoom = m_Config.fov;

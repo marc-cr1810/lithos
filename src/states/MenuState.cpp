@@ -35,7 +35,7 @@ static void HelpMarker(const char *desc) {
   }
 }
 
-void MenuState::InitPreview() {
+void MenuState::InitPreview(Application *app) {
   m_PreviewFBO = std::make_unique<Framebuffer>(512, 512);
 
   // Initialize Camera
@@ -45,33 +45,30 @@ void MenuState::InitPreview() {
   m_PreviewYaw = -45.0f;   // 45 degrees
   m_PreviewPitch = -30.0f; // Look down slightly
 
-  // Initialize Resources (Shader & Atlas)
-  // Ensure we use the correct paths (relative to executable usually, so
-  // 'src/shaders' might need adjustment if running from bin) GameState says:
-  // src/shaders/basic.vs
-  m_PreviewShader =
-      std::make_unique<Shader>("src/shaders/basic.vs", "src/shaders/basic.fs");
+  // Initialize Resources (Shader & Atlas) from ResourceManager
+  auto &rm = app->GetResourceManager();
 
-  m_PreviewAtlas = std::make_unique<TextureAtlas>(1024, 1024, 16);
-  m_PreviewAtlas->Load("assets/textures/block");
-  // Assuming BlockRegistry is singleton and already resolved?
-  // If not, we might need to re-resolve or share.
-  // GameState resolves uvs. UVs are static in Block definitions?
-  // No, BlockRegistry stores blocks. Blocks seemingly don't store UVs? The Mesh
-  // generator uses them. We should call resolveUVs again OR share the atlas.
-  // For safety, let's load and resolve.
-  BlockRegistry::getInstance().resolveUVs(*m_PreviewAtlas);
+  m_PreviewShader = rm.GetShader("basic");
+  // If shader failed to load in RM, this might be null. We should check or
+  // handle it. Assuming RM logs errors and returns nullptr.
 
-  m_PreviewTexture = std::make_unique<Texture>(m_PreviewAtlas->GetWidth(),
-                                               m_PreviewAtlas->GetHeight(),
-                                               m_PreviewAtlas->GetData(), 4);
+  // Atlas
+  m_PreviewAtlas = rm.GetTextureAtlas("blocks");
 
-  m_PreviewShader->use();
-  m_PreviewShader->setInt("texture1", 0);
-  // Calculate uvScale
-  float uScale = 16.0f / m_PreviewAtlas->GetWidth();
-  float vScale = 16.0f / m_PreviewAtlas->GetHeight();
-  m_PreviewShader->setVec2("uvScale", uScale, vScale);
+  // Texture
+  // We added code to RM to create texture "blocks" when loading atlas "blocks".
+  m_PreviewTexture = rm.GetTexture("blocks");
+
+  if (m_PreviewShader) {
+    m_PreviewShader->use();
+    m_PreviewShader->setInt("texture1", 0);
+    if (m_PreviewAtlas) {
+      // Calculate uvScale
+      float uScale = 16.0f / m_PreviewAtlas->GetWidth();
+      float vScale = 16.0f / m_PreviewAtlas->GetHeight();
+      m_PreviewShader->setVec2("uvScale", uScale, vScale);
+    }
+  }
 
   // Initial World Update
   UpdatePreview3D();
@@ -157,7 +154,7 @@ void MenuState::Init(Application *app) {
   // Pre-calculate benchmarks or similar? No.
 
   // Init Preview
-  InitPreview();
+  InitPreview(app);
 
   // Initial seed buffer
   snprintf(m_SeedBuffer, sizeof(m_SeedBuffer), "%d", m_Config.seed);

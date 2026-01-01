@@ -26,15 +26,15 @@ public:
 
 private:
   void InitEntities(Application *app);
-  void InitRendering();
+  void InitRendering(Application *app);
 
   // Member Variables
   glm::vec3 m_SpawnPos;
 
   // Rendering
-  std::unique_ptr<Shader> m_Shader;
-  std::unique_ptr<TextureAtlas> m_Atlas;
-  std::unique_ptr<Texture> m_BlockTexture;
+  Shader *m_Shader = nullptr;
+  TextureAtlas *m_Atlas = nullptr;
+  Texture *m_BlockTexture = nullptr;
 
   unsigned int m_CrosshairVAO = 0, m_CrosshairVBO = 0;
   unsigned int m_SelectVAO = 0, m_SelectVBO = 0;
