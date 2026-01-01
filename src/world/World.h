@@ -52,8 +52,9 @@ public:
   ~World();
 
   void addChunk(int x, int y, int z); // Chunk coords
-  Chunk *getChunk(int chunkX, int chunkY, int chunkZ);
-  const Chunk *getChunk(int chunkX, int chunkY, int chunkZ) const;
+  std::shared_ptr<Chunk> getChunk(int chunkX, int chunkY, int chunkZ);
+  std::shared_ptr<const Chunk> getChunk(int chunkX, int chunkY,
+                                        int chunkZ) const;
 
   // Global world coordinates
   WorldGenConfig config;
@@ -88,7 +89,7 @@ public:
 
   // Threading
   void Update(); // Main Thread
-  void QueueMeshUpdate(Chunk *c, bool priority = false);
+  void QueueMeshUpdate(std::shared_ptr<Chunk> c, bool priority = false);
 
   // Friend for generator if needed, or public method
   // Generator will just use addChunk/getChunk.

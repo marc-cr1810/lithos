@@ -1,7 +1,9 @@
 #include "Chunk.h"
 #include "World.h"
 #include "WorldGenerator.h"
+#include <GL/glew.h>
 #include <cmath>
+#include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/norm.hpp>
 #include <queue>
@@ -19,7 +21,7 @@ Chunk::Chunk()
         blocks[x][y][z] = {air, 0, 0};
 
   for (int i = 0; i < 6; ++i)
-    neighbors[i] = nullptr;
+    neighbors[i].reset();
 }
 
 Chunk::~Chunk() {
@@ -146,7 +148,8 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
 
   // Cache Diagonal Neighbors (For corner liquid height)
   // Indices: 0:LB(X-1,Z-1), 1:RB(X+1,Z-1), 2:LF(X-1,Z+1), 3:RF(X+1,Z+1)
-  const Chunk *diagNeighbors[4] = {nullptr, nullptr, nullptr, nullptr};
+  std::shared_ptr<Chunk> diagNeighbors[4] = {nullptr, nullptr, nullptr,
+                                             nullptr};
 
   if (world) {
     // Locking world once to get chunks is better than locking constantly in
@@ -295,8 +298,10 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 nny += CHUNK_SIZE;
               }
 
-              if (ni != -1 && neighbors[ni]) {
-                ChunkBlock nb = neighbors[ni]->getBlock(nnx, nny, nnz);
+              std::shared_ptr<Chunk> n =
+                  (ni == -1) ? std::shared_ptr<Chunk>() : getNeighbor(ni);
+              if (n) {
+                ChunkBlock nb = n->getBlock(nnx, nny, nnz);
                 if (nb.isActive()) {
                   if (!b.isOpaque()) {
                     bool isLiquid =
@@ -307,10 +312,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                     if (isLiquid && faceDir == 4) {
                       if (nb.block == b.block)
                         occluded = true;
-                    }
-                    // Optimization: Cull faces between identical leaves (Hollow
-                    // Trees) Reduces vertex count for forests significantly
-                    else if (isLeaves && nb.block == b.block) {
+                    } else if (isLeaves && nb.block == b.block) {
                       occluded = true;
                     } else {
                       if (nb.block == b.block || nb.isOpaque())
@@ -321,19 +323,13 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                       occluded = true;
                   }
                 } else {
-                  skyVal = neighbors[ni]->getSkyLight(nnx, nny, nnz);
-                  blockVal = neighbors[ni]->getBlockLight(nnx, nny, nnz);
+                  skyVal = n->getSkyLight(nnx, nny, nnz);
+                  blockVal = n->getBlockLight(nnx, nny, nnz);
                 }
               } else if (world) {
                 int gx = chunkPosition.x * CHUNK_SIZE + nx;
                 int gy = chunkPosition.y * CHUNK_SIZE + ny;
                 int gz = chunkPosition.z * CHUNK_SIZE + nz;
-                // World returns Block? Or ChunkBlock?
-                // Wait, World::getBlock probably still returns Block (the old
-                // struct)? I haven't updated World.h yet! I MUST update World.h
-                // to return ChunkBlock as well. Assuming I will do that, code
-                // here should use ChunkBlock. For now, let's assume
-                // World::getBlock returns ChunkBlock.
                 ChunkBlock nb = world->getBlock(gx, gy, gz);
                 if (nb.isActive()) {
                   if (!b.isOpaque()) {
@@ -398,8 +394,10 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                       (nnx < 0 || nnx >= CHUNK_SIZE || nny < 0 ||
                        nny >= CHUNK_SIZE || nnz < 0 || nnz >= CHUNK_SIZE);
 
-                  if (!isDiagonal && ni != -1 && neighbors[ni]) {
-                    return neighbors[ni]->getBlock(nnx, nny, nnz).isOpaque();
+                  if (!isDiagonal && ni != -1) {
+                    if (auto n = getNeighbor(ni)) {
+                      return n->getBlock(nnx, nny, nnz).isOpaque();
+                    }
                   }
 
                   if (world) {
@@ -494,13 +492,13 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                   // Check cached chunk above? Or just return 1.0?
                   // Original code returned 1.0f.
                   // Let's check neighbor chunks for correctness.
-                  // Relative to THIS chunk, by >= CHUNK_SIZE means it's in the
-                  // chunk above. But 'by' passed here is usually local
-                  // coordinate? getHeight is usually called with neighbors: bx,
-                  // by, bz. If by=32, it means chunk above, local y=0.
+                  // Relative to THIS chunk, by >= CHUNK_SIZE means it's in
+                  // the chunk above. But 'by' passed here is usually local
+                  // coordinate? getHeight is usually called with neighbors:
+                  // bx, by, bz. If by=32, it means chunk above, local y=0.
 
-                  // Simplified: just return 1.0f as per original (assuming full
-                  // liquid above?)
+                  // Simplified: just return 1.0f as per original (assuming
+                  // full liquid above?)
                   return 1.0f;
                 }
 
@@ -514,28 +512,28 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 }
                 // Neighbor Access (Optimized)
                 else {
-                  Chunk *targetChunk = nullptr;
+                  std::shared_ptr<Chunk> targetChunk = nullptr;
                   int nbx = bx;
                   int nby = by;
                   int nbz = bz;
 
                   if (bx >= CHUNK_SIZE) {
-                    targetChunk = neighbors[DIR_RIGHT];
+                    targetChunk = getNeighbor(DIR_RIGHT);
                     nbx -= CHUNK_SIZE;
                   } else if (bx < 0) {
-                    targetChunk = neighbors[DIR_LEFT];
+                    targetChunk = getNeighbor(DIR_LEFT);
                     nbx += CHUNK_SIZE;
                   } else if (by >= CHUNK_SIZE) {
-                    targetChunk = neighbors[DIR_TOP];
+                    targetChunk = getNeighbor(DIR_TOP);
                     nby -= CHUNK_SIZE;
                   } else if (by < 0) {
-                    targetChunk = neighbors[DIR_BOTTOM];
+                    targetChunk = getNeighbor(DIR_BOTTOM);
                     nby += CHUNK_SIZE;
                   } else if (bz >= CHUNK_SIZE) {
-                    targetChunk = neighbors[DIR_FRONT];
+                    targetChunk = getNeighbor(DIR_FRONT);
                     nbz -= CHUNK_SIZE;
                   } else if (bz < 0) {
-                    targetChunk = neighbors[DIR_BACK];
+                    targetChunk = getNeighbor(DIR_BACK);
                     nbz += CHUNK_SIZE;
                   }
 
@@ -572,16 +570,16 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                           bVec =
                               diagNeighbors[diagIdx]->getBlock(dbx, nby, dbz);
                         } else {
-                          // Diagonal chunk missing -> Treat as SOLID to prevent
-                          // dip into void
+                          // Diagonal chunk missing -> Treat as SOLID to
+                          // prevent dip into void
                           return -1.0f;
                         }
                       } else {
                         // Not a simple diagonal? Maybe vertical diagonal?
                         // e.g. Right + Top?
-                        // If we are here, we have a targetChunk (Cardinal) but
-                        // coords are out of bounds. This implies we need a
-                        // neighbor OF that neighbor. Safe fallback: world
+                        // If we are here, we have a targetChunk (Cardinal)
+                        // but coords are out of bounds. This implies we need
+                        // a neighbor OF that neighbor. Safe fallback: world
                         // lookup (but handle missing)
                         if (!world)
                           return -1.0f;
@@ -591,14 +589,14 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
 
                         // Problem: World::getBlock returns AIR for missing.
                         // We should check if chunk exists first, but that's
-                        // slow. Optimization: Only trust world->getBlock if we
-                        // assume it's loaded? Any out-of-bounds that isn't
+                        // slow. Optimization: Only trust world->getBlock if
+                        // we assume it's loaded? Any out-of-bounds that isn't
                         // handled by diag cache is rare or implies distant
                         // calculation. Let's rely on world, but risk the dip?
-                        // No, let's just return -1.0f for stability if we think
-                        // it's unloaded. But how to know? For now, let's
-                        // fallback to world but assume if it returns pure AIR
-                        // it might be void.
+                        // No, let's just return -1.0f for stability if we
+                        // think it's unloaded. But how to know? For now,
+                        // let's fallback to world but assume if it returns
+                        // pure AIR it might be void.
                         bVec = world->getBlock(gx, gy, gz);
                       }
                     }
@@ -632,9 +630,9 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                         int dbz =
                             (bz < 0) ? (bz + CHUNK_SIZE) : (bz - CHUNK_SIZE);
                         bVec = diagNeighbors[diagIdx]->getBlock(dbx, by, dbz);
-                        // Note: 'by' might be different if this was recursive?
-                        // 'nby' was used above. 'by' is safe here since we
-                        // didn't adjust it.
+                        // Note: 'by' might be different if this was
+                        // recursive? 'nby' was used above. 'by' is safe here
+                        // since we didn't adjust it.
                       } else {
                         return -1.0f; // Missing diagonal -> Solid
                       }
@@ -685,27 +683,27 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                     aboveVec = blocks[abx][aby][abz];
                   } else {
                     // Neighbor
-                    Chunk *targetChunk = nullptr;
+                    std::shared_ptr<Chunk> targetChunk = nullptr;
                     int nbx = abx;
                     int nby = aby;
                     int nbz = abz;
                     if (abx >= CHUNK_SIZE) {
-                      targetChunk = neighbors[DIR_RIGHT];
+                      targetChunk = getNeighbor(DIR_RIGHT);
                       nbx -= CHUNK_SIZE;
                     } else if (abx < 0) {
-                      targetChunk = neighbors[DIR_LEFT];
+                      targetChunk = getNeighbor(DIR_LEFT);
                       nbx += CHUNK_SIZE;
                     } else if (aby >= CHUNK_SIZE) {
-                      targetChunk = neighbors[DIR_TOP];
+                      targetChunk = getNeighbor(DIR_TOP);
                       nby -= CHUNK_SIZE;
                     } else if (aby < 0) {
-                      targetChunk = neighbors[DIR_BOTTOM];
+                      targetChunk = getNeighbor(DIR_BOTTOM);
                       nby += CHUNK_SIZE;
                     } else if (abz >= CHUNK_SIZE) {
-                      targetChunk = neighbors[DIR_FRONT];
+                      targetChunk = getNeighbor(DIR_FRONT);
                       nbz -= CHUNK_SIZE;
                     } else if (abz < 0) {
-                      targetChunk = neighbors[DIR_BACK];
+                      targetChunk = getNeighbor(DIR_BACK);
                       nbz += CHUNK_SIZE;
                     }
 
@@ -740,27 +738,27 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                     belowVec = blocks[bbx][bby][bbz];
                   } else {
                     // Neighbor
-                    Chunk *targetChunk = nullptr;
+                    std::shared_ptr<Chunk> targetChunk = nullptr;
                     int nbx = bbx;
                     int nby = bby;
                     int nbz = bbz;
                     if (bbx >= CHUNK_SIZE) {
-                      targetChunk = neighbors[DIR_RIGHT];
+                      targetChunk = getNeighbor(DIR_RIGHT);
                       nbx -= CHUNK_SIZE;
                     } else if (bbx < 0) {
-                      targetChunk = neighbors[DIR_LEFT];
+                      targetChunk = getNeighbor(DIR_LEFT);
                       nbx += CHUNK_SIZE;
                     } else if (bby >= CHUNK_SIZE) {
-                      targetChunk = neighbors[DIR_TOP];
+                      targetChunk = getNeighbor(DIR_TOP);
                       nby -= CHUNK_SIZE;
                     } else if (bby < 0) {
-                      targetChunk = neighbors[DIR_BOTTOM];
+                      targetChunk = getNeighbor(DIR_BOTTOM);
                       nby += CHUNK_SIZE;
                     } else if (bbz >= CHUNK_SIZE) {
-                      targetChunk = neighbors[DIR_FRONT];
+                      targetChunk = getNeighbor(DIR_FRONT);
                       nbz -= CHUNK_SIZE;
                     } else if (bbz < 0) {
-                      targetChunk = neighbors[DIR_BACK];
+                      targetChunk = getNeighbor(DIR_BACK);
                       nbz += CHUNK_SIZE;
                     }
 
@@ -800,27 +798,27 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                     aboveVec = blocks[abx][aby][abz];
                   } else {
                     // Neighbor
-                    Chunk *targetChunk = nullptr;
+                    std::shared_ptr<Chunk> targetChunk = nullptr;
                     int nbx = abx;
                     int nby = aby;
                     int nbz = abz;
                     if (abx >= CHUNK_SIZE) {
-                      targetChunk = neighbors[DIR_RIGHT];
+                      targetChunk = getNeighbor(DIR_RIGHT);
                       nbx -= CHUNK_SIZE;
                     } else if (abx < 0) {
-                      targetChunk = neighbors[DIR_LEFT];
+                      targetChunk = getNeighbor(DIR_LEFT);
                       nbx += CHUNK_SIZE;
                     } else if (aby >= CHUNK_SIZE) {
-                      targetChunk = neighbors[DIR_TOP];
+                      targetChunk = getNeighbor(DIR_TOP);
                       nby -= CHUNK_SIZE;
                     } else if (aby < 0) {
-                      targetChunk = neighbors[DIR_BOTTOM];
+                      targetChunk = getNeighbor(DIR_BOTTOM);
                       nby += CHUNK_SIZE;
                     } else if (abz >= CHUNK_SIZE) {
-                      targetChunk = neighbors[DIR_FRONT];
+                      targetChunk = getNeighbor(DIR_FRONT);
                       nbz -= CHUNK_SIZE;
                     } else if (abz < 0) {
-                      targetChunk = neighbors[DIR_BACK];
+                      targetChunk = getNeighbor(DIR_BACK);
                       nbz += CHUNK_SIZE;
                     }
 
@@ -1180,13 +1178,13 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
 
             // UV Bounds (Local 0..1)
             // For Sides, we want the bottom part of texture if it's a bottom
-            // slab? Actually, for SLAB_BOTTOM, y is 0..0.5. If we map 0..0.5 to
-            // 0..0.5V, it renders bottom half of texture. Correct. If we map
-            // 0..0.5 to 0..1V, it stretches. We want bottom half of texture for
-            // bottom slab. So if face is Side (0,1,2,3), V range should
-            // generally match Y range relative to full block? Yes, standard MC
-            // mapping: world coordinate modulo or block relative. Simplest: V
-            // range = Y range.
+            // slab? Actually, for SLAB_BOTTOM, y is 0..0.5. If we map 0..0.5
+            // to 0..0.5V, it renders bottom half of texture. Correct. If we
+            // map 0..0.5 to 0..1V, it stretches. We want bottom half of
+            // texture for bottom slab. So if face is Side (0,1,2,3), V range
+            // should generally match Y range relative to full block? Yes,
+            // standard MC mapping: world coordinate modulo or block relative.
+            // Simplest: V range = Y range.
 
             float u0 = 0.0f, v0 = 0.0f;
             float u1 = w, v1 = h;
@@ -1270,8 +1268,8 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             // Needs Top Half.
             // Helper for Partial Box?
             // Determine quadrant from metadata?
-            // Metadata 0: East (X+), 1: West (X-), 2: South (Z+), 3: North (Z-)
-            // Let's assume standard metadata.
+            // Metadata 0: East (X+), 1: West (X-), 2: South (Z+), 3: North
+            // (Z-) Let's assume standard metadata.
 
             // Base is drawn. Now draw Top Part (0.5..1.0)
             // Area depends on rotation.
@@ -1306,9 +1304,10 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             addFaceQuad(2, tX1, 0.5f, tZ1, tX2, 1.0f, tZ2);
             addFaceQuad(3, tX1, 0.5f, tZ1, tX2, 1.0f, tZ2);
             addFaceQuad(4, tX1, 0.5f, tZ1, tX2, 1.0f, tZ2); // Top of Stairs
-            // Note: Bottom of Top Box (at 0.5) sits on Base Slab Top (at 0.5).
-            // Base Slab Top (at 0.5) was NOT drawn for Stair (I split the if
-            // above). But we need to draw the Exposed part of Base Slab Top!
+            // Note: Bottom of Top Box (at 0.5) sits on Base Slab Top (at
+            // 0.5). Base Slab Top (at 0.5) was NOT drawn for Stair (I split
+            // the if above). But we need to draw the Exposed part of Base
+            // Slab Top!
 
             // Base Slab Top (Exposed Part)
             // It's the Inverse of Top Box X/Z rect.
@@ -1977,7 +1976,8 @@ bool Chunk::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist,
   // Move origin to local space
   glm::vec3 localOrigin = origin - min;
 
-  // Use a more efficient stepping or valid range relative to intersection entry
+  // Use a more efficient stepping or valid range relative to intersection
+  // entry
   float startDist = std::max(0.0f, tMin);
   float endDist = std::min(maxDist, tMax);
 
@@ -2056,8 +2056,7 @@ void Chunk::calculateSunlight() {
         Chunk *current = this;
 
         // Check neighbors[DIR_TOP]
-        if (current->neighbors[DIR_TOP]) {
-          Chunk *n = current->neighbors[DIR_TOP];
+        if (auto n = current->getNeighbor(DIR_TOP)) {
 
           // Only check bottom face of neighbor for light
           // We can't easily iterate neighbor columns without locking or
@@ -2193,7 +2192,7 @@ void Chunk::spreadLight() {
   // Let's rewrite the loop using explicit neighbors array
 
   for (const auto &np : nPtrs) {
-    Chunk *nc = neighbors[np.ni];
+    std::shared_ptr<Chunk> nc = getNeighbor(np.ni);
     if (nc) {
       // Iterate face
       for (int u = 0; u < CHUNK_SIZE; ++u) {
@@ -2266,7 +2265,8 @@ void Chunk::spreadLight() {
           {0, 0, -1, 0, 0, CHUNK_SIZE - 1, 2}, {0, 0, 1, 0, 0, 0, 2}};
 
       for (const auto &n : neighbors) {
-        Chunk *nc = world->getChunk(cx + n.dx, cy + n.dy, cz + n.dz);
+        std::shared_ptr<Chunk> nc =
+            world->getChunk(cx + n.dx, cy + n.dy, cz + n.dz);
         if (nc) {
           for (int u = 0; u < CHUNK_SIZE; ++u) {
             for (int v = 0; v < CHUNK_SIZE; ++v) {

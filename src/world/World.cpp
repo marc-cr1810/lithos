@@ -57,13 +57,14 @@ World::World(const WorldGenConfig &config)
     : shutdown(false), config(config), worldSeed(config.seed) {
   LOG_WORLD_INFO("World initialized with Seed: {}", worldSeed);
 
+  m_Generator = std::make_unique<WorldGenerator>(config);
+  m_Generator->GenerateFixedMaps();
+
   // Start Mesh Threads
   int numMeshThreads = std::thread::hardware_concurrency();
   if (numMeshThreads < 1)
     numMeshThreads = 1;
 
-  // We already use some for generation, maybe balance it?
-  // Let's just use hardware_concurrency for meshing as it's the bottleneck.
   for (int i = 0; i < numMeshThreads; ++i) {
     meshThreads.emplace_back(&World::WorkerLoop, this);
   }
@@ -72,13 +73,9 @@ World::World(const WorldGenConfig &config)
   int numGenThreads = std::thread::hardware_concurrency() / 2;
   if (numGenThreads < 1)
     numGenThreads = 1;
-  numGenThreads = 1;
   for (int i = 0; i < numGenThreads; ++i) {
     genThreads.emplace_back(&World::GenerationWorkerLoop, this);
   }
-
-  m_Generator = std::make_unique<WorldGenerator>(config);
-  m_Generator->GenerateFixedMaps();
 }
 
 World::~World() {
@@ -161,7 +158,7 @@ void World::Update() {
   // Throttle uploads to prevent main thread stalls
   // 32^3 chunks are heavy (~100k+ vertices potentially), but we handle them
   // fast now. Increased from 4 to 64 to reduce pop-in.
-  const int MAX_UPLOADS = 64;
+  const int MAX_UPLOADS = 128; // Increased from 64
 
   {
     std::lock_guard<std::mutex> lock(uploadMutex);
@@ -215,30 +212,26 @@ void World::updateBlocks() {
   }
 }
 
-void World::QueueMeshUpdate(Chunk *c, bool priority) {
-  if (c) {
-    try {
-      std::shared_ptr<Chunk> ptr = c->shared_from_this();
-      std::lock_guard<std::mutex> lock(queueMutex);
-      if (meshSet.find(c) == meshSet.end()) {
-        // Add to appropriate queue based on priority
-        if (priority)
-          meshQueueHighPrio.push_back(ptr);
-        else
-          meshQueue.push_back(ptr);
-        meshSet.insert(c);
-        condition.notify_one();
-      }
-    } catch (const std::bad_weak_ptr &e) {
-      LOG_ERROR("Attempted to queue Chunk not managed by shared_ptr");
+void World::QueueMeshUpdate(std::shared_ptr<Chunk> ptr, bool priority) {
+  if (ptr) {
+    Chunk *c = ptr.get();
+    std::lock_guard<std::mutex> lock(queueMutex);
+    if (meshSet.find(c) == meshSet.end()) {
+      // Add to appropriate queue based on priority
+      if (priority)
+        meshQueueHighPrio.push_back(ptr);
+      else
+        meshQueue.push_back(ptr);
+      meshSet.insert(c);
+      condition.notify_one();
     }
   }
 }
 
 void World::GenerationWorkerLoop() {
-  // Use shared generator
-  // WorldGenerator generator(config);
-  // generator.GenerateFixedMaps();
+  // Use thread-local generator to avoid race conditions in noise buffers
+  WorldGenerator generator(config);
+  generator.GenerateFixedMaps();
 
   while (true) {
     std::tuple<int, int, int> coord;
@@ -300,13 +293,13 @@ void World::GenerationWorkerLoop() {
     newChunk->setWorld(this);
 
     // 3. Generate Blocks using Column
-    m_Generator->GenerateChunk(*newChunk, *column);
+    generator.GenerateChunk(*newChunk, *column);
 
     // 3. Add to World (This links neighbors)
     {
       std::lock_guard<std::mutex> lock(worldMutex);
       chunks[coord] = std::move(newChunk);
-      Chunk *c = chunks[coord].get();
+      std::shared_ptr<Chunk> c = chunks[coord];
 
       // Link Neighbors (Copied from addChunk because we need to link NOW to
       // calculate light)
@@ -321,14 +314,14 @@ void World::GenerationWorkerLoop() {
       for (int i = 0; i < 6; ++i) {
         auto it = chunks.find(std::make_tuple(x + dx[i], y + dy[i], z + dz[i]));
         if (it != chunks.end()) {
-          Chunk *n = it->second.get();
+          std::shared_ptr<Chunk> n = it->second;
           c->neighbors[dirs[i]] = n;
           n->neighbors[opps[i]] = c;
         }
       }
     }
 
-    Chunk *c = getChunk(x, y, z); // Safe retrieval
+    std::shared_ptr<Chunk> c = getChunk(x, y, z); // Safe retrieval
     if (c) {
       // 4. Calculate Light
       c->calculateSunlight();
@@ -342,14 +335,16 @@ void World::GenerationWorkerLoop() {
 
       // Also queue neighbors for mesh update if they exist
       // Also queue neighbors for mesh update if they exist
+      int dx[] = {0, 0, -1, 1, 0, 0};
+      int dy[] = {0, 0, 0, 0, 1, -1};
+      int dz[] = {1, -1, 0, 0, 0, 0};
+
       int dirs_indices[] = {Chunk::DIR_FRONT, Chunk::DIR_BACK,
                             Chunk::DIR_LEFT,  Chunk::DIR_RIGHT,
                             Chunk::DIR_TOP,   Chunk::DIR_BOTTOM};
 
       for (int i = 0; i < 6; ++i) {
-        if (c->neighbors[dirs_indices[i]]) {
-          Chunk *n = c->neighbors[dirs_indices[i]];
-
+        if (auto n = c->getNeighbor(dirs_indices[i])) {
           // FIX: If we added a chunk ABOVE this neighbor, force it to
           // re-calculate sunlight because we might have just blocked the sky.
           if (dirs_indices[i] == Chunk::DIR_BOTTOM) {
@@ -473,7 +468,7 @@ void World::loadChunks(const glm::vec3 &playerPos, int renderDistance,
   // checkingMapLimit: fast map lookups to skip already loaded chunks
   // schedulingLimit: actual heavy generation tasks to send to thread pool
   const int MAX_CHUNKS_CHECKED = 20000;
-  const int MAX_TASKS_SCHEDULED = 64;
+  const int MAX_TASKS_SCHEDULED = 256; // Increased from 64
 
   int chunksChecked = 0;
   int tasksScheduled = 0;
@@ -569,10 +564,9 @@ void World::unloadChunks(const glm::vec3 &playerPos, int renderDistance) {
                     Chunk::DIR_LEFT, Chunk::DIR_BOTTOM, Chunk::DIR_TOP};
 
       for (int i = 0; i < 6; ++i) {
-        Chunk *neighbor = chunkToUnload->neighbors[dirs[i]];
-        if (neighbor) {
-          neighbor->neighbors[opps[i]] = nullptr;
-          chunkToUnload->neighbors[dirs[i]] = nullptr;
+        if (auto neighbor = chunkToUnload->getNeighbor(dirs[i])) {
+          neighbor->neighbors[opps[i]].reset();
+          chunkToUnload->neighbors[dirs[i]].reset();
         }
       }
 
@@ -633,9 +627,9 @@ void World::addChunk(int x, int y, int z) {
     for (int i = 0; i < 6; ++i) {
       auto it = chunks.find(std::make_tuple(x + dx[i], y + dy[i], z + dz[i]));
       if (it != chunks.end()) {
-        Chunk *n = it->second.get();
+        std::shared_ptr<Chunk> n = it->second;
         c->neighbors[dirs[i]] = n;
-        n->neighbors[opps[i]] = c;
+        n->neighbors[opps[i]] = c->shared_from_this();
       }
     }
 
@@ -671,31 +665,32 @@ void World::insertChunk(std::shared_ptr<Chunk> chunk) {
                                           chunk->chunkPosition.y + dy[i],
                                           chunk->chunkPosition.z + dz[i]));
     if (it != chunks.end()) {
-      Chunk *n = it->second.get();
+      std::shared_ptr<Chunk> n = it->second;
       chunk->neighbors[dirs[i]] = n;
-      n->neighbors[opps[i]] = chunk.get();
+      n->neighbors[opps[i]] = chunk;
     }
   }
 
   // Queue for mesh update immediately so it shows up
-  QueueMeshUpdate(chunk.get(), true);
+  QueueMeshUpdate(chunk, true);
 }
 
-Chunk *World::getChunk(int chunkX, int chunkY, int chunkZ) {
+std::shared_ptr<Chunk> World::getChunk(int chunkX, int chunkY, int chunkZ) {
   std::lock_guard<std::mutex> lock(worldMutex);
   auto key = std::make_tuple(chunkX, chunkY, chunkZ);
   auto it = chunks.find(key);
   if (it != chunks.end())
-    return it->second.get();
+    return it->second;
   return nullptr;
 }
 
-const Chunk *World::getChunk(int chunkX, int chunkY, int chunkZ) const {
+std::shared_ptr<const Chunk> World::getChunk(int chunkX, int chunkY,
+                                             int chunkZ) const {
   std::lock_guard<std::mutex> lock(worldMutex);
   auto key = std::make_tuple(chunkX, chunkY, chunkZ);
   auto it = chunks.find(key);
   if (it != chunks.end())
-    return it->second.get();
+    return it->second;
   return nullptr;
 }
 
@@ -711,7 +706,7 @@ ChunkBlock World::getBlock(int x, int y, int z) const {
   int cy = (y >= 0) ? (y / CHUNK_SIZE) : ((y - CHUNK_SIZE + 1) / CHUNK_SIZE);
   int cz = (z >= 0) ? (z / CHUNK_SIZE) : ((z - CHUNK_SIZE + 1) / CHUNK_SIZE);
 
-  const Chunk *c = getChunk(cx, cy, cz);
+  std::shared_ptr<const Chunk> c = getChunk(cx, cy, cz);
   if (!c) {
     // Return Air if chunk is not loaded
     return {BlockRegistry::getInstance().getBlock(AIR), 15, 0};
@@ -754,7 +749,7 @@ uint8_t World::getSkyLight(int x, int y, int z) {
   int cy = floorDiv(y, CHUNK_SIZE);
   int cz = floorDiv(z, CHUNK_SIZE);
 
-  Chunk *c = getChunk(cx, cy, cz);
+  std::shared_ptr<Chunk> c = getChunk(cx, cy, cz);
   if (!c)
     return 15; // Sunlight is bright outside
 
@@ -776,7 +771,7 @@ uint8_t World::getBlockLight(int x, int y, int z) {
   int cy = floorDiv(y, CHUNK_SIZE);
   int cz = floorDiv(z, CHUNK_SIZE);
 
-  Chunk *c = getChunk(cx, cy, cz);
+  std::shared_ptr<Chunk> c = getChunk(cx, cy, cz);
   if (!c)
     return 0; // Block light is dark outside
 
@@ -798,7 +793,7 @@ uint8_t World::getMetadata(int x, int y, int z) {
   int cy = floorDiv(y, CHUNK_SIZE);
   int cz = floorDiv(z, CHUNK_SIZE);
 
-  Chunk *c = getChunk(cx, cy, cz);
+  std::shared_ptr<Chunk> c = getChunk(cx, cy, cz);
   if (!c)
     return 0;
 
@@ -824,7 +819,7 @@ void World::setMetadata(int x, int y, int z, uint8_t val) {
   int ly = y - cy * CHUNK_SIZE;
   int lz = z - cz * CHUNK_SIZE;
 
-  Chunk *c = getChunk(cx, cy, cz);
+  std::shared_ptr<Chunk> c = getChunk(cx, cy, cz);
   if (c) {
     c->setMetadata(lx, ly, lz, val);
     QueueMeshUpdate(c);
@@ -840,7 +835,7 @@ void World::setBlock(int x, int y, int z, BlockType type) {
   int ly = y - cy * CHUNK_SIZE;
   int lz = z - cz * CHUNK_SIZE;
 
-  Chunk *c = getChunk(cx, cy, cz);
+  std::shared_ptr<Chunk> c = getChunk(cx, cy, cz);
   if (c) {
     c->setBlock(lx, ly, lz, type);
 
@@ -854,7 +849,8 @@ void World::setBlock(int x, int y, int z, BlockType type) {
     int nDz[] = {0, 0, 0, 0, -1, 1};
 
     for (int i = 0; i < 6; ++i) {
-      Chunk *n = getChunk(cx + nDx[i], cy + nDy[i], cz + nDz[i]);
+      std::shared_ptr<Chunk> n =
+          getChunk(cx + nDx[i], cy + nDy[i], cz + nDz[i]);
       if (n) {
         n->needsLightingUpdate = true;
         QueueMeshUpdate(n, true);
@@ -881,7 +877,7 @@ void World::setBlock(int x, int y, int z, BlockType type) {
   if (c) {
     if (type == AIR) {
       // Block removed - sunlight might go down
-      Chunk *lower = getChunk(cx, cy - 1, cz);
+      std::shared_ptr<Chunk> lower = getChunk(cx, cy - 1, cz);
       if (lower) {
         lower->calculateSunlight();
         lower->calculateBlockLight();
@@ -890,7 +886,7 @@ void World::setBlock(int x, int y, int z, BlockType type) {
       }
     } else {
       // Block placed - might shadow lower chunk
-      Chunk *lower = getChunk(cx, cy - 1, cz);
+      std::shared_ptr<Chunk> lower = getChunk(cx, cy - 1, cz);
       if (lower) {
         lower->calculateSunlight();
         lower->calculateBlockLight();
@@ -902,7 +898,7 @@ void World::setBlock(int x, int y, int z, BlockType type) {
         int nDx[] = {-1, 1, 0, 0};
         int nDz[] = {0, 0, -1, 1};
         for (int i = 0; i < 4; ++i) {
-          Chunk *n = getChunk(cx + nDx[i], cy - 1, cz + nDz[i]);
+          std::shared_ptr<Chunk> n = getChunk(cx + nDx[i], cy - 1, cz + nDz[i]);
           if (n) {
             n->spreadLight();
           }
@@ -922,12 +918,11 @@ void World::setBlock(int x, int y, int z, BlockType type) {
     for (int i = 0; i < 6; ++i) {
       int nx = x + nOff[i][0];
       int ny = y + nOff[i][1];
-      int nz = x + nOff[i][2]; // BUG HERE: z + nOff[i][2]
-      int nzCorrect = z + nOff[i][2];
+      int nz = z + nOff[i][2];
 
-      ChunkBlock nb = getBlock(nx, ny, nzCorrect);
+      ChunkBlock nb = getBlock(nx, ny, nz);
       if (nb.isActive()) {
-        nb.block->onNeighborChange(*this, nx, ny, nzCorrect, x, y, z);
+        nb.block->onNeighborChange(*this, nx, ny, nz, x, y, z);
       }
     }
   }
@@ -936,7 +931,7 @@ void World::setBlock(int x, int y, int z, BlockType type) {
 int World::render(Shader &shader, const glm::mat4 &viewProjection,
                   const glm::vec3 &cameraPos, int renderDistInput) {
   // Collect Visible Chunks under lock
-  std::vector<Chunk *> visibleChunks;
+  std::vector<std::shared_ptr<Chunk>> visibleChunks;
   visibleChunks.reserve(chunks.size());
 
   {
@@ -972,7 +967,7 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection,
             if (it == chunks.end())
               continue;
 
-            Chunk *c = it->second.get();
+            std::shared_ptr<Chunk> c = it->second;
 
             glm::vec3 min(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE);
             glm::vec3 max = min + glm::vec3(CHUNK_SIZE);
@@ -1004,7 +999,8 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection,
   {
     PROFILE_SCOPE("Sort Chunks");
     std::sort(visibleChunks.begin(), visibleChunks.end(),
-              [&cameraPos](Chunk *a, Chunk *b) {
+              [&cameraPos](const std::shared_ptr<Chunk> &a,
+                           const std::shared_ptr<Chunk> &b) {
                 glm::vec3 posA = glm::vec3(a->chunkPosition * CHUNK_SIZE) +
                                  glm::vec3(CHUNK_SIZE / 2.0f);
                 glm::vec3 posB = glm::vec3(b->chunkPosition * CHUNK_SIZE) +
@@ -1036,7 +1032,7 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection,
   // Render Opaque
   {
     PROFILE_SCOPE("Render Opaque");
-    for (Chunk *c : visibleChunks) {
+    for (const auto &c : visibleChunks) {
       if (c) {
         c->render(shader, viewProjection, 0); // Opaque
         count++;
@@ -1059,7 +1055,7 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection,
   {
     PROFILE_SCOPE("Transp Sort");
     for (auto it = visibleChunks.rbegin(); it != visibleChunks.rend(); ++it) {
-      Chunk *c = *it;
+      const auto &c = *it;
       if (c) {
         c->sortAndUploadTransparent(cameraPos);
       }
@@ -1069,7 +1065,7 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection,
   {
     PROFILE_SCOPE("Transp Draw");
     for (auto it = visibleChunks.rbegin(); it != visibleChunks.rend(); ++it) {
-      Chunk *c = *it;
+      const auto &c = *it;
       if (c) {
         c->render(shader, viewProjection, 1); // Transparent
       }

@@ -45,16 +45,22 @@ public:
   bool needsLightingUpdate =
       false; // Flag to recalculate lighting before mesh gen
 
-  // Neighbor Pointers (Cached for lock-free access)
+  // Neighbor Pointers (Weakly linked to prevent access to unloaded chunks)
   // Indexes: 0=Front(Z+), 1=Back(Z-), 2=Left(X-), 3=Right(X+), 4=Top(Y+),
   // 5=Bottom(Y-)
-  Chunk *neighbors[6];
+  std::weak_ptr<Chunk> neighbors[6];
   static const int DIR_FRONT = 0;
   static const int DIR_BACK = 1;
   static const int DIR_LEFT = 2;
   static const int DIR_RIGHT = 3;
   static const int DIR_TOP = 4;
   static const int DIR_BOTTOM = 5;
+
+  std::shared_ptr<Chunk> getNeighbor(int dir) const {
+    if (dir < 0 || dir >= 6)
+      return nullptr;
+    return neighbors[dir].lock();
+  }
 
   void calculateSunlight(); // Step 1: Seed Skylight
   void calculateBlockLight();

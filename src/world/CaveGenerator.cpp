@@ -111,7 +111,8 @@ void CaveGenerator::GenerateCaves(Chunk &chunk, const ChunkColumn &column,
 
         // Cheese
         float cheeseThresh =
-            (0.68f / config.caveSize) - (depthFactor * 0.12f) + combined;
+            ((config.caveThreshold + 0.13f) / config.caveSize) -
+            (depthFactor * 0.12f) + combined;
         if (cheeseMap[fnIndex] > cheeseThresh) {
           if (wy < config.lavaLevel) {
             chunk.blocks[lx][ly][lz].block = lavaBlock;
@@ -124,8 +125,8 @@ void CaveGenerator::GenerateCaves(Chunk &chunk, const ChunkColumn &column,
         }
 
         // Spaghetti
-        float spagThresh =
-            (0.05f * config.caveSize) + (depthFactor * 0.08f) - combined;
+        float spagThresh = ((0.6f - config.caveThreshold) * config.caveSize) +
+                           (depthFactor * 0.08f) - combined;
 
         float s1 = spag1Map[fnIndex];
         if (std::abs(s1) < spagThresh) {
