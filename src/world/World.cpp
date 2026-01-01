@@ -155,9 +155,9 @@ void World::Update() {
       toUpload;
 
   // Throttle uploads to prevent main thread stalls
-  // 32^3 chunks are heavy (~100k+ vertices potentially), so we limit to a few
-  // per frame
-  const int MAX_UPLOADS = 4;
+  // 32^3 chunks are heavy (~100k+ vertices potentially), but we handle them
+  // fast now. Increased from 4 to 64 to reduce pop-in.
+  const int MAX_UPLOADS = 64;
 
   {
     std::lock_guard<std::mutex> lock(uploadMutex);
@@ -463,15 +463,23 @@ void World::loadChunks(const glm::vec3 &playerPos, int renderDistance,
   auto planes = extractPlanes(viewProjection);
 
   // Process top N chunks from queue
-  const int MAX_CHUNKS_PER_FRAME = 80;
-  int chunksProcessed = 0;
+  // Process chunks from queue
+  // checkingMapLimit: fast map lookups to skip already loaded chunks
+  // schedulingLimit: actual heavy generation tasks to send to thread pool
+  const int MAX_CHUNKS_CHECKED = 20000;
+  const int MAX_TASKS_SCHEDULED = 64;
+
+  int chunksChecked = 0;
+  int tasksScheduled = 0;
 
   std::vector<std::tuple<int, int, int>> urgentBatch;
 
-  while (chunksProcessed < MAX_CHUNKS_PER_FRAME &&
+  while (chunksChecked < MAX_CHUNKS_CHECKED &&
+         tasksScheduled < MAX_TASKS_SCHEDULED &&
          queueIndex < loadQueue.size()) {
     const auto &req = loadQueue[queueIndex];
     queueIndex++;
+    chunksChecked++;
 
     auto key = std::make_tuple(req.x, req.y, req.z);
 
@@ -491,10 +499,11 @@ void World::loadChunks(const glm::vec3 &playerPos, int renderDistance,
         genQueue.push({key, req.priority});
 
         genCondition.notify_one();
+
+        // This counts as a scheduled task
+        tasksScheduled++;
       }
     }
-
-    chunksProcessed++;
   }
 
   // Reset queue when finished
