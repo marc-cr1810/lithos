@@ -86,7 +86,6 @@ void NoiseManager::Initialize() {
   landformF3Node = applyLandformWarp(f3Source);
 
   // New: Terrain Detail (High frequency FRACTAL for height variance)
-  // This drives the actual height spline within the landform cell
   auto detailSource = FastNoise::New<FastNoise::Simplex>();
   auto detailFractal = FastNoise::New<FastNoise::FractalFBm>();
   detailFractal->SetSource(detailSource);
@@ -145,7 +144,6 @@ void NoiseManager::Initialize() {
   strataNode = strataFractal;
 
   // 7. Cave Noise (3D Cheese)
-  // Matches CaveGenerator settings: Simplex -> FractalFBm (3 octaves)
   auto caveSimplex = FastNoise::New<FastNoise::Simplex>();
   auto caveFractal = FastNoise::New<FastNoise::FractalFBm>();
   caveFractal->SetSource(caveSimplex);
@@ -153,7 +151,6 @@ void NoiseManager::Initialize() {
   cave3DNode = caveFractal;
 
   // 8. Cave Entrance Noise (2D)
-  // Matches CaveGenerator settings: Perlin (2D)
   auto caveEntrance = FastNoise::New<FastNoise::Perlin>();
   caveEntranceNode = caveEntrance;
 }

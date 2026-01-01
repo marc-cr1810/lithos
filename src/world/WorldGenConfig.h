@@ -40,8 +40,8 @@ struct WorldGenConfig {
   std::map<std::string, LandformConfigOverride> landformOverrides;
 
   // Caves
-  float caveFrequency = 0.012f; // Reduced from 0.015f
-  float caveThreshold = 0.60f;  // Increased from 0.55f (harder to carve)
+  float caveFrequency = 0.015f; // Original
+  float caveThreshold = 0.55f;  // Original (easier to carve)
   bool enableCaves = true;
   bool enableRavines = true;
   int ravineDepth = 40;
