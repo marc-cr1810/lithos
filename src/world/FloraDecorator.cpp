@@ -1,10 +1,9 @@
 #include "FloraDecorator.h"
 #include "Block.h"
+#include "ChunkColumn.h"
 #include "WorldGenerator.h"
 #include <cstdlib>
 #include <glm/glm.hpp>
-
-#include "ChunkColumn.h"
 
 void FloraDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
                               const ChunkColumn &column) {
@@ -24,35 +23,56 @@ void FloraDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
         if (height < generator.GetConfig().seaLevel)
           continue; // Above water only
 
-        Biome biome = column.getBiome(x, z);
-        BlockType surface = generator.GetSurfaceBlock(gx, height, gz, true);
+        // Use Column Data for decisions
+        float temp = column.temperatureMap[x][z];
+        float humid = column.humidityMap[x][z];
+        // float beach = column.beachNoiseMap[x][z]; // Could use to avoid flora
+        // on beaches
+        float bushNoise = column.bushNoiseMap[x][z];
 
-        if (biome == BIOME_DESERT) {
+        BlockType surface =
+            generator.GetSurfaceBlock(gx, height, gz, &column); // Pass column
+
+        // --- Desert Flora ---
+        if (temp > 30.0f && humid < -0.5f) {
           if (surface == SAND) {
             int r = rand() % 100;
             float density = generator.GetConfig().floraDensity;
-            if (r < density * 0.2f) { // 2% Dead Bush (relative)
+
+            // Use Bush Noise (bushScale) to cluster dead bushes?
+            if (bushNoise > 0.3f && r < density) {
               chunk.setBlock(x, localY, z, DEAD_BUSH);
-            } else if (r < density) { // 8% Dry Short Grass
+            } else if (r < density * 0.5f) {
               chunk.setBlock(x, localY, z, DRY_SHORT_GRASS);
-            } else if (r < density * 1.2f) { // 2% Dry Tall Grass
-              chunk.setBlock(x, localY, z, DRY_TALL_GRASS);
             }
           }
-        } else if (biome == BIOME_PLAINS) {
+        }
+        // --- Moderate/Lush Flora ---
+        else if (temp > 5.0f && humid > -0.3f) {
           if (surface == GRASS) {
             int r = rand() % 100;
             float density = generator.GetConfig().floraDensity;
-            if (r < density) { // 10% Grass
+
+            // Tall Grass & Roses
+            // Boost density if "bush/forest" noise is high
+            if (column.forestNoiseMap[x][z] > 0.0f) {
+              density *= 1.5f;
+            }
+
+            if (r < density) {
               chunk.setBlock(x, localY, z, TALL_GRASS);
-            } else if (r < density + 2) { // 2% Rose
+            } else if (r < density + 2) {
               chunk.setBlock(x, localY, z, ROSE);
             }
           }
-        } else if (biome == BIOME_FOREST) {
-          if (surface == GRASS) {
-            if ((rand() % 100) < (generator.GetConfig().floraDensity *
-                                  0.5f)) { // 5% Grass (less than plains)
+        }
+        // --- Cold Flora ---
+        else if (temp < -0.2f) {
+          // Tundra grass?
+          if (surface == GRASS ||
+              surface == DIRT) { // Snow usually covers specific blocks
+            // Less flora in cold?
+            if ((rand() % 100) < 5) {
               chunk.setBlock(x, localY, z, TALL_GRASS);
             }
           }

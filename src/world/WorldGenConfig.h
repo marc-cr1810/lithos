@@ -26,7 +26,7 @@ struct WorldGenConfig {
   float tempScale = 0.003f;     // Balanced for moderate biome regions
   float humidityScale = 0.003f; // Balanced for moderate biome regions
   float landformScale =
-      0.0015f; // Increased for more terrain variety (mountains, oceans, etc.)
+      0.0005f; // Decreased for larger, more consistent landforms
   float climateScale = 0.0001f;
   float geologicScale = 0.001f;
   float biomeVariation = 0.25f; // Adds noise to break up smooth biome blobs
@@ -40,8 +40,8 @@ struct WorldGenConfig {
   std::map<std::string, LandformConfigOverride> landformOverrides;
 
   // Caves
-  float caveFrequency = 0.015f;
-  float caveThreshold = 0.55f;
+  float caveFrequency = 0.012f; // Reduced from 0.015f
+  float caveThreshold = 0.60f;  // Increased from 0.55f (harder to carve)
   bool enableCaves = true;
   bool enableRavines = true;
   int ravineDepth = 40;
@@ -68,6 +68,12 @@ struct WorldGenConfig {
   float pineDensity = 2.0f;   // Roll %
   float cactusDensity = 1.0f; // Roll %
   float floraDensity = 10.0f; // Grass roll %
+
+  // New Noise Scales for Rework
+  float upheavalScale = 0.0005f; // Large scale for generalized height shifts
+  float forestScale = 0.05f;     // For tree placement
+  float bushScale = 0.08f;       // For bush placement
+  float beachScale = 0.01f;      // For beach placement
 
   WorldGenConfig() {
     // Initialize with default values seen in WorldGenerator.cpp
@@ -145,7 +151,11 @@ inline void to_json(json &j, const WorldGenConfig &c) {
            {"oakDensity", c.oakDensity},
            {"pineDensity", c.pineDensity},
            {"cactusDensity", c.cactusDensity},
-           {"floraDensity", c.floraDensity}};
+           {"floraDensity", c.floraDensity},
+           {"upheavalScale", c.upheavalScale},
+           {"forestScale", c.forestScale},
+           {"bushScale", c.bushScale},
+           {"beachScale", c.beachScale}};
 }
 
 inline void from_json(const json &j, WorldGenConfig &c) {
@@ -192,4 +202,12 @@ inline void from_json(const json &j, WorldGenConfig &c) {
   j.at("pineDensity").get_to(c.pineDensity);
   j.at("cactusDensity").get_to(c.cactusDensity);
   j.at("floraDensity").get_to(c.floraDensity);
+  if (j.contains("upheavalScale"))
+    j.at("upheavalScale").get_to(c.upheavalScale);
+  if (j.contains("forestScale"))
+    j.at("forestScale").get_to(c.forestScale);
+  if (j.contains("bushScale"))
+    j.at("bushScale").get_to(c.bushScale);
+  if (j.contains("beachScale"))
+    j.at("beachScale").get_to(c.beachScale);
 }

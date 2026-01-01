@@ -189,36 +189,22 @@ void MenuState::Init(Application *app) {
 }
 
 void MenuState::UpdatePreview() {
-  WorldGenerator tempGen(m_Config);
   for (int i = 0; i < 256; ++i) {
-    int x = i * 2; // More resolution, smaller step
-    int z = 0;
-    int height = tempGen.GetHeight(x, z);
-
-    // Populate main preview data (128 samples for compatibility with old plots
-    // if needed, but we use 256 for the new cave slice)
     if (i % 2 == 0) {
       int idx = i / 2;
-      m_PreviewData[idx] = (float)height;
-      m_TempData[idx] = tempGen.GetTemperature(x, z, height);
-      m_HumidData[idx] = tempGen.GetHumidity(x, z);
-      m_BiomeData[idx] = (float)tempGen.GetBiomeAtHeight(x, z, height);
-      m_CaveProbData[idx] = tempGen.GetCaveProbability(x, z);
-
-      // Sample individual landforms
-      m_OceansData[idx] = (float)tempGen.GetHeightForLandform("oceans", x, z);
-      m_ValleysData[idx] = (float)tempGen.GetHeightForLandform("valleys", x, z);
-      m_PlainsData[idx] = (float)tempGen.GetHeightForLandform("plains", x, z);
-      m_HillsData[idx] = (float)tempGen.GetHeightForLandform("hills", x, z);
-      m_MountainsData[idx] =
-          (float)tempGen.GetHeightForLandform("mountains", x, z);
+      m_PreviewData[idx] = 0.0f;
+      m_TempData[idx] = 0.0f;
+      m_HumidData[idx] = 0.0f;
+      m_BiomeData[idx] = 0.0f;
+      m_CaveProbData[idx] = 0.0f;
+      m_OceansData[idx] = 0.0f;
+      m_ValleysData[idx] = 0.0f;
+      m_PlainsData[idx] = 0.0f;
+      m_HillsData[idx] = 0.0f;
+      m_MountainsData[idx] = 0.0f;
     }
-
-    // Sample 2D cave slice (X: 256, Y: 128)
     for (int j = 0; j < 128; ++j) {
-      // Map j [0, 127] to height [0, worldHeight]
-      int y = (int)((float)j / 128.0f * (float)m_Config.worldHeight);
-      m_CaveSliceData[i + j * 256] = tempGen.IsCaveAt(x, y, 0) ? 1.0f : 0.0f;
+      m_CaveSliceData[i + j * 256] = 0.0f;
     }
   }
 

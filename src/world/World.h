@@ -44,6 +44,8 @@ struct BlockUpdate {
   bool operator>(const BlockUpdate &other) const { return tick > other.tick; }
 };
 
+class WorldGenerator; // Forward declaration
+
 class World {
 public:
   World(const WorldGenConfig &config);
@@ -161,6 +163,11 @@ private:
                       std::greater<BlockUpdate>>
       updateQueue;
   std::mutex updateQueueMutex;
+
+  std::unique_ptr<WorldGenerator> m_Generator;
+
+public:
+  WorldGenerator *GetGenerator() { return m_Generator.get(); }
 };
 
 #endif

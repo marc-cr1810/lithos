@@ -5,6 +5,7 @@
 #include "../ecs/Components.h"
 #include "../ecs/Systems.h"
 #include "../world/Block.h"
+#include "../world/WorldGenerator.h"
 
 #include "backends/imgui_impl_glfw.h"
 #include "backends/imgui_impl_opengl3.h"
@@ -670,9 +671,11 @@ void GameState::RenderUI(Application *app) {
                       CHALK,          CHERT,        CLAY,
                       CLAYSTONE,      CONGLOMERATE, GREEN_MARBLE,
                       HALITE,         KIMBERLITE,   LIMESTONE,
-                      MANTLE,         PERIDOTITE,   PHYLITE,
+                      MANTLE,         PERIDOTITE,   PHYLLITE,
                       PINK_MARBLE,    SCORIA,       SHALE,
-                      SLATE,          SUEVITE,      WHITE_MARBLE};
+                      SLATE,          SUEVITE,      WHITE_MARBLE,
+                      SCHIST,         RHYOLITE,     GOLD_ORE,
+                      GNEISS};
       int numBlocks = sizeof(blocks) / sizeof(blocks[0]);
 
       for (int i = 0; i < numBlocks; ++i) {
@@ -813,6 +816,25 @@ void GameState::RenderUI(Application *app) {
         ImGui::Text("Pre Pos: %d, %d, %d", m_PrePos.x, m_PrePos.y, m_PrePos.z);
       } else {
         ImGui::Text("No Hit");
+      }
+    }
+
+    if (ImGui::CollapsingHeader("World Generation",
+                                ImGuiTreeNodeFlags_DefaultOpen)) {
+      int px = (int)floor(transform.position.x);
+      int pz = (int)floor(transform.position.z);
+
+      WorldGenerator *gen = app->GetWorld()->GetGenerator();
+      if (gen) {
+        std::string lfName = gen->GetLandformNameAt(px, pz);
+        float temp = gen->GetTemperature(px, pz);
+        float humid = gen->GetHumidity(px, pz);
+        float upheaval = gen->GetNoiseManager().GetUpheaval(px, pz);
+
+        ImGui::Text("Landform: %s", lfName.c_str());
+        ImGui::Text("Temperature: %.2f C", temp);
+        ImGui::Text("Humidity: %.2f", humid);
+        ImGui::Text("Upheaval/Continental: %.4f", upheaval);
       }
     }
 

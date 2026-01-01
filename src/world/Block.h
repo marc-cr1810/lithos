@@ -64,13 +64,17 @@ enum BlockType {
   LIMESTONE = 46,
   MANTLE = 47,
   PERIDOTITE = 48,
-  PHYLITE = 49,
+  PHYLLITE = 49,
   PINK_MARBLE = 50,
   SCORIA = 51,
   SHALE = 52,
   SLATE = 53,
   SUEVITE = 54,
-  WHITE_MARBLE = 55
+  WHITE_MARBLE = 55,
+  GNEISS = 56,
+  SCHIST = 57,
+  RHYOLITE = 58,
+  GOLD_ORE = 59
 };
 
 class World; // Forward declaration

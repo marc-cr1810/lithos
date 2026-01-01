@@ -72,9 +72,13 @@ World::World(const WorldGenConfig &config)
   int numGenThreads = std::thread::hardware_concurrency() / 2;
   if (numGenThreads < 1)
     numGenThreads = 1;
+  numGenThreads = 1;
   for (int i = 0; i < numGenThreads; ++i) {
     genThreads.emplace_back(&World::GenerationWorkerLoop, this);
   }
+
+  m_Generator = std::make_unique<WorldGenerator>(config);
+  m_Generator->GenerateFixedMaps();
 }
 
 World::~World() {
@@ -232,8 +236,10 @@ void World::QueueMeshUpdate(Chunk *c, bool priority) {
 }
 
 void World::GenerationWorkerLoop() {
-  WorldGenerator generator(config);
-  generator.GenerateFixedMaps();
+  // Use shared generator
+  // WorldGenerator generator(config);
+  // generator.GenerateFixedMaps();
+
   while (true) {
     std::tuple<int, int, int> coord;
     {
@@ -280,7 +286,7 @@ void World::GenerationWorkerLoop() {
     // If not found, generate it
     if (!column) {
       auto newCol = std::make_unique<ChunkColumn>();
-      generator.GenerateColumn(*newCol, x, z);
+      m_Generator->GenerateColumn(*newCol, x, z);
 
       std::lock_guard<std::mutex> lock(columnMutex);
       // Insert or get existing (if race happened)
@@ -294,7 +300,7 @@ void World::GenerationWorkerLoop() {
     newChunk->setWorld(this);
 
     // 3. Generate Blocks using Column
-    generator.GenerateChunk(*newChunk, *column);
+    m_Generator->GenerateChunk(*newChunk, *column);
 
     // 3. Add to World (This links neighbors)
     {

@@ -305,10 +305,10 @@ BlockRegistry::BlockRegistry() {
   peridotite->setTexture("peridotite");
   registerBlock(peridotite);
 
-  Block *phylite = new SolidBlock(BlockType::PHYLITE, "Phylite");
-  phylite->setResourceId("lithos:phylite");
-  phylite->setTexture("phylite");
-  registerBlock(phylite);
+  Block *phyllite = new SolidBlock(BlockType::PHYLLITE, "Phyllite");
+  phyllite->setResourceId("lithos:phyllite");
+  phyllite->setTexture("phyllite");
+  registerBlock(phyllite);
 
   Block *pinkMarble = new SolidBlock(BlockType::PINK_MARBLE, "Pink Marble");
   pinkMarble->setResourceId("lithos:pink_marble");
@@ -339,6 +339,26 @@ BlockRegistry::BlockRegistry() {
   whiteMarble->setResourceId("lithos:white_marble");
   whiteMarble->setTexture("white_marble");
   registerBlock(whiteMarble);
+
+  Block *schist = new SolidBlock(BlockType::SCHIST, "Schist");
+  schist->setResourceId("lithos:schist");
+  schist->setTexture("schist");
+  registerBlock(schist);
+
+  Block *rhyolite = new SolidBlock(BlockType::RHYOLITE, "Rhyolite");
+  rhyolite->setResourceId("lithos:rhyolite");
+  rhyolite->setTexture("rhyolite");
+  registerBlock(rhyolite);
+
+  Block *goldOre = new SolidBlock(BlockType::GOLD_ORE, "Gold Ore");
+  goldOre->setResourceId("lithos:gold_ore");
+  goldOre->setTexture("gold_ore");
+  registerBlock(goldOre);
+
+  Block *gneiss = new SolidBlock(BlockType::GNEISS, "Gneiss");
+  gneiss->setResourceId("lithos:gneiss");
+  gneiss->setTexture("gneiss");
+  registerBlock(gneiss);
 
   // Dynamic Model Loading
   for (auto &pair : blocks) {

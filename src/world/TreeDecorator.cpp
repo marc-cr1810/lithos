@@ -27,7 +27,9 @@ static void GenerateOak(Chunk &chunk, int gx, int gy, int gz, int seed) {
     int lz = gz - cp.z;
     if (lx >= 0 && lx < CHUNK_SIZE && ly >= 0 && ly < CHUNK_SIZE && lz >= 0 &&
         lz < CHUNK_SIZE) {
-      chunk.setBlock(lx, ly, lz, WOOD);
+      if (chunk.getBlock(lx, ly, lz).getType() == AIR ||
+          chunk.getBlock(lx, ly, lz).getType() == LEAVES)
+        chunk.setBlock(lx, ly, lz, WOOD);
     }
   }
 
@@ -56,20 +58,6 @@ static void GenerateOak(Chunk &chunk, int gx, int gy, int gz, int seed) {
             chunk.setBlock(lx, ly_local, lz, LEAVES);
         }
       }
-    }
-  }
-
-  // Top Cross
-  int tx = gx, ty = leavesEnd + 1, tz = gz;
-  int offsets[5][3] = {{0, 0, 0}, {1, 0, 0}, {-1, 0, 0}, {0, 0, 1}, {0, 0, -1}};
-  for (int i = 0; i < 5; ++i) {
-    int ox = tx + offsets[i][0] - cp.x;
-    int oy = ty + offsets[i][1] - cp.y;
-    int oz = tz + offsets[i][2] - cp.z;
-    if (ox >= 0 && ox < CHUNK_SIZE && oy >= 0 && oy < CHUNK_SIZE && oz >= 0 &&
-        oz < CHUNK_SIZE) {
-      if (chunk.getBlock(ox, oy, oz).getType() == AIR)
-        chunk.setBlock(ox, oy, oz, LEAVES);
     }
   }
 }
@@ -146,104 +134,77 @@ void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
   glm::ivec3 cp = chunk.chunkPosition;
   int seed = generator.GetSeed();
 
-  // Search a radius of 5 around the chunk for potential tree starts
-  int searchRadius = 5;
-  const int GRID_SIZE = CHUNK_SIZE + (searchRadius * 2); // 42x42
-  int startGX = cp.x * CHUNK_SIZE - searchRadius;
-  int startGZ = cp.z * CHUNK_SIZE - searchRadius;
+  int startX = cp.x * CHUNK_SIZE;
+  int startZ = cp.z * CHUNK_SIZE;
 
-  // 1. Batch generate noise for the entire search area using synced methods
-  std::vector<float> heightGrid(GRID_SIZE * GRID_SIZE);
-  std::vector<float> tempGrid(GRID_SIZE * GRID_SIZE);
-  std::vector<float> humidGrid(GRID_SIZE * GRID_SIZE);
-  std::vector<float> beachGrid(GRID_SIZE * GRID_SIZE);
+  // Iterate over column
+  for (int lx = 0; lx < CHUNK_SIZE; ++lx) {
+    for (int lz = 0; lz < CHUNK_SIZE; ++lz) {
+      int gx = startX + lx;
+      int gz = startZ + lz;
 
-  generator.GenerateHeightGrid(heightGrid.data(), startGX, startGZ, GRID_SIZE,
-                               GRID_SIZE);
-  generator.GenerateTemperatureGrid(tempGrid.data(), startGX, startGZ,
-                                    GRID_SIZE, GRID_SIZE);
-  generator.GenerateHumidityGrid(humidGrid.data(), startGX, startGZ, GRID_SIZE,
-                                 GRID_SIZE);
-  generator.GenerateBeachGrid(beachGrid.data(), startGX, startGZ, GRID_SIZE,
-                              GRID_SIZE);
+      int height = column.getHeight(lx, lz);
 
-  for (int gx = startGX; gx < startGX + GRID_SIZE; ++gx) {
-    for (int gz = startGZ; gz < startGZ + GRID_SIZE; ++gz) {
-      int localIdx = (gx - startGX) + (gz - startGZ) * GRID_SIZE;
+      // Skip if height is not in this chunk (optional optimization, but we need
+      // to place blocks relative to chunk) Actually, we should check if the
+      // SURFACE is within or near this chunk. If the surface is Y=70 and this
+      // chunk is Y=0..32, we do nothing. If chunk is Y=64..96, we decorate.
 
-      // Use batched noise for EXACT synchronization
-      float hNoise = heightGrid[localIdx];
-      float lNoise =
-          generator.GetLandformNoise(gx, gz); // Single lookup ok here
-      int height = generator.CalculateHeightFromNoise(hNoise, lNoise);
+      int chunkYStart = cp.y * CHUNK_SIZE;
+      int chunkYEnd = (cp.y + 1) * CHUNK_SIZE;
 
-      // Apply River Carving for total height alignment
-      if (generator.GetConfig().enableRivers) {
-        float carve = generator.GetRiverCarveFactor(gx, gz);
-        if (carve > 0.0f) {
-          float hToSea = (float)(height - generator.GetConfig().seaLevel);
-          height -=
-              (int)(std::max(generator.GetConfig().riverDepth, hToSea + 2.0f) *
-                    carve);
-        }
-      }
+      // Tree usually starts at surface + 1
+      // Tree usually starts at surface + 1
+      if (height < chunkYStart - 10 || height > chunkYEnd + 10)
+        continue;
 
-      float temp = tempGrid[localIdx];
-      float humid = humidGrid[localIdx];
-      float beach = beachGrid[localIdx];
-      Biome biome = generator.GetBiomeAtHeight(gx, gz, height, temp, humid);
-
+      // New: Check against Sea Level to prevent underwater forests
       if (height < generator.GetConfig().seaLevel)
         continue;
 
-      // Use the pre-computed column if within bounds, otherwise pass nullptr
-      int lx = gx - cp.x * CHUNK_SIZE;
-      int lz = gz - cp.z * CHUNK_SIZE;
-      const ChunkColumn *colPtr =
-          (lx >= 0 && lx < CHUNK_SIZE && lz >= 0 && lz < CHUNK_SIZE) ? &column
-                                                                     : nullptr;
+      // Check surface block type (Must be soil)
+      int ly_surf = height - cp.y * CHUNK_SIZE;
+      if (ly_surf >= 0 && ly_surf < CHUNK_SIZE) {
+        BlockType surfaceBlock =
+            static_cast<BlockType>(chunk.getBlock(lx, ly_surf, lz).getType());
+        if (surfaceBlock == WATER || surfaceBlock == ICE ||
+            surfaceBlock == AIR) {
+          continue;
+        }
+      }
 
-      BlockType surface = generator.GetSurfaceBlock(
-          gx, height, gz, height, temp, humid, beach, colPtr, true);
-      // We use different salts for different biomes to avoid identical layouts
-      int roll = GetPosRand(gx, gz, seed, 100);
+      // Get Noise Data
+      float temp = column.temperatureMap[lx][lz];
+      float humid = column.humidityMap[lx][lz];
+      float forest = column.forestNoiseMap[lx][lz];
 
-      if (biome == BIOME_DESERT) {
-        if (surface == SAND && roll < generator.GetConfig().cactusDensity) {
+      // --- Decision Logic ---
+
+      // 1. Cactus (Desert: Hot & Dry)
+      // High Temp (> 30C), Low Humidity
+      if (temp > 30.0f && humid < -0.5f) {
+        if (GetPosRand(gx, gz, seed, 300) <
+            generator.GetConfig().cactusDensity) {
           GenerateCactus(chunk, gx, height, gz, seed);
         }
-      } else if (biome == BIOME_TUNDRA) {
-        if ((surface == SNOW || surface == GRASS || surface == DIRT) &&
-            roll < generator.GetConfig().pineDensity) {
-          GeneratePine(chunk, gx, height, gz, seed);
-          // Note: Ground flattening (SNOW->DIRT) only handled if trunk in THIS
-          // chunk
-          int lx = gx - cp.x * CHUNK_SIZE;
-          int ly = height - cp.y * CHUNK_SIZE;
-          int lz = gz - cp.z * CHUNK_SIZE;
-          if (lx >= 0 && lx < CHUNK_SIZE && ly >= 0 && ly < CHUNK_SIZE &&
-              lz >= 0 && lz < CHUNK_SIZE)
-            chunk.setBlock(lx, ly, lz, DIRT);
+      }
+
+      // 2. Trees (Need Forest Noise + suitable Temp/Humid)
+      if (forest > 0.2f) {
+
+        // Pine (Cold < 5C)
+        if (temp < 5.0f) {
+          if (GetPosRand(gx, gz, seed, 400) <
+              generator.GetConfig().pineDensity) {
+            GeneratePine(chunk, gx, height, gz, seed);
+          }
         }
-      } else if (biome == BIOME_FOREST) {
-        if (surface == GRASS && roll < generator.GetConfig().oakDensity) {
-          GenerateOak(chunk, gx, height, gz, seed);
-          int lx = gx - cp.x * CHUNK_SIZE;
-          int ly = height - cp.y * CHUNK_SIZE;
-          int lz = gz - cp.z * CHUNK_SIZE;
-          if (lx >= 0 && lx < CHUNK_SIZE && ly >= 0 && ly < CHUNK_SIZE &&
-              lz >= 0 && lz < CHUNK_SIZE)
-            chunk.setBlock(lx, ly, lz, DIRT);
-        }
-      } else if (biome == BIOME_PLAINS) {
-        if (surface == GRASS && roll < 1) {
-          GenerateOak(chunk, gx, height, gz, seed);
-          int lx = gx - cp.x * CHUNK_SIZE;
-          int ly = height - cp.y * CHUNK_SIZE;
-          int lz = gz - cp.z * CHUNK_SIZE;
-          if (lx >= 0 && lx < CHUNK_SIZE && ly >= 0 && ly < CHUNK_SIZE &&
-              lz >= 0 && lz < CHUNK_SIZE)
-            chunk.setBlock(lx, ly, lz, DIRT);
+        // Oak (Moderate: 5C to 35C)
+        else if (temp >= 5.0f && temp < 35.0f && humid > -0.3f) {
+          if (GetPosRand(gx, gz, seed, 500) <
+              generator.GetConfig().oakDensity) {
+            GenerateOak(chunk, gx, height, gz, seed);
+          }
         }
       }
     }
