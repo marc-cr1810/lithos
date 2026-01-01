@@ -1,12 +1,15 @@
 #include "FloraDecorator.h"
+#include "../debug/Profiler.h"
 #include "Block.h"
 #include "ChunkColumn.h"
 #include "WorldGenerator.h"
 #include <cstdlib>
 #include <glm/glm.hpp>
 
+
 void FloraDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
                               const ChunkColumn &column) {
+  PROFILE_SCOPE_CONDITIONAL("Decorator_Flora", generator.IsProfilingEnabled());
   glm::ivec3 pos = chunk.chunkPosition;
 
   for (int x = 0; x < CHUNK_SIZE; ++x) {

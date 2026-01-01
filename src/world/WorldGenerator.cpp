@@ -1,5 +1,6 @@
 #include "WorldGenerator.h"
 #include "../debug/Logger.h"
+#include "../debug/Profiler.h"
 // #include "BlockRegistry.h"
 #include "CaveGenerator.h"
 #include "Chunk.h"
@@ -35,6 +36,8 @@ WorldGenerator::~WorldGenerator() {
 void WorldGenerator::GenerateFixedMaps() {}
 
 void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
+  PROFILE_SCOPE_CONDITIONAL("ChunkGen_Column", m_ProfilingEnabled);
+
   int startX = cx * CHUNK_SIZE;
   int startZ = cz * CHUNK_SIZE;
 
@@ -48,127 +51,158 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
   static thread_local std::vector<float> edgeNoise(CHUNK_SIZE *
                                                    CHUNK_SIZE); // New
 
-  noiseManager.GenUpheaval(upheaval.data(), startX, startZ, CHUNK_SIZE,
-                           CHUNK_SIZE);
-  noiseManager.GenLandform(landformNoise.data(), startX, startZ, CHUNK_SIZE,
-                           CHUNK_SIZE);
-  noiseManager.GenLandformEdge(edgeNoise.data(), startX, startZ, CHUNK_SIZE,
-                               CHUNK_SIZE); // New
-  noiseManager.GenGeologic(provinceNoise.data(), startX, startZ, CHUNK_SIZE,
-                           CHUNK_SIZE);
-  noiseManager.GenClimate(tempMap.data(), humidMap.data(), startX, startZ,
-                          CHUNK_SIZE, CHUNK_SIZE);
-  noiseManager.GenTerrainDetail(terrainDetail.data(), startX, startZ,
-                                CHUNK_SIZE, CHUNK_SIZE);
+  {
+    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Noise_Upheaval", m_ProfilingEnabled);
+    noiseManager.GenUpheaval(upheaval.data(), startX, startZ, CHUNK_SIZE,
+                             CHUNK_SIZE);
+  }
+  {
+    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Noise_Landform", m_ProfilingEnabled);
+    noiseManager.GenLandform(landformNoise.data(), startX, startZ, CHUNK_SIZE,
+                             CHUNK_SIZE);
+  }
+  {
+    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Noise_LandformEdge",
+                              m_ProfilingEnabled);
+    noiseManager.GenLandformEdge(edgeNoise.data(), startX, startZ, CHUNK_SIZE,
+                                 CHUNK_SIZE); // New
+  }
+  {
+    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Noise_Geologic", m_ProfilingEnabled);
+    noiseManager.GenGeologic(provinceNoise.data(), startX, startZ, CHUNK_SIZE,
+                             CHUNK_SIZE);
+  }
+  {
+    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Noise_Climate", m_ProfilingEnabled);
+    noiseManager.GenClimate(tempMap.data(), humidMap.data(), startX, startZ,
+                            CHUNK_SIZE, CHUNK_SIZE);
+  }
+  {
+    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Noise_TerrainDetail",
+                              m_ProfilingEnabled);
+    noiseManager.GenTerrainDetail(terrainDetail.data(), startX, startZ,
+                                  CHUNK_SIZE, CHUNK_SIZE);
+  }
 
   // Decorator data
   static thread_local std::vector<float> forestMap(CHUNK_SIZE * CHUNK_SIZE);
   static thread_local std::vector<float> bushMap(CHUNK_SIZE * CHUNK_SIZE);
-  noiseManager.GenVegetation(forestMap.data(), bushMap.data(), startX, startZ,
-                             CHUNK_SIZE, CHUNK_SIZE);
+  {
+    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Noise_Vegetation", m_ProfilingEnabled);
+    noiseManager.GenVegetation(forestMap.data(), bushMap.data(), startX, startZ,
+                               CHUNK_SIZE, CHUNK_SIZE);
+  }
 
   static thread_local std::vector<float> beachMap(CHUNK_SIZE * CHUNK_SIZE);
-  noiseManager.GenBeach(beachMap.data(), startX, startZ, CHUNK_SIZE,
-                        CHUNK_SIZE);
+  {
+    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Noise_Beach", m_ProfilingEnabled);
+    noiseManager.GenBeach(beachMap.data(), startX, startZ, CHUNK_SIZE,
+                          CHUNK_SIZE);
+  }
 
   // 2. Process Column Data
-  for (int z = 0; z < CHUNK_SIZE; z++) {
-    for (int x = 0; x < CHUNK_SIZE; x++) {
-      int index = x + z * CHUNK_SIZE;
-      int worldX = startX + x;
-      int worldZ = startZ + z;
+  {
+    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Column_Processing", m_ProfilingEnabled);
+    for (int z = 0; z < CHUNK_SIZE; z++) {
+      for (int x = 0; x < CHUNK_SIZE; x++) {
+        int index = x + z * CHUNK_SIZE;
+        int worldX = startX + x;
+        int worldZ = startZ + z;
 
-      // Fill Column Data
-      column.temperatureMap[x][z] = tempMap[index];
-      column.humidityMap[x][z] = humidMap[index];
-      column.forestNoiseMap[x][z] = forestMap[index];
-      column.bushNoiseMap[x][z] = bushMap[index];
-      column.beachNoiseMap[x][z] = beachMap[index];
+        // Fill Column Data
+        column.temperatureMap[x][z] = tempMap[index];
+        column.humidityMap[x][z] = humidMap[index];
+        column.forestNoiseMap[x][z] = forestMap[index];
+        column.bushNoiseMap[x][z] = bushMap[index];
+        column.beachNoiseMap[x][z] = beachMap[index];
 
-      // Select Landform
-      // Select Landform
-      // Select Landform
-      Landform lf = landformRegistry.Select(landformNoise[index],
-                                            tempMap[index], humidMap[index]);
+        // Select Landform
+        // Select Landform
+        // Select Landform
+        Landform lf = landformRegistry.Select(landformNoise[index],
+                                              tempMap[index], humidMap[index]);
 
-      // Calculate Height
-      // Use Terrain Detail to drive height splines
-      // Scale detail by landform's amplitude (first octave)
-      float detailAmp = 1.0f;
-      if (!lf.terrainOctaves.empty()) {
-        detailAmp = lf.terrainOctaves[0].amplitude;
-      }
+        // Calculate Height
+        // Use Terrain Detail to drive height splines
+        // Scale detail by landform's amplitude (first octave)
+        float detailAmp = 1.0f;
+        if (!lf.terrainOctaves.empty()) {
+          detailAmp = lf.terrainOctaves[0].amplitude;
+        }
 
-      float rawDetail = terrainDetail[index] * detailAmp;
-      float targetThreshold = -rawDetail;
-      float surfaceYFloat = 0.0f;
+        float rawDetail = terrainDetail[index] * detailAmp;
+        float targetThreshold = -rawDetail;
+        float surfaceYFloat = 0.0f;
 
-      // Ensure keys exist (they should, based on Landform registry)
-      if (lf.yKeys.empty()) {
-        // Fallback if no keys
-        surfaceYFloat = 64.0f + rawDetail * 20.0f;
-      } else {
-        // Find segment traversing targetThreshold
-        bool found = false;
-        for (size_t i = 0; i < lf.yKeys.size() - 1; ++i) {
-          float t1 = lf.yKeys[i].threshold;
-          float t2 = lf.yKeys[i + 1].threshold;
-          int y1 = lf.yKeys[i].yLevel;
-          int y2 = lf.yKeys[i + 1].yLevel;
+        // Ensure keys exist (they should, based on Landform registry)
+        if (lf.yKeys.empty()) {
+          // Fallback if no keys
+          surfaceYFloat = 64.0f + rawDetail * 20.0f;
+        } else {
+          // Find segment traversing targetThreshold
+          bool found = false;
+          for (size_t i = 0; i < lf.yKeys.size() - 1; ++i) {
+            float t1 = lf.yKeys[i].threshold;
+            float t2 = lf.yKeys[i + 1].threshold;
+            int y1 = lf.yKeys[i].yLevel;
+            int y2 = lf.yKeys[i + 1].yLevel;
 
-          // Check if target is between t1 and t2
-          if ((targetThreshold <= t1 && targetThreshold >= t2) ||
-              (targetThreshold >= t1 && targetThreshold <= t2)) {
+            // Check if target is between t1 and t2
+            if ((targetThreshold <= t1 && targetThreshold >= t2) ||
+                (targetThreshold >= t1 && targetThreshold <= t2)) {
 
-            float alpha = (targetThreshold - t1) / (t2 - t1);
-            surfaceYFloat = y1 + alpha * (y2 - y1);
-            found = true;
-            break;
+              float alpha = (targetThreshold - t1) / (t2 - t1);
+              surfaceYFloat = y1 + alpha * (y2 - y1);
+              found = true;
+              break;
+            }
+          }
+
+          // Clamping if outside range
+          if (!found) {
+            if (targetThreshold > lf.yKeys.front().threshold)
+              surfaceYFloat = (float)lf.yKeys.front().yLevel;
+            else
+              surfaceYFloat = (float)lf.yKeys.back().yLevel;
           }
         }
 
-        // Clamping if outside range
-        if (!found) {
-          if (targetThreshold > lf.yKeys.front().threshold)
-            surfaceYFloat = (float)lf.yKeys.front().yLevel;
-          else
-            surfaceYFloat = (float)lf.yKeys.back().yLevel;
-        }
+        // Modifier from Upheaval (optional, adds extra bumps)
+        surfaceYFloat += upheaval[index] * 10.0f;
+
+        // EDGE BLENDING: Fade to baseline (64) at biome borders
+        float edgeVal = edgeNoise[index]; // Distance F2-F1
+
+        float blendFactor = edgeVal;
+        // Sharpen the blend curve so flattening only happens VERY close to edge
+        blendFactor = (blendFactor > 1.0f) ? 1.0f : blendFactor;
+        blendFactor = blendFactor * 2.0f; // Scale up to reach 1 faster
+        if (blendFactor > 1.0f)
+          blendFactor = 1.0f;
+
+        // Lerp towards Base Height (64) as blendFactor approaches 0
+        surfaceYFloat = 64.0f + (surfaceYFloat - 64.0f) * blendFactor;
+
+        // Smoothing: Clamp extremely low/high values to keep within reasonable
+        // bounds if needed But noise scaling should handle this naturally now.
+
+        int surfaceY = (int)surfaceYFloat;
+
+        // Clamp
+        if (surfaceY < 5)
+          surfaceY = 5;
+        if (surfaceY > 255)
+          surfaceY = 255;
+
+        column.setHeight(x, z, surfaceY);
       }
-
-      // Modifier from Upheaval (optional, adds extra bumps)
-      surfaceYFloat += upheaval[index] * 10.0f;
-
-      // EDGE BLENDING: Fade to baseline (64) at biome borders
-      float edgeVal = edgeNoise[index]; // Distance F2-F1
-
-      float blendFactor = edgeVal;
-      // Sharpen the blend curve so flattening only happens VERY close to edge
-      blendFactor = (blendFactor > 1.0f) ? 1.0f : blendFactor;
-      blendFactor = blendFactor * 2.0f; // Scale up to reach 1 faster
-      if (blendFactor > 1.0f)
-        blendFactor = 1.0f;
-
-      // Lerp towards Base Height (64) as blendFactor approaches 0
-      surfaceYFloat = 64.0f + (surfaceYFloat - 64.0f) * blendFactor;
-
-      // Smoothing: Clamp extremely low/high values to keep within reasonable
-      // bounds if needed But noise scaling should handle this naturally now.
-
-      int surfaceY = (int)surfaceYFloat;
-
-      // Clamp
-      if (surfaceY < 5)
-        surfaceY = 5;
-      if (surfaceY > 255)
-        surfaceY = 255;
-
-      column.setHeight(x, z, surfaceY);
     }
   }
 }
 
 void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
+  PROFILE_SCOPE_CONDITIONAL("ChunkGen_Chunk", m_ProfilingEnabled);
+
   int cx = chunk.chunkPosition.x;
   int cy = chunk.chunkPosition.y;
   int cz = chunk.chunkPosition.z;
@@ -183,55 +217,85 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
   noiseManager.GenGeologic(provinceNoise.data(), startX, startZ, CHUNK_SIZE,
                            CHUNK_SIZE);
 
-  for (int lx = 0; lx < CHUNK_SIZE; lx++) {
-    for (int lz = 0; lz < CHUNK_SIZE; lz++) {
-      int wx = startX + lx;
-      int wz = startZ + lz;
-      int index = lx + lz * CHUNK_SIZE; // Fixed map access
+  {
+    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Terrain", m_ProfilingEnabled);
 
-      int surfaceHeight = column.getHeight(lx, lz);
-      float pNoise = provinceNoise[index];
+    // Cache common blocks for direct access
+    Block *waterBlock = BlockRegistry::getInstance().getBlock(BlockType::WATER);
+    Block *airBlock = BlockRegistry::getInstance().getBlock(BlockType::AIR);
+    Block *sandBlock = BlockRegistry::getInstance().getBlock(BlockType::SAND);
+    Block *sandstoneBlock =
+        BlockRegistry::getInstance().getBlock(BlockType::SANDSTONE);
+    Block *gravelBlock =
+        BlockRegistry::getInstance().getBlock(BlockType::GRAVEL);
+    Block *grassBlock = BlockRegistry::getInstance().getBlock(BlockType::GRASS);
+    Block *dirtBlock = BlockRegistry::getInstance().getBlock(BlockType::DIRT);
 
-      for (int ly = 0; ly < CHUNK_SIZE; ly++) {
-        int wy = startY + ly;
+    for (int lx = 0; lx < CHUNK_SIZE; lx++) {
+      for (int lz = 0; lz < CHUNK_SIZE; lz++) {
+        int wx = startX + lx;
+        int wz = startZ + lz;
+        int index = lx + lz * CHUNK_SIZE;
 
-        // 1. Base Terrain (Rock Strata)
-        if (wy <= surfaceHeight) {
-          BlockType rock = strataRegistry.GetStrataBlock(
-              wx, wy, wz, surfaceHeight, pNoise, m_Seed);
-          chunk.setBlock(lx, ly, lz, rock);
-        } else if (wy <= config.seaLevel) {
-          chunk.setBlock(lx, ly, lz, BlockType::WATER);
-        } else {
-          chunk.setBlock(lx, ly, lz, BlockType::AIR);
-        }
-      }
+        int surfaceHeight = column.getHeight(lx, lz);
+        float pNoise = provinceNoise[index];
 
-      // 2. Surface Blocks
-      float beachInfo = column.beachNoiseMap[lx][lz]; // Using column data now
+        for (int ly = 0; ly < CHUNK_SIZE; ly++) {
+          int wy = startY + ly;
 
-      if (surfaceHeight >= startY && surfaceHeight < startY + CHUNK_SIZE) {
-        int localSurfaceY = surfaceHeight - startY;
-
-        bool isBeach = (surfaceHeight >= config.seaLevel - 2 &&
-                        surfaceHeight <= config.seaLevel + 2) &&
-                       (beachInfo > 0.2f);
-
-        if (isBeach) {
-          chunk.setBlock(lx, localSurfaceY, lz, BlockType::SAND);
-          if (localSurfaceY > 0)
-            chunk.setBlock(lx, localSurfaceY - 1, lz, BlockType::SANDSTONE);
-        } else {
-          if (surfaceHeight < config.seaLevel) {
-            chunk.setBlock(lx, localSurfaceY, lz, BlockType::GRAVEL);
+          // 1. Base Terrain (Rock Strata)
+          if (wy <= surfaceHeight) {
+            BlockType rockType = strataRegistry.GetStrataBlock(
+                wx, wy, wz, surfaceHeight, pNoise, m_Seed);
+            chunk.blocks[lx][ly][lz].block =
+                BlockRegistry::getInstance().getBlock(rockType);
+            chunk.blocks[lx][ly][lz].metadata = 0;
+          } else if (wy <= config.seaLevel) {
+            chunk.blocks[lx][ly][lz].block = waterBlock;
+            chunk.blocks[lx][ly][lz].metadata = 0;
           } else {
-            chunk.setBlock(lx, localSurfaceY, lz, BlockType::GRASS);
-            if (localSurfaceY > 0)
-              chunk.setBlock(lx, localSurfaceY - 1, lz, BlockType::DIRT);
-            if (localSurfaceY > 1)
-              chunk.setBlock(lx, localSurfaceY - 2, lz, BlockType::DIRT);
-            if (localSurfaceY > 2)
-              chunk.setBlock(lx, localSurfaceY - 3, lz, BlockType::DIRT);
+            chunk.blocks[lx][ly][lz].block = airBlock;
+            chunk.blocks[lx][ly][lz].metadata = 0;
+          }
+        }
+
+        // 2. Surface Blocks
+        float beachInfo = column.beachNoiseMap[lx][lz];
+
+        if (surfaceHeight >= startY && surfaceHeight < startY + CHUNK_SIZE) {
+          int localSurfaceY = surfaceHeight - startY;
+
+          bool isBeach = (surfaceHeight >= config.seaLevel - 2 &&
+                          surfaceHeight <= config.seaLevel + 2) &&
+                         (beachInfo > 0.2f);
+
+          if (isBeach) {
+            chunk.blocks[lx][localSurfaceY][lz].block = sandBlock;
+            chunk.blocks[lx][localSurfaceY][lz].metadata = 0;
+            if (localSurfaceY > 0) {
+              chunk.blocks[lx][localSurfaceY - 1][lz].block = sandstoneBlock;
+              chunk.blocks[lx][localSurfaceY - 1][lz].metadata = 0;
+            }
+          } else {
+            if (surfaceHeight < config.seaLevel) {
+              chunk.blocks[lx][localSurfaceY][lz].block = gravelBlock;
+              chunk.blocks[lx][localSurfaceY][lz].metadata = 0;
+            } else {
+              chunk.blocks[lx][localSurfaceY][lz].block = grassBlock;
+              chunk.blocks[lx][localSurfaceY][lz].metadata = 0;
+              if (localSurfaceY > 0) {
+                chunk.blocks[lx][localSurfaceY - 1][lz].block = dirtBlock;
+                chunk.blocks[lx][localSurfaceY - 1][lz].metadata = 0;
+              }
+              if (localSurfaceY > 1) {
+                chunk.blocks[lx][localSurfaceY - 2][lz].block = dirtBlock;
+                chunk.blocks[lx][localSurfaceY - 2][lz].metadata = 0;
+              }
+              if (localSurfaceY > 2) {
+                chunk.blocks[lx][localSurfaceY - 3][lz].block = dirtBlock;
+                chunk.blocks[lx][localSurfaceY - 3][lz].metadata = 0;
+              }
+            }
           }
         }
       }
@@ -239,36 +303,17 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
   }
 
   // 3. Caves
-  for (int lx = 0; lx < CHUNK_SIZE; lx++) {
-    for (int ly = 0; ly < CHUNK_SIZE; ly++) {
-      for (int lz = 0; lz < CHUNK_SIZE; lz++) {
-        int wx = startX + lx;
-        int wy = startY + ly;
-        int wz = startZ + lz;
-
-        if (wy <= 5)
-          continue;
-
-        if (caveGenerator->IsCaveAt(wx, wy, wz, config.worldHeight)) {
-          // Verify we aren't cutting into water/ocean
-          BlockType current =
-              static_cast<BlockType>(chunk.getBlock(lx, ly, lz).getType());
-          if (current == WATER || current == ICE)
-            continue;
-
-          if (wy < config.lavaLevel) {
-            chunk.setBlock(lx, ly, lz, BlockType::LAVA);
-          } else {
-            chunk.setBlock(lx, ly, lz, BlockType::AIR);
-          }
-        }
-      }
-    }
+  {
+    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Caves", m_ProfilingEnabled);
+    caveGenerator->GenerateCaves(chunk, noiseManager);
   }
 
   // 4. Decorators
-  for (auto *decorator : decorators) {
-    decorator->Decorate(chunk, *this, column);
+  {
+    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Decorators", m_ProfilingEnabled);
+    for (auto *decorator : decorators) {
+      decorator->Decorate(chunk, *this, column);
+    }
   }
 }
 

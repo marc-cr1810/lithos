@@ -1,12 +1,15 @@
 #include "OreDecorator.h"
+#include "../debug/Profiler.h"
 #include "Block.h"
 #include "WorldGenerator.h"
 #include <cstdlib>
+
 
 #include "ChunkColumn.h"
 
 void OreDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
                             const ChunkColumn &column) {
+  PROFILE_SCOPE_CONDITIONAL("Decorator_Ores", generator.IsProfilingEnabled());
   // Ores spawn underground (Stone)
   // Iterate random attempts per chunk
 

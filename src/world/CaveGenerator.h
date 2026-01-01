@@ -6,6 +6,7 @@
 #include <glm/glm.hpp>
 
 class Chunk;
+class NoiseManager;   // Forward declaration
 class WorldGenerator; // If needed, but trying to minimize
 
 class CaveGenerator {
@@ -14,7 +15,10 @@ public:
   ~CaveGenerator() = default;
 
   // Main API
-  bool IsCaveAt(int x, int y, int z, int maxDepth);
+  // bool IsCaveAt(int x, int y, int z, int maxDepth); // Deprecated/Internal
+  // Optimized Batch Generation
+  void GenerateCaves(Chunk &chunk, const NoiseManager &noiseManager);
+
   void GenerateWormCave(Chunk &chunk, int startX, int startY, int startZ,
                         int maxDepth);
 
@@ -27,12 +31,12 @@ private:
   float caveThreshold;
   const WorldGenConfig &config;
 
-  // Internal Noise Nodes
-  FastNoise::SmartNode<> fn3D; // For cheese/spaghetti
-  FastNoise::SmartNode<> fn2D; // For entrance/ravine
+  // Internal Noise Nodes - Removed in favor of NoiseManager
+  // FastNoise::SmartNode<> fn3D;
+  // FastNoise::SmartNode<> fn2D;
 
-  // Helper to init noise
-  void InitNoise();
+  // Helper to init noise - Removed
+  // void InitNoise();
 };
 
 #endif

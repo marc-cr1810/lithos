@@ -50,7 +50,7 @@ private:
   bool m_ShowPlains = false;
   bool m_ShowHills = false;
   bool m_ShowMountains = false;
-  bool m_ShowBlended = true;
+  bool m_ShowBlended = true; // Terrain height visible by default
 
   std::string m_BenchmarkResult;
   int m_BenchmarkSize = 4; // Side length for NxN benchmark (e.g. 4x4)

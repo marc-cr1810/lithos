@@ -10,12 +10,16 @@
 #include "Block.h"
 
 class World;
+class CaveGenerator;
 
 const int CHUNK_SIZE = 32;
 
 #include <memory>
 
 class Chunk : public std::enable_shared_from_this<Chunk> {
+  friend class WorldGenerator;
+  friend class CaveGenerator;
+
 public:
   Chunk();
   ~Chunk();

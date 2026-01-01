@@ -88,12 +88,24 @@ void NoiseManager::Initialize() {
   bushFractal->SetOctaveCount(4);
   bushNode = bushFractal;
 
-  // 6. Beach Noise
   auto beach = FastNoise::New<FastNoise::Simplex>();
   auto beachFractal = FastNoise::New<FastNoise::FractalFBm>();
   beachFractal->SetSource(beach);
   beachFractal->SetOctaveCount(3);
   beachNode = beachFractal;
+
+  // 7. Cave Noise (3D Cheese)
+  // Matches CaveGenerator settings: Simplex -> FractalFBm (3 octaves)
+  auto caveSimplex = FastNoise::New<FastNoise::Simplex>();
+  auto caveFractal = FastNoise::New<FastNoise::FractalFBm>();
+  caveFractal->SetSource(caveSimplex);
+  caveFractal->SetOctaveCount(3);
+  cave3DNode = caveFractal;
+
+  // 8. Cave Entrance Noise (2D)
+  // Matches CaveGenerator settings: Perlin (2D)
+  auto caveEntrance = FastNoise::New<FastNoise::Perlin>();
+  caveEntranceNode = caveEntrance;
 }
 
 // --------------------------------------------------------
@@ -204,6 +216,23 @@ void NoiseManager::GenLandformEdge(float *output, int startX, int startZ,
                                    int width, int height) const {
   landformEdgeNode->GenUniformGrid2D(output, startX, startZ, width, height,
                                      config.landformScale, seed + 1);
+}
+
+void NoiseManager::GenCave3D(float *output, int startX, int startY, int startZ,
+                             int width, int height, int depth,
+                             float frequency) const {
+  // Use the provided frequency (calculated from caveFrequency)
+  // seed default is fine, or we can offset it if we want distinct cheese vs
+  // spaghetti but CaveGenerator used the same seed logic.
+  cave3DNode->GenUniformGrid3D(output, startX, startY, startZ, width, height,
+                               depth, frequency, seed);
+}
+
+void NoiseManager::GenCaveEntrance(float *output, int startX, int startZ,
+                                   int width, int height) const {
+  // Scale was 0.012 in IsCaveAt
+  caveEntranceNode->GenUniformGrid2D(output, startX, startZ, width, height,
+                                     0.012f, seed);
 }
 
 void NoiseManager::GenPreview(NoiseType type, float *output, int width,

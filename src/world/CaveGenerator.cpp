@@ -1,6 +1,7 @@
 #include "CaveGenerator.h"
 #include "Block.h"
 #include "Chunk.h"
+#include "gen/NoiseManager.h"
 #include <algorithm>
 #include <glm/glm.hpp>
 #include <glm/gtc/noise.hpp>
@@ -9,84 +10,143 @@
 CaveGenerator::CaveGenerator(const WorldGenConfig &config)
     : seed(config.seed), caveFrequency(config.caveFrequency),
       caveThreshold(config.caveThreshold), config(config) {
-  InitNoise();
+  // No internal init needed anymore
 }
 
-void CaveGenerator::InitNoise() {
-  auto fnSimplex = FastNoise::New<FastNoise::Simplex>();
-  auto fnFractal = FastNoise::New<FastNoise::FractalFBm>();
-  fnFractal->SetSource(fnSimplex);
-  fnFractal->SetOctaveCount(3);
-  fn3D = fnFractal; // Use fractal for 3D noise
+void CaveGenerator::GenerateCaves(Chunk &chunk,
+                                  const NoiseManager &noiseManager) {
+  int cx = chunk.chunkPosition.x;
+  int cy = chunk.chunkPosition.y;
+  int cz = chunk.chunkPosition.z;
 
-  auto fnPerlin = FastNoise::New<FastNoise::Perlin>();
-  fn2D = fnPerlin;
-}
+  int startX = cx * CHUNK_SIZE;
+  int startY = cy * CHUNK_SIZE;
+  int startZ = cz * CHUNK_SIZE;
 
-// Single-point IsCaveAt
-bool CaveGenerator::IsCaveAt(int x, int y, int z, int maxDepth) {
-  float surfaceDeterrent = 0.0f;
-  float grandEntranceBonus = 0.0f;
+  // Thread local buffers to avoid allocation
+  static thread_local std::vector<float> cheeseMap(CHUNK_SIZE * CHUNK_SIZE *
+                                                   CHUNK_SIZE);
+  static thread_local std::vector<float> spag1Map(CHUNK_SIZE * CHUNK_SIZE *
+                                                  CHUNK_SIZE);
+  static thread_local std::vector<float> spag2Map(CHUNK_SIZE * CHUNK_SIZE *
+                                                  CHUNK_SIZE);
+  static thread_local std::vector<float> entranceMap(CHUNK_SIZE * CHUNK_SIZE);
 
-  int seedX = (seed * 7777) % 65536;
-  int seedZ = (seed * 9999) % 65536;
+  // 1. Generate Noise Buffers
+  float cheeseScale = 0.01f * (config.caveFrequency / 0.015f);
+  noiseManager.GenCave3D(cheeseMap.data(), startX, startY, startZ, CHUNK_SIZE,
+                         CHUNK_SIZE, CHUNK_SIZE, cheeseScale);
 
-  // Entrance Noise check
-  if (y > maxDepth - 15) {
-    float entranceNoise = fn2D->GenSingle2D((float)(x + seedX) * 0.012f,
-                                            (float)(z + seedZ) * 0.012f, seed);
-    if (entranceNoise < config.caveEntranceNoise) {
-      // Stronger deterrent
-      surfaceDeterrent = (float)(y - (maxDepth - 15)) * 0.15f;
-    } else {
-      grandEntranceBonus = (entranceNoise - config.caveEntranceNoise) * 0.3f;
+  // Spaghetti offset logic (1000 offset as in original)
+  noiseManager.GenCave3D(spag1Map.data(), startX + 1000, startY, startZ,
+                         CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE, 0.02f);
+  noiseManager.GenCave3D(spag2Map.data(), startX, startY + 1000, startZ,
+                         CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE, 0.02f);
+
+  noiseManager.GenCaveEntrance(entranceMap.data(), startX, startZ, CHUNK_SIZE,
+                               CHUNK_SIZE);
+
+  // 2. Iterate and Carve
+  int maxDepth = config.worldHeight;
+
+  // Cache Block Pointers for speed (direct access)
+  Block *lavaBlock = BlockRegistry::getInstance().getBlock(BlockType::LAVA);
+  Block *airBlock = BlockRegistry::getInstance().getBlock(BlockType::AIR);
+  Block *waterBlock = BlockRegistry::getInstance().getBlock(BlockType::WATER);
+  Block *iceBlock = BlockRegistry::getInstance().getBlock(BlockType::ICE);
+
+  for (int lx = 0; lx < CHUNK_SIZE; lx++) {
+    for (int lz = 0; lz < CHUNK_SIZE; lz++) {
+      int wx = startX + lx;
+      int wz = startZ + lz;
+
+      // Entrance logic (2D)
+      float entranceNoise = entranceMap[lx + lz * CHUNK_SIZE];
+      float surfaceDeterrent = 0.0f;
+      float grandEntranceBonus = 0.0f;
+
+      // Depth varies by Y, but entrance noise is fixed for the column.
+      // We can pre-calc the "potential" bonus/deterrent part that is dependent
+      // on entranceNoise, but the Y-dependency means we calculate inside loop
+      // or inner loop. Inside Y loop is fine, it's fast math.
+
+      for (int ly = 0; ly < CHUNK_SIZE; ly++) {
+        int wy = startY + ly;
+        int index = lx + (ly * CHUNK_SIZE) + (lz * CHUNK_SIZE * CHUNK_SIZE);
+        // Note: GenUniformGrid3D output order is X, Y, Z usually?
+        // FastNoise2 GenUniformGrid3D: output[((z * height) + y) * width + x]
+        // My index above: x + y*width + z*width*height
+        // Wait, FastNoise Docs say: "x is the fastest moving axis"
+        // So index = x + y*width + z*width*height is correct for standard
+        // mapping? Let's verify FastNoise convention: "output array of size
+        // width*height*depth" assuming x,y,z iteration order Typically: index =
+        // x + width * (y + height * z) Let's use that to be safe and standard.
+        int fnIndex = lx + CHUNK_SIZE * (ly + CHUNK_SIZE * lz);
+
+        if (wy <= 5)
+          continue;
+
+        // Verify we aren't cutting into water/ocean (Block Check)
+        // Direct Access: chunk.blocks[lx][ly][lz]
+        Block *currentBlock = chunk.blocks[lx][ly][lz].block;
+        if (currentBlock == waterBlock || currentBlock == iceBlock)
+          continue;
+
+        // Recalculate Logic
+        if (wy > maxDepth - 15) {
+          if (entranceNoise < config.caveEntranceNoise) {
+            surfaceDeterrent = (float)(wy - (maxDepth - 15)) * 0.15f;
+            grandEntranceBonus = 0.0f;
+          } else {
+            surfaceDeterrent = 0.0f;
+            grandEntranceBonus =
+                (entranceNoise - config.caveEntranceNoise) * 0.3f;
+          }
+        } else {
+          surfaceDeterrent = 0.0f;
+          grandEntranceBonus = 0.0f;
+        }
+
+        float depthFactor = 1.0f - ((float)wy / (float)maxDepth);
+
+        // Cheese Logic
+        float cheeseVal = cheeseMap[fnIndex];
+        float cheeseThreshold = (0.68f / config.caveSize) -
+                                (depthFactor * 0.12f) + surfaceDeterrent -
+                                grandEntranceBonus;
+
+        bool isCheese = (cheeseVal > cheeseThreshold);
+        // Note: The original code checked neighbors [x+2] etc for density
+        // filtering ("tiny holes").
+        // This is expensive to replicate exactly in batch without multiple
+        // samples. Simplifying: We skip the neighbor check for performance.
+        // The fractal nature usually handles continuity.
+        // If "tiny holes" are an issue, efficient neighbor checking in buffer
+        // is possible but complexity is high for minor visual gain.
+        // DECISION: Skip neighbor density check for now, trust FractalFBm.
+
+        // Spaghetti Logic
+        float spag1 = spag1Map[fnIndex];
+        float spag2 = spag2Map[fnIndex];
+        float spagThreshold = (0.05f * config.caveSize) +
+                              (depthFactor * 0.08f) - surfaceDeterrent +
+                              grandEntranceBonus;
+
+        bool isSpaghetti = (std::abs(spag1) < spagThreshold) &&
+                           (std::abs(spag2) < spagThreshold);
+
+        if (isCheese || isSpaghetti) {
+          if (wy < config.lavaLevel) {
+            chunk.blocks[lx][ly][lz].block = lavaBlock;
+            chunk.blocks[lx][ly][lz].metadata = 0;
+          } else {
+            chunk.blocks[lx][ly][lz].block = airBlock;
+            chunk.blocks[lx][ly][lz].metadata = 0;
+          }
+        }
+      }
     }
   }
-
-  glm::vec3 pos((float)(x + seedX), (float)(y), (float)(z + seedZ));
-  // removed seedY offset for simplicity or keep it if needed
-
-  float depthFactor = 1.0f - ((float)y / (float)maxDepth);
-  float cheeseScale = 0.01f * (config.caveFrequency / 0.015f);
-
-  float cheeseNoise = fn3D->GenSingle3D(
-      pos.x * cheeseScale, pos.y * cheeseScale, pos.z * cheeseScale, seed);
-
-  float cheeseThreshold = (0.68f / config.caveSize) - (depthFactor * 0.12f) +
-                          surfaceDeterrent - grandEntranceBonus;
-
-  bool isCheeseCave = false;
-  if (cheeseNoise > cheeseThreshold) {
-    // Check neighbors to avoid tiny holes
-    int count = 0;
-    if (fn3D->GenSingle3D((pos.x + 2) * cheeseScale, pos.y * cheeseScale,
-                          pos.z * cheeseScale, seed) > cheeseThreshold)
-      count++;
-    if (fn3D->GenSingle3D(pos.x * cheeseScale, (pos.y + 2) * cheeseScale,
-                          pos.z * cheeseScale, seed) > cheeseThreshold)
-      count++;
-    if (fn3D->GenSingle3D(pos.x * cheeseScale, pos.y * cheeseScale,
-                          (pos.z + 2) * cheeseScale, seed) > cheeseThreshold)
-      count++;
-
-    isCheeseCave = (count >= 2);
-  }
-
-  // Spaghetti logic (simplified for now or similar)
-  // Usually requires another noise source or just reuse fn3D with different
-  // offset? Use fn3D with offset for spaghetti
-  float spagNoise1 = fn3D->GenSingle3D(pos.x * 0.02f + 1000, pos.y * 0.02f,
-                                       pos.z * 0.02f, seed);
-  float spagNoise2 = fn3D->GenSingle3D(pos.x * 0.02f, pos.y * 0.02f + 1000,
-                                       pos.z * 0.02f, seed);
-
-  float spaghettiThreshold = (0.05f * config.caveSize) + (depthFactor * 0.08f) -
-                             surfaceDeterrent + grandEntranceBonus;
-
-  bool isSpaghettiCave = (std::abs(spagNoise1) < spaghettiThreshold) &&
-                         (std::abs(spagNoise2) < spaghettiThreshold);
-
-  return isCheeseCave || isSpaghettiCave;
 }
 
 void CaveGenerator::GenerateWormCave(Chunk &chunk, int startX, int startY,

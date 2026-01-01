@@ -48,6 +48,12 @@ public:
   void GenTerrainDetail(float *output, int startX, int startZ, int width,
                         int height) const; // New
 
+  // Cave Generation (3D)
+  void GenCave3D(float *output, int startX, int startY, int startZ, int width,
+                 int height, int depth, float frequency) const;
+  void GenCaveEntrance(float *output, int startX, int startZ, int width,
+                       int height) const;
+
   // Preview generation for UI (centered on a point)
   enum class NoiseType {
     Upheaval,
@@ -80,4 +86,8 @@ private:
   FastNoise::SmartNode<> bushNode;
   FastNoise::SmartNode<> beachNode;
   FastNoise::SmartNode<> terrainDetailNode; // New
+
+  // Caves
+  FastNoise::SmartNode<> cave3DNode;
+  FastNoise::SmartNode<> caveEntranceNode;
 };
