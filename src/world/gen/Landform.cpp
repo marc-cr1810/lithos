@@ -139,6 +139,8 @@ LandformRegistry::LandformRegistry() {
     lf.useClimate = false;
     lf.yKeys = {K(0, 1.0f), K(40, 0.0f), K(60, -1.0f)};
     lf.terrainOctaves = {Oct(0.2f)};
+    lf.edgeBlendTarget =
+        30.0f; // Blend to underwater level to avoid land bridges
 
     lf.variants.push_back({"Deep", 4.0f, {K(0, 1.f), K(20, 0.f), K(50, -1.f)}});
     lf.variants.push_back({"Warm", 3.0f});
@@ -155,6 +157,8 @@ LandformRegistry::LandformRegistry() {
     lf.maxRain = 1.0f;
     lf.yKeys = {K(60, 1.0f), K(62, 0.0f), K(65, -1.0f)};
     lf.terrainOctaves = {Oct(0.1f)};
+    lf.edgeBlendTarget = 60.0f; // Slightly below sea level for wateriness
+
     lf.variants.push_back({"Mangrove", 3.0f});
     lf.variants.push_back({"Bog", 3.0f});
     Register(lf);

@@ -44,6 +44,7 @@ struct Landform {
 
   // Visuals
   glm::vec3 foliageTint = {1.0f, 1.0f, 1.0f};
+  float edgeBlendTarget = 64.0f; // Target height for edge blending
 
   // Helper: Interpolate threshold for a given Y
   float GetDensityThreshold(int y) const;
