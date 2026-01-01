@@ -94,6 +94,15 @@ void NoiseManager::Initialize() {
   beachFractal->SetOctaveCount(3);
   beachNode = beachFractal;
 
+  // 6. Strata (Smoother layers)
+  auto strataSource = FastNoise::New<FastNoise::Simplex>();
+  auto strataFractal = FastNoise::New<FastNoise::FractalFBm>();
+  strataFractal->SetSource(strataSource);
+  strataFractal->SetOctaveCount(2);
+  strataFractal->SetGain(0.5f);
+  strataFractal->SetLacunarity(2.0f);
+  strataNode = strataFractal;
+
   // 7. Cave Noise (3D Cheese)
   // Matches CaveGenerator settings: Simplex -> FractalFBm (3 octaves)
   auto caveSimplex = FastNoise::New<FastNoise::Simplex>();
@@ -212,6 +221,13 @@ void NoiseManager::GenTerrainDetail(float *output, int startX, int startZ,
                                       config.terrainDetailScale, seed + 8);
 }
 
+void NoiseManager::GenStrata(float *output, int startX, int startZ, int width,
+                             int height) const {
+  // Low frequency for smooth strata (0.005)
+  strataNode->GenUniformGrid2D(output, startX, startZ, width, height, 0.005f,
+                               seed + 12);
+}
+
 void NoiseManager::GenLandformEdge(float *output, int startX, int startZ,
                                    int width, int height) const {
   landformEdgeNode->GenUniformGrid2D(output, startX, startZ, width, height,
@@ -235,7 +251,7 @@ void NoiseManager::GenCaveEntrance(float *output, int startX, int startZ,
                                      0.012f, seed);
 }
 
-void NoiseManager::GenPreview(NoiseType type, float *output, int width,
+void NoiseManager::GetPreview(NoiseType type, float *output, int width,
                               int height, int centerX, int centerZ) const {
   int startX = centerX - width / 2;
   int startZ = centerZ - height / 2;
@@ -285,6 +301,9 @@ void NoiseManager::GenPreview(NoiseType type, float *output, int width,
   }
   case NoiseType::Beach:
     GenBeach(tempData.data(), startX, startZ, width, height);
+    break;
+  case NoiseType::Strata:
+    GenStrata(tempData.data(), startX, startZ, width, height);
     break;
   }
 

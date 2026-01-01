@@ -25,7 +25,8 @@ const GeologicProvince *RockStrataRegistry::GetProvince(float noise) {
 }
 
 BlockType RockStrataRegistry::GetStrataBlock(int x, int y, int z, int surfaceY,
-                                             float provinceNoise, int seed) {
+                                             float provinceNoise,
+                                             float strataNoise, int seed) {
   const GeologicProvince *prov = GetProvince(provinceNoise);
   if (!prov)
     return BlockType::STONE;
@@ -34,19 +35,45 @@ BlockType RockStrataRegistry::GetStrataBlock(int x, int y, int z, int surfaceY,
   if (currentDepth < 0)
     return BlockType::AIR; // Should catch this before
 
-  // Simple deterministic pseudo-random for thickness variation based on
-  // X/Z/Seed to avoid straight lines
+  // Modulation: Use the coherent strataNoise passed from WorldGenerator.
+  // We use the layer index to "offset" the noise lookup so layers don't wobble
+  // identically. Actually, wobbling identically looks like compression, which
+  // is good! But strictly parallel layers look boring. Let's use (strataNoise +
+  // i * 0.1) or similar. Or just use the same wobble. A wobble of thickness
+  // means "this layer is thicker here". If layer 1 is thick, layer 2 is pushed
+  // down. We calculate thickness. thickness = base + (int)(strataNoise *
+  // variation).
+
   auto getNoise = [&](int id) {
-    int n = x * 374761393 + z * 668265263 + seed + id;
-    n = (n ^ (n >> 13)) * 1274126177;
-    return (float)((n & 0x7FFFFFFF) / (float)0x7FFFFFFF); // 0..1
+    // Use the coherent noise, modulate by id slightly?
+    // Actually, we want coherent visual.
+    // If we use strataNoise for all layers, then all layers are thick/thin
+    // together. That visually reinforces the "wave". But `strataNoise` is
+    // -1..1. We map it to 0..1?
+    float n = (strataNoise + 1.0f) * 0.5f;
+    // Let's add a tiny offset base on id so they aren't PERFECTLY synced?
+    // No, simple is smooth.
+    return n;
   };
 
   int depthAccumulator = 0;
   // 1. Sedimentary (Top)
   for (size_t i = 0; i < prov->sedimentary.size(); ++i) {
     const auto &layer = prov->sedimentary[i];
-    float noise = getNoise(i * 10);
+    // Use the smooth noise. Maybe hash the noise with index to allow different
+    // layers to swell differently? "Jagged" came from White Noise (no spatial
+    // correlation). If we use strataNoise (spatially correlated), we solve
+    // jaggedness. If we simply use strataNoise, all layers swell together. That
+    // prevents layers from pinching out one another, which is safe. Let's just
+    // use it directly.
+    float noise = (strataNoise + 1.0f) * 0.5f;
+
+    // Add simple variation per layer to avoid "copy-paste" look?
+    // float layerVar = (float)((i * 37) % 10) / 10.0f;
+    // noise = std::fmod(noise + layerVar, 1.0f); // Wrap around? No, jagged
+    // discontinuities.
+
+    // Simple: ALL layers follow the main warp.
     int thickness =
         layer.baseThickness + (int)(noise * layer.thicknessVariation);
 
@@ -60,7 +87,7 @@ BlockType RockStrataRegistry::GetStrataBlock(int x, int y, int z, int surfaceY,
   // 2. Metamorphic (Middle)
   for (size_t i = 0; i < prov->metamorphic.size(); ++i) {
     const auto &layer = prov->metamorphic[i];
-    float noise = getNoise(i * 20 + 500);
+    float noise = (strataNoise + 1.0f) * 0.5f;
     int thickness =
         layer.baseThickness + (int)(noise * layer.thicknessVariation);
 

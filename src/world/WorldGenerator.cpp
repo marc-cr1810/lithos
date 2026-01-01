@@ -217,6 +217,11 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
   noiseManager.GenGeologic(provinceNoise.data(), startX, startZ, CHUNK_SIZE,
                            CHUNK_SIZE);
 
+  // Generate Strata Noise (Smooth layers)
+  static thread_local std::vector<float> strataNoise(CHUNK_SIZE * CHUNK_SIZE);
+  noiseManager.GenStrata(strataNoise.data(), startX, startZ, CHUNK_SIZE,
+                         CHUNK_SIZE);
+
   {
     PROFILE_SCOPE_CONDITIONAL("ChunkGen_Terrain", m_ProfilingEnabled);
 
@@ -239,6 +244,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
 
         int surfaceHeight = column.getHeight(lx, lz);
         float pNoise = provinceNoise[index];
+        float sNoise = strataNoise[index];
 
         for (int ly = 0; ly < CHUNK_SIZE; ly++) {
           int wy = startY + ly;
@@ -246,7 +252,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
           // 1. Base Terrain (Rock Strata)
           if (wy <= surfaceHeight) {
             BlockType rockType = strataRegistry.GetStrataBlock(
-                wx, wy, wz, surfaceHeight, pNoise, m_Seed);
+                wx, wy, wz, surfaceHeight, pNoise, sNoise, m_Seed);
             chunk.blocks[lx][ly][lz].block =
                 BlockRegistry::getInstance().getBlock(rockType);
             chunk.blocks[lx][ly][lz].metadata = 0;

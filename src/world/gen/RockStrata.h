@@ -3,7 +3,6 @@
 #include <string>
 #include <vector>
 
-
 struct StrataLayer {
   BlockType block;
   int baseThickness = 10;
@@ -33,7 +32,7 @@ public:
   // provinceNoise: -1 to 1 value selecting the province
   // seed: for thickness variation noise
   BlockType GetStrataBlock(int x, int y, int z, int surfaceY,
-                           float provinceNoise, int seed);
+                           float provinceNoise, float strataNoise, int seed);
 
 private:
   RockStrataRegistry();

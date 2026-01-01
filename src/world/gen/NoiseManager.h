@@ -47,6 +47,8 @@ public:
                 int height) const;
   void GenTerrainDetail(float *output, int startX, int startZ, int width,
                         int height) const; // New
+  void GenStrata(float *output, int startX, int startZ, int width,
+                 int height) const; // New: Smoother strata layers
 
   // Cave Generation (3D)
   void GenCave3D(float *output, int startX, int startY, int startZ, int width,
@@ -62,32 +64,37 @@ public:
     Geologic,
     Temperature,
     Humidity,
+    Continentalness,
+    Erosion,
+    Vegetation,
+    Forest, // Restored because used in cpp switch
+    Bush,   // Restored
+    Beach,
     TerrainDetail,
-    Forest,
-    Bush,
-    Beach
+    Strata // New
   };
 
-  void GenPreview(NoiseType type, float *output, int width, int height,
+  void GetPreview(NoiseType type, float *output, int width, int height,
                   int centerX = 0, int centerZ = 0) const;
 
 private:
   WorldGenConfig config;
   int seed;
 
-  // FastNoise Nodes
+  // SmartNodes for noise graph
   FastNoise::SmartNode<> upheavalNode;
-  FastNoise::SmartNode<> landformNode;     // Cellular/Voronoi
-  FastNoise::SmartNode<> landformEdgeNode; // Edge Distance
+  FastNoise::SmartNode<> landformNode;
+  FastNoise::SmartNode<> landformEdgeNode;
   FastNoise::SmartNode<> geologicNode;
   FastNoise::SmartNode<> tempNode;
   FastNoise::SmartNode<> humidNode;
+  FastNoise::SmartNode<> continentalNode; // If separate
+  FastNoise::SmartNode<> erosionNode;     // If separate
   FastNoise::SmartNode<> forestNode;
   FastNoise::SmartNode<> bushNode;
   FastNoise::SmartNode<> beachNode;
-  FastNoise::SmartNode<> terrainDetailNode; // New
-
-  // Caves
+  FastNoise::SmartNode<> terrainDetailNode;
+  FastNoise::SmartNode<> strataNode; // New
   FastNoise::SmartNode<> cave3DNode;
   FastNoise::SmartNode<> caveEntranceNode;
 };

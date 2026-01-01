@@ -1232,43 +1232,43 @@ void MenuState::UpdateNoisePreviews() {
   std::vector<float> data(256 * 256); // Always 256x256 texture
 
   // Landform (Cellular)
-  m_PreviewNoiseManager->GenPreview(NoiseManager::NoiseType::Landform,
+  m_PreviewNoiseManager->GetPreview(NoiseManager::NoiseType::Landform,
                                     data.data(), worldSize, worldSize);
   m_LandformPreview->UpdateFromData(data.data(),
                                     NoisePreview::ColorScheme::Grayscale);
 
   // Edge Distance
-  m_PreviewNoiseManager->GenPreview(NoiseManager::NoiseType::LandformEdge,
+  m_PreviewNoiseManager->GetPreview(NoiseManager::NoiseType::LandformEdge,
                                     data.data(), worldSize, worldSize);
   m_EdgePreview->UpdateFromData(data.data(),
                                 NoisePreview::ColorScheme::EdgeDistance);
 
   // Terrain Detail
-  m_PreviewNoiseManager->GenPreview(NoiseManager::NoiseType::TerrainDetail,
+  m_PreviewNoiseManager->GetPreview(NoiseManager::NoiseType::TerrainDetail,
                                     data.data(), worldSize, worldSize);
   m_TerrainDetailPreview->UpdateFromData(data.data(),
                                          NoisePreview::ColorScheme::Terrain);
 
   // Temperature
-  m_PreviewNoiseManager->GenPreview(NoiseManager::NoiseType::Temperature,
+  m_PreviewNoiseManager->GetPreview(NoiseManager::NoiseType::Temperature,
                                     data.data(), worldSize, worldSize);
   m_TemperaturePreview->UpdateFromData(data.data(),
                                        NoisePreview::ColorScheme::Temperature);
 
   // Humidity
-  m_PreviewNoiseManager->GenPreview(NoiseManager::NoiseType::Humidity,
+  m_PreviewNoiseManager->GetPreview(NoiseManager::NoiseType::Humidity,
                                     data.data(), worldSize, worldSize);
   m_HumidityPreview->UpdateFromData(data.data(),
                                     NoisePreview::ColorScheme::Grayscale);
 
   // Upheaval
-  m_PreviewNoiseManager->GenPreview(NoiseManager::NoiseType::Upheaval,
+  m_PreviewNoiseManager->GetPreview(NoiseManager::NoiseType::Upheaval,
                                     data.data(), worldSize, worldSize);
   m_UpheavalPreview->UpdateFromData(data.data(),
                                     NoisePreview::ColorScheme::Terrain);
 
   // Geologic
-  m_PreviewNoiseManager->GenPreview(NoiseManager::NoiseType::Geologic,
+  m_PreviewNoiseManager->GetPreview(NoiseManager::NoiseType::Geologic,
                                     data.data(), worldSize, worldSize);
   m_GeologicPreview->UpdateFromData(data.data(),
                                     NoisePreview::ColorScheme::Grayscale);
