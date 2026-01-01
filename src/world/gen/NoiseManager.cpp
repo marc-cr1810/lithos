@@ -94,12 +94,16 @@ void NoiseManager::Initialize() {
   detailFractal->SetLacunarity(2.0f);
   terrainDetailNode = detailFractal;
 
-  // 3. Geologic Province (Voronoi with jagged edges)
+  // 3. Geologic Province (Voronoi with jagged edges - NO warp for sharp
+  // boundaries)
   auto geologicSource = FastNoise::New<FastNoise::CellularValue>();
   geologicSource->SetDistanceFunction(
-      FastNoise::DistanceFunction::EuclideanSquared);
-  geologicSource->SetJitterModifier(1.0f);
-  geologicNode = applyLandformWarp(geologicSource);
+      FastNoise::DistanceFunction::Manhattan); // Manhattan creates jagged
+                                               // boundaries
+  geologicSource->SetJitterModifier(
+      2.0f); // High jitter for irregular, jagged cells
+  geologicNode =
+      geologicSource; // Direct assignment - no warping for jagged edges
 
   // 4. Climate
   auto temp = FastNoise::New<FastNoise::Perlin>();
