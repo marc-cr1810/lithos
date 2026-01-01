@@ -2,10 +2,10 @@
 #include "../debug/Profiler.h"
 #include "Block.h"
 #include "ChunkColumn.h"
+#include "World.h"
 #include "WorldGenerator.h"
 #include <cstdlib>
 #include <glm/glm.hpp>
-
 
 void FloraDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
                               const ChunkColumn &column) {
@@ -33,12 +33,31 @@ void FloraDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
         // on beaches
         float bushNoise = column.bushNoiseMap[x][z];
 
-        BlockType surface =
-            generator.GetSurfaceBlock(gx, height, gz, &column); // Pass column
+        // Verify the block where flora will sit (decorY - 1)
+        BlockType groundBlock = AIR;
+        if (chunk.getWorld()) {
+          groundBlock = (BlockType)chunk.getWorld()
+                            ->getBlock(gx, decorY - 1, gz)
+                            .getType();
+        } else {
+          // Fallback to checking within chunk if available
+          int groundLocalY = (decorY - 1) - pos.y * CHUNK_SIZE;
+          if (groundLocalY >= 0 && groundLocalY < CHUNK_SIZE) {
+            groundBlock =
+                (BlockType)chunk.getBlock(x, groundLocalY, z).getType();
+          } else {
+            groundBlock =
+                generator.GetSurfaceBlock(gx, decorY - 1, gz, &column);
+          }
+        }
+
+        // Skip if ground is not solid
+        if (groundBlock == AIR || groundBlock == WATER || groundBlock == LAVA)
+          continue;
 
         // --- Desert Flora ---
         if (temp > 30.0f && humid < -0.5f) {
-          if (surface == SAND) {
+          if (groundBlock == SAND) {
             int r = rand() % 100;
             float density = generator.GetConfig().floraDensity;
 
@@ -52,7 +71,7 @@ void FloraDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
         }
         // --- Moderate/Lush Flora ---
         else if (temp > 5.0f && humid > -0.3f) {
-          if (surface == GRASS) {
+          if (groundBlock == GRASS) {
             int r = rand() % 100;
             float density = generator.GetConfig().floraDensity;
 
@@ -72,8 +91,8 @@ void FloraDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
         // --- Cold Flora ---
         else if (temp < -0.2f) {
           // Tundra grass?
-          if (surface == GRASS ||
-              surface == DIRT) { // Snow usually covers specific blocks
+          if (groundBlock == GRASS ||
+              groundBlock == DIRT) { // Snow usually covers specific blocks
             // Less flora in cold?
             if ((rand() % 100) < 5) {
               chunk.setBlock(x, localY, z, TALL_GRASS);

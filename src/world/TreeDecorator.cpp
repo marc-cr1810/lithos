@@ -3,6 +3,7 @@
 #include "../debug/Profiler.h"
 #include "Block.h"
 #include "ChunkColumn.h"
+#include "World.h"
 #include "WorldGenerator.h"
 #include <cstdlib>
 #include <glm/glm.hpp>
@@ -163,14 +164,21 @@ void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
         continue;
 
       // Check surface block type (Must be soil)
-      int ly_surf = height - cp.y * CHUNK_SIZE;
-      if (ly_surf >= 0 && ly_surf < CHUNK_SIZE) {
-        BlockType surfaceBlock =
-            static_cast<BlockType>(chunk.getBlock(lx, ly_surf, lz).getType());
-        if (surfaceBlock == WATER || surfaceBlock == ICE ||
-            surfaceBlock == AIR) {
-          continue;
+      BlockType surfaceBlock = AIR;
+      if (chunk.getWorld()) {
+        surfaceBlock =
+            (BlockType)chunk.getWorld()->getBlock(gx, height, gz).getType();
+      } else {
+        int ly_surf = height - cp.y * CHUNK_SIZE;
+        if (ly_surf >= 0 && ly_surf < CHUNK_SIZE) {
+          surfaceBlock =
+              static_cast<BlockType>(chunk.getBlock(lx, ly_surf, lz).getType());
         }
+      }
+
+      if (surfaceBlock == WATER || surfaceBlock == ICE || surfaceBlock == AIR ||
+          surfaceBlock == LAVA) {
+        continue;
       }
 
       // Get Noise Data

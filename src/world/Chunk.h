@@ -25,6 +25,7 @@ public:
   ~Chunk();
 
   void setWorld(World *w) { world = w; }
+  World *getWorld() const { return world; }
 
   glm::ivec3 chunkPosition; // Chunk coordinates (e.g. 0,0,0)
   // Thread Safety
