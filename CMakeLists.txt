@@ -158,6 +158,7 @@ add_executable(lithos
     src/render/TextureAtlas.cpp
     src/render/Framebuffer.cpp
     src/render/ModelLoader.cpp
+    src/render/NoisePreview.cpp
     src/world/Chunk.cpp
     src/world/WorldGenerator.cpp
     src/world/CaveGenerator.cpp

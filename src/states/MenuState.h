@@ -1,7 +1,9 @@
 #pragma once
 
 #include "../core/State.h"
+#include "../render/NoisePreview.h"
 #include "../world/WorldGenConfig.h"
+#include "../world/gen/NoiseManager.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -71,6 +73,21 @@ private:
   glm::vec2 m_LastMousePos = {0.0f, 0.0f};
   bool m_IsDraggingPreview = false;
 
+  // Noise Previews
+  std::unique_ptr<NoiseManager> m_PreviewNoiseManager;
+  std::unique_ptr<NoisePreview> m_LandformPreview;
+  std::unique_ptr<NoisePreview> m_EdgePreview;
+  std::unique_ptr<NoisePreview> m_TerrainDetailPreview;
+  std::unique_ptr<NoisePreview> m_TemperaturePreview;
+  std::unique_ptr<NoisePreview> m_HumidityPreview;
+  std::unique_ptr<NoisePreview> m_UpheavalPreview;
+  std::unique_ptr<NoisePreview> m_GeologicPreview;
+  bool m_ShowNoisePreviews = true;
+  float m_PreviewUpdateTimer = 0.0f;
+  bool m_NeedsPreviewUpdate = true;
+  float m_NoisePreviewZoom = 1.0f; // 1.0 = 200px, 2.0 = 400px, etc.
+
   void InitPreview();
   void UpdatePreview3D();
+  void UpdateNoisePreviews();
 };

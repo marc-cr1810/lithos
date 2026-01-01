@@ -156,6 +156,17 @@ void MenuState::Init(Application *app) {
   // Init Preview
   InitPreview();
 
+  // Initialize Noise Previews
+  m_PreviewNoiseManager = std::make_unique<NoiseManager>(m_Config);
+  m_LandformPreview = std::make_unique<NoisePreview>(256, 256);
+  m_EdgePreview = std::make_unique<NoisePreview>(256, 256);
+  m_TerrainDetailPreview = std::make_unique<NoisePreview>(256, 256);
+  m_TemperaturePreview = std::make_unique<NoisePreview>(256, 256);
+  m_HumidityPreview = std::make_unique<NoisePreview>(256, 256);
+  m_UpheavalPreview = std::make_unique<NoisePreview>(256, 256);
+  m_GeologicPreview = std::make_unique<NoisePreview>(256, 256);
+  UpdateNoisePreviews();
+
   // Initial seed buffer
   snprintf(m_SeedBuffer, sizeof(m_SeedBuffer), "%d", m_Config.seed);
 
@@ -215,7 +226,18 @@ void MenuState::UpdatePreview() {
 
 void MenuState::HandleInput(Application *app) {}
 
-void MenuState::Update(Application *app, float dt) {}
+void MenuState::Update(Application *app, float dt) {
+  // Debounced noise preview updates
+  if (m_NeedsPreviewUpdate) {
+    m_PreviewUpdateTimer += dt;
+    if (m_PreviewUpdateTimer >= 0.5f) { // 500ms debounce
+      UpdateNoisePreviews();
+      m_PreviewUpdateTimer = 0.0f;
+    }
+  } else {
+    m_PreviewUpdateTimer = 0.0f;
+  }
+}
 
 void MenuState::Render(Application *app) {
   int width, height;
@@ -1259,6 +1281,165 @@ void MenuState::RenderUI(Application *app) {
         ImGui::EndTabItem();
       }
 
+      // Noise Previews Tab
+      if (ImGui::BeginTabItem("Noise Previews")) {
+        ImGui::Dummy(ImVec2(0, 5));
+        ImGui::Text("Noise Map Visualizations");
+        ImGui::Separator();
+
+        // Zoom control
+        if (ImGui::SliderFloat("Preview Zoom", &m_NoisePreviewZoom, 0.5f, 3.0f,
+                               "%.1fx")) {
+          m_NeedsPreviewUpdate = true; // Trigger regeneration when zoom changes
+        }
+        HelpMarker("Zoom into noise detail (1x = 256 blocks, 2x = 128 blocks, "
+                   "3x = 85 blocks)");
+        ImGui::Separator();
+
+        ImVec2 previewSize(200.0f, 200.0f); // Fixed size
+        float spacing = 10.0f;
+
+        // Row 1: Landform & Edge
+        ImGui::BeginGroup();
+        ImGui::Text("Landform (Cellular)");
+        if (m_LandformPreview) {
+          ImGui::Image((void *)(intptr_t)m_LandformPreview->GetTextureID(),
+                       previewSize);
+          int worldSize = static_cast<int>(256.0f / m_NoisePreviewZoom);
+          ImGui::TextColored(ImVec4(0.6f, 0.8f, 0.6f, 1.0f), "~%d blocks wide",
+                             worldSize);
+        }
+        ImGui::EndGroup();
+
+        ImGui::SameLine(0, spacing);
+
+        ImGui::BeginGroup();
+        ImGui::Text("Edge Distance (F2-F1)");
+        if (m_EdgePreview) {
+          ImGui::Image((void *)(intptr_t)m_EdgePreview->GetTextureID(),
+                       previewSize);
+          int worldSize = static_cast<int>(256.0f / m_NoisePreviewZoom);
+          ImGui::TextColored(ImVec4(0.6f, 0.8f, 0.6f, 1.0f), "~%d blocks wide",
+                             worldSize);
+        }
+        ImGui::EndGroup();
+
+        ImGui::SameLine(0, spacing);
+
+        ImGui::BeginGroup();
+        ImGui::Text("Terrain Detail");
+        if (m_TerrainDetailPreview) {
+          ImGui::Image((void *)(intptr_t)m_TerrainDetailPreview->GetTextureID(),
+                       previewSize);
+          int worldSize = static_cast<int>(256.0f / m_NoisePreviewZoom);
+          ImGui::TextColored(ImVec4(0.6f, 0.8f, 0.6f, 1.0f), "~%d blocks wide",
+                             worldSize);
+        }
+        ImGui::EndGroup();
+
+        // Row 2: Temperature, Humidity, Upheaval
+        ImGui::BeginGroup();
+        ImGui::Text("Temperature (°C)");
+        if (m_TemperaturePreview) {
+          ImGui::Image((void *)(intptr_t)m_TemperaturePreview->GetTextureID(),
+                       previewSize);
+          int worldSize = static_cast<int>(256.0f / m_NoisePreviewZoom);
+          ImGui::TextColored(ImVec4(0.6f, 0.8f, 0.6f, 1.0f), "~%d blocks wide",
+                             worldSize);
+        }
+        ImGui::EndGroup();
+
+        ImGui::SameLine(0, spacing);
+
+        ImGui::BeginGroup();
+        ImGui::Text("Humidity");
+        if (m_HumidityPreview) {
+          ImGui::Image((void *)(intptr_t)m_HumidityPreview->GetTextureID(),
+                       previewSize);
+          int worldSize = static_cast<int>(256.0f / m_NoisePreviewZoom);
+          ImGui::TextColored(ImVec4(0.6f, 0.8f, 0.6f, 1.0f), "~%d blocks wide",
+                             worldSize);
+        }
+        ImGui::EndGroup();
+
+        ImGui::SameLine(0, spacing);
+
+        ImGui::BeginGroup();
+        ImGui::Text("Upheaval");
+        if (m_UpheavalPreview) {
+          ImGui::Image((void *)(intptr_t)m_UpheavalPreview->GetTextureID(),
+                       previewSize);
+          int worldSize = static_cast<int>(256.0f / m_NoisePreviewZoom);
+          ImGui::TextColored(ImVec4(0.6f, 0.8f, 0.6f, 1.0f), "~%d blocks wide",
+                             worldSize);
+        }
+        ImGui::EndGroup();
+
+        // Row 3: Geologic
+        ImGui::BeginGroup();
+        ImGui::Text("Geologic Province");
+        if (m_GeologicPreview) {
+          ImGui::Image((void *)(intptr_t)m_GeologicPreview->GetTextureID(),
+                       previewSize);
+          int worldSize = static_cast<int>(256.0f / m_NoisePreviewZoom);
+          ImGui::TextColored(ImVec4(0.6f, 0.8f, 0.6f, 1.0f), "~%d blocks wide",
+                             worldSize);
+        }
+        ImGui::EndGroup();
+
+        ImGui::Separator();
+
+        // Noise Scale Settings
+        if (ImGui::CollapsingHeader("Noise Scales",
+                                    ImGuiTreeNodeFlags_DefaultOpen)) {
+          bool scalesChanged = false;
+
+          scalesChanged |=
+              ImGui::SliderFloat("Landform Scale", &m_Config.landformScale,
+                                 0.0001f, 0.005f, "%.4f");
+          HelpMarker("Controls size of landform regions (lower = larger)");
+
+          scalesChanged |=
+              ImGui::SliderFloat("Upheaval Scale", &m_Config.upheavalScale,
+                                 0.0001f, 0.005f, "%.4f");
+          HelpMarker("Large-scale height variation");
+
+          scalesChanged |= ImGui::SliderFloat(
+              "Temperature Scale", &m_Config.tempScale, 0.0005f, 0.01f, "%.4f");
+          HelpMarker("Size of temperature zones");
+
+          scalesChanged |=
+              ImGui::SliderFloat("Humidity Scale", &m_Config.humidityScale,
+                                 0.0005f, 0.01f, "%.4f");
+          HelpMarker("Size of rainfall regions");
+
+          scalesChanged |=
+              ImGui::SliderFloat("Geologic Scale", &m_Config.geologicScale,
+                                 0.0001f, 0.005f, "%.4f");
+          HelpMarker("Size of rock province regions");
+
+          if (scalesChanged) {
+            m_NeedsPreviewUpdate = true;
+          }
+
+          if (ImGui::Button("Reset to Defaults")) {
+            WorldGenConfig defaults;
+            m_Config.landformScale = defaults.landformScale;
+            m_Config.upheavalScale = defaults.upheavalScale;
+            m_Config.tempScale = defaults.tempScale;
+            m_Config.humidityScale = defaults.humidityScale;
+            m_Config.geologicScale = defaults.geologicScale;
+            m_NeedsPreviewUpdate = true;
+          }
+        }
+
+        if (ImGui::Button("Regenerate Previews")) {
+          UpdateNoisePreviews();
+        }
+
+        ImGui::EndTabItem();
+      }
+
       ImGui::EndTabBar();
     }
   }
@@ -1273,6 +1454,64 @@ void MenuState::RenderUI(Application *app) {
     ImGui::RenderPlatformWindowsDefault();
     glfwMakeContextCurrent(backup_current_context);
   }
+}
+
+void MenuState::UpdateNoisePreviews() {
+  if (!m_PreviewNoiseManager)
+    return;
+
+  // Recreate NoiseManager with current config
+  m_PreviewNoiseManager = std::make_unique<NoiseManager>(m_Config);
+
+  // Calculate world size based on zoom
+  // zoom 1.0 = 256 blocks, zoom 2.0 = 128 blocks (more detail), zoom 0.5 = 512
+  // blocks
+  int worldSize = static_cast<int>(256.0f / m_NoisePreviewZoom);
+  std::vector<float> data(256 * 256); // Always 256x256 texture
+
+  // Landform (Cellular)
+  m_PreviewNoiseManager->GenPreview(NoiseManager::NoiseType::Landform,
+                                    data.data(), worldSize, worldSize);
+  m_LandformPreview->UpdateFromData(data.data(),
+                                    NoisePreview::ColorScheme::Grayscale);
+
+  // Edge Distance
+  m_PreviewNoiseManager->GenPreview(NoiseManager::NoiseType::LandformEdge,
+                                    data.data(), worldSize, worldSize);
+  m_EdgePreview->UpdateFromData(data.data(),
+                                NoisePreview::ColorScheme::EdgeDistance);
+
+  // Terrain Detail
+  m_PreviewNoiseManager->GenPreview(NoiseManager::NoiseType::TerrainDetail,
+                                    data.data(), worldSize, worldSize);
+  m_TerrainDetailPreview->UpdateFromData(data.data(),
+                                         NoisePreview::ColorScheme::Terrain);
+
+  // Temperature
+  m_PreviewNoiseManager->GenPreview(NoiseManager::NoiseType::Temperature,
+                                    data.data(), worldSize, worldSize);
+  m_TemperaturePreview->UpdateFromData(data.data(),
+                                       NoisePreview::ColorScheme::Temperature);
+
+  // Humidity
+  m_PreviewNoiseManager->GenPreview(NoiseManager::NoiseType::Humidity,
+                                    data.data(), worldSize, worldSize);
+  m_HumidityPreview->UpdateFromData(data.data(),
+                                    NoisePreview::ColorScheme::Grayscale);
+
+  // Upheaval
+  m_PreviewNoiseManager->GenPreview(NoiseManager::NoiseType::Upheaval,
+                                    data.data(), worldSize, worldSize);
+  m_UpheavalPreview->UpdateFromData(data.data(),
+                                    NoisePreview::ColorScheme::Terrain);
+
+  // Geologic
+  m_PreviewNoiseManager->GenPreview(NoiseManager::NoiseType::Geologic,
+                                    data.data(), worldSize, worldSize);
+  m_GeologicPreview->UpdateFromData(data.data(),
+                                    NoisePreview::ColorScheme::Grayscale);
+
+  m_NeedsPreviewUpdate = false;
 }
 
 void MenuState::Cleanup() {}

@@ -48,6 +48,23 @@ public:
   void GenTerrainDetail(float *output, int startX, int startZ, int width,
                         int height) const; // New
 
+  // Preview generation for UI (centered on a point)
+  enum class NoiseType {
+    Upheaval,
+    Landform,
+    LandformEdge,
+    Geologic,
+    Temperature,
+    Humidity,
+    TerrainDetail,
+    Forest,
+    Bush,
+    Beach
+  };
+
+  void GenPreview(NoiseType type, float *output, int width, int height,
+                  int centerX = 0, int centerZ = 0) const;
+
 private:
   WorldGenConfig config;
   int seed;

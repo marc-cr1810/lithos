@@ -205,3 +205,71 @@ void NoiseManager::GenLandformEdge(float *output, int startX, int startZ,
   landformEdgeNode->GenUniformGrid2D(output, startX, startZ, width, height,
                                      config.landformScale, seed + 1);
 }
+
+void NoiseManager::GenPreview(NoiseType type, float *output, int width,
+                              int height, int centerX, int centerZ) const {
+  int startX = centerX - width / 2;
+  int startZ = centerZ - height / 2;
+
+  // Generate at the requested world size
+  std::vector<float> tempData(width * height);
+
+  switch (type) {
+  case NoiseType::Upheaval:
+    GenUpheaval(tempData.data(), startX, startZ, width, height);
+    break;
+  case NoiseType::Landform:
+    GenLandform(tempData.data(), startX, startZ, width, height);
+    break;
+  case NoiseType::LandformEdge:
+    GenLandformEdge(tempData.data(), startX, startZ, width, height);
+    break;
+  case NoiseType::Geologic:
+    GenGeologic(tempData.data(), startX, startZ, width, height);
+    break;
+  case NoiseType::Temperature:
+  case NoiseType::Humidity: {
+    std::vector<float> temp(width * height);
+    std::vector<float> humid(width * height);
+    GenClimate(temp.data(), humid.data(), startX, startZ, width, height);
+    if (type == NoiseType::Temperature) {
+      std::copy(temp.begin(), temp.end(), tempData.begin());
+    } else {
+      std::copy(humid.begin(), humid.end(), tempData.begin());
+    }
+    break;
+  }
+  case NoiseType::TerrainDetail:
+    GenTerrainDetail(tempData.data(), startX, startZ, width, height);
+    break;
+  case NoiseType::Forest:
+  case NoiseType::Bush: {
+    std::vector<float> forest(width * height);
+    std::vector<float> bush(width * height);
+    GenVegetation(forest.data(), bush.data(), startX, startZ, width, height);
+    if (type == NoiseType::Forest) {
+      std::copy(forest.begin(), forest.end(), tempData.begin());
+    } else {
+      std::copy(bush.begin(), bush.end(), tempData.begin());
+    }
+    break;
+  }
+  case NoiseType::Beach:
+    GenBeach(tempData.data(), startX, startZ, width, height);
+    break;
+  }
+
+  // Resample to 256x256 if needed
+  if (width == 256 && height == 256) {
+    std::copy(tempData.begin(), tempData.end(), output);
+  } else {
+    // Nearest neighbor resampling to 256x256
+    for (int y = 0; y < 256; ++y) {
+      for (int x = 0; x < 256; ++x) {
+        int srcX = (x * width) / 256;
+        int srcY = (y * height) / 256;
+        output[y * 256 + x] = tempData[srcY * width + srcX];
+      }
+    }
+  }
+}
