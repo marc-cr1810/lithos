@@ -44,10 +44,15 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
   // 1. Generate Noise Grids (Thread-Local Buffers)
   static thread_local std::vector<float> upheaval(CHUNK_SIZE * CHUNK_SIZE);
   static thread_local std::vector<float> landformNoise(CHUNK_SIZE * CHUNK_SIZE);
-  static thread_local std::vector<float> landformNeighbor(
-      CHUNK_SIZE * CHUNK_SIZE); // Index 1
   static thread_local std::vector<float> edgeNoise(CHUNK_SIZE *
                                                    CHUNK_SIZE); // F2 - F1
+  static thread_local std::vector<float> landformNeighbor(
+      CHUNK_SIZE * CHUNK_SIZE); // Index 1
+  static thread_local std::vector<float> landformNeighbor3(
+      CHUNK_SIZE * CHUNK_SIZE); // Index 2
+  static thread_local std::vector<float> landformF1(CHUNK_SIZE * CHUNK_SIZE);
+  static thread_local std::vector<float> landformF2(CHUNK_SIZE * CHUNK_SIZE);
+  static thread_local std::vector<float> landformF3(CHUNK_SIZE * CHUNK_SIZE);
   static thread_local std::vector<float> provinceNoise(CHUNK_SIZE * CHUNK_SIZE);
   static thread_local std::vector<float> tempMap(CHUNK_SIZE * CHUNK_SIZE);
   static thread_local std::vector<float> humidMap(CHUNK_SIZE * CHUNK_SIZE);
@@ -72,12 +77,15 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
                               m_ProfilingEnabled);
     noiseManager.GenLandformNeighbor(landformNeighbor.data(), startX, startZ,
                                      CHUNK_SIZE, CHUNK_SIZE);
+    noiseManager.GenLandformNeighbor3(landformNeighbor3.data(), startX, startZ,
+                                      CHUNK_SIZE, CHUNK_SIZE);
   }
   {
-    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Noise_LandformEdge",
+    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Noise_LandformDistances",
                               m_ProfilingEnabled);
-    noiseManager.GenLandformEdge(edgeNoise.data(), startX, startZ, CHUNK_SIZE,
-                                 CHUNK_SIZE);
+    noiseManager.GenLandformDistances(landformF1.data(), landformF2.data(),
+                                      landformF3.data(), startX, startZ,
+                                      CHUNK_SIZE, CHUNK_SIZE);
   }
   {
     PROFILE_SCOPE_CONDITIONAL("ChunkGen_Noise_Geologic", m_ProfilingEnabled);
@@ -110,6 +118,12 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
     noiseManager.GenBeach(beachMap.data(), startX, startZ, CHUNK_SIZE,
                           CHUNK_SIZE);
   }
+  {
+    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Noise_LandformEdge",
+                              m_ProfilingEnabled);
+    noiseManager.GenLandformEdge(edgeNoise.data(), startX, startZ, CHUNK_SIZE,
+                                 CHUNK_SIZE);
+  }
 
   // 2. Process Columns
   {
@@ -127,71 +141,80 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
       column.bushNoiseMap[lx][lz] = bushMap[index];
       column.beachNoiseMap[lx][lz] = beachMap[index];
 
-      // --- Landform Selection (Primary) ---
-      float lfValA = landformNoise[index];
+      // --- Landform Selection ---
+      float hash1 = landformNoise[index];
+      float hash2 = landformNeighbor[index];
+      float hash3 = landformNeighbor3[index];
+
       float t = tempMap[index];
       float h = humidMap[index];
-      Landform lfA = landformRegistry.Select(lfValA, t, h);
 
-      // --- Landform Selection (Neighbor) ---
-      float lfValB = landformNeighbor[index];
-      Landform lfB = landformRegistry.Select(lfValB, t, h);
+      Landform lf1 = landformRegistry.Select(hash1, t, h);
+      Landform lf2 = landformRegistry.Select(hash2, t, h);
+      Landform lf3 = landformRegistry.Select(hash3, t, h);
 
       float upVal = upheaval[index];
       float baseHeight = 64.0f + upVal * 20.0f;
-      float detail = terrainDetail[index]; // -1 to 1
+      float detail = terrainDetail[index];
 
-      // --- Height Calculation A ---
-      float heightModA;
-      if (!lfA.terrainOctaves.empty()) {
-        heightModA =
-            ((detail + 1.0f) * 0.5f) * lfA.terrainOctaves[0].amplitude * 80.0f;
-      } else {
-        heightModA = ((detail + 1.0f) * 0.5f) * 20.0f;
+      // Lambda for height calculation
+      auto calcHeight = [&](const Landform &lf) -> float {
+        float hMod;
+        if (!lf.terrainOctaves.empty()) {
+          hMod =
+              ((detail + 1.0f) * 0.5f) * lf.terrainOctaves[0].amplitude * 80.0f;
+        } else {
+          hMod = ((detail + 1.0f) * 0.5f) * 20.0f;
+        }
+        float surfaceY = baseHeight;
+        if (lf.name.find("Ocean") != std::string::npos) {
+          surfaceY = config.seaLevel - 15.0f;
+          hMod *= 0.5f;
+        }
+        return surfaceY + hMod;
+      };
+
+      float h1 = calcHeight(lf1);
+      float h2 = calcHeight(lf2);
+      float h3 = calcHeight(lf3);
+
+      // --- 3-WAY VORONOI BLENDING ---
+      float f1 = landformF1[index];
+      float f2 = landformF2[index];
+      float f3 = landformF3[index];
+
+      float R_base = 0.2f;
+      float heightDiff21 = std::abs(h1 - h2);
+      float R2 =
+          R_base + std::min(0.2f, heightDiff21 / 500.0f); // Wider for big jumps
+
+      float w1 = 1.0f;
+      float w2 = 0.0f;
+      float w3 = 0.0f;
+
+      if (f2 - f1 < R2) {
+        float t2 = 1.0f - (f2 - f1) / R2;
+        w2 = t2 * t2 * t2 * (t2 * (t2 * 6.0f - 15.0f) + 10.0f); // Quintic
       }
-      float surfaceYA = baseHeight;
-      if (lfA.name.find("Ocean") != std::string::npos) {
-        surfaceYA = config.seaLevel - 15.0f;
-        heightModA *= 0.5f;
+
+      float heightDiff31 = std::abs(h1 - h3);
+      float R3 = R_base + std::min(0.2f, heightDiff31 / 500.0f);
+
+      if (f3 - f1 < R3) {
+        float t3 = 1.0f - (f3 - f1) / R3;
+        w3 = t3 * t3 * t3 * (t3 * (t3 * 6.0f - 15.0f) + 10.0f); // Quintic
       }
-      surfaceYA += heightModA;
 
-      // --- Height Calculation B ---
-      float heightModB;
-      if (!lfB.terrainOctaves.empty()) {
-        heightModB =
-            ((detail + 1.0f) * 0.5f) * lfB.terrainOctaves[0].amplitude * 80.0f;
-      } else {
-        heightModB = ((detail + 1.0f) * 0.5f) * 20.0f;
+      float totalW = w1 + w2 + w3;
+      float finalSurfaceY = (h1 * w1 + h2 * w2 + h3 * w3) / totalW;
+
+      // --- TRANSITION JITTER ---
+      // Add extra detail noise during transitions to look like eroded rocks
+      if (w1 < 1.0f) {
+        float blendFactor = 1.0f - w1;
+        float jitter = terrainDetail[index] * 15.0f * blendFactor;
+        finalSurfaceY += jitter;
       }
-      float surfaceYB = baseHeight;
-      if (lfB.name.find("Ocean") != std::string::npos) {
-        surfaceYB = config.seaLevel - 15.0f;
-        heightModB *= 0.5f;
-      }
-      surfaceYB += heightModB;
-
-      // --- VORONOI BLENDING ---
-      float edgeVal = edgeNoise[index];
-      float blendRadius = 0.5f; // Increased from 0.2f for wider blend
-      float blendFactor = edgeVal / blendRadius;
-      if (blendFactor > 1.0f)
-        blendFactor = 1.0f;
-
-      // Apply Cubic SmoothStep: x^2 * (3 - 2x)
-      // This eases the derivative at 0 and 1, making the height transition
-      // slope continuous
-      blendFactor = blendFactor * blendFactor * (3.0f - 2.0f * blendFactor);
-
-      float tMix = 0.5f + 0.5f * blendFactor;
-
-      // Lerp between B and A.
-      float finalSurfaceY = surfaceYB + (surfaceYA - surfaceYB) * tMix;
-
-      // DEBUG: Visualize Edge Noise MAGNITUDE
-      // If edgeVal is normal (0..1), we see 64..84.
-      // If edgeVal is huge (e.g. > 5), we see > 164.
-      // finalSurfaceY = 64.0f + edgeVal * 20.0f;
 
       // Clamp
       int surfaceY = (int)finalSurfaceY;
@@ -343,63 +366,68 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
 // Helpers
 int WorldGenerator::GetHeight(int x, int z) {
   float upheaval = noiseManager.GetUpheaval(x, z);
-  float lfValA = noiseManager.GetLandformNoise(x, z);
-  float lfValB = noiseManager.GetLandformNeighborNoise(x, z);
+  float hash1 = noiseManager.GetLandformNoise(x, z);
+  float hash2 = noiseManager.GetLandformNeighborNoise(x, z);
+  float hash3 = noiseManager.GetLandformNeighbor3Noise(x, z);
+
   float t = noiseManager.GetTemperature(x, z);
   float h = noiseManager.GetHumidity(x, z);
 
-  // No continentalness anymore
-  Landform lfA = landformRegistry.Select(lfValA, t, h);
-  Landform lfB = landformRegistry.Select(lfValB, t, h);
+  Landform lf1 = landformRegistry.Select(hash1, t, h);
+  Landform lf2 = landformRegistry.Select(hash2, t, h);
+  Landform lf3 = landformRegistry.Select(hash3, t, h);
 
   float baseHeight = 64.0f + upheaval * 20.0f;
-  float detail = noiseManager.GetTerrainDetail(x, z); // -1 to 1
+  float detail = noiseManager.GetTerrainDetail(x, z);
 
-  // Height A
-  float heightModA;
-  if (!lfA.terrainOctaves.empty()) {
-    heightModA =
-        ((detail + 1.0f) * 0.5f) * lfA.terrainOctaves[0].amplitude * 80.0f;
-  } else {
-    heightModA = ((detail + 1.0f) * 0.5f) * 20.0f;
+  auto calcHeight = [&](const Landform &lf) -> float {
+    float hMod;
+    if (!lf.terrainOctaves.empty()) {
+      hMod = ((detail + 1.0f) * 0.5f) * lf.terrainOctaves[0].amplitude * 80.0f;
+    } else {
+      hMod = ((detail + 1.0f) * 0.5f) * 20.0f;
+    }
+    float surfaceY = baseHeight;
+    if (lf.name.find("Ocean") != std::string::npos) {
+      surfaceY = config.seaLevel - 15.0f;
+      hMod *= 0.5f;
+    }
+    return surfaceY + hMod;
+  };
+
+  float h1 = calcHeight(lf1);
+  float h2 = calcHeight(lf2);
+  float h3 = calcHeight(lf3);
+
+  float f1, f2, f3;
+  noiseManager.GetLandformDistances(x, z, f1, f2, f3);
+
+  float R_base = 0.2f;
+  float R2 = R_base + std::min(0.2f, std::abs(h1 - h2) / 500.0f);
+  float R3 = R_base + std::min(0.2f, std::abs(h1 - h3) / 500.0f);
+
+  float w1 = 1.0f;
+  float w2 = 0.0f;
+  float w3 = 0.0f;
+
+  if (f2 - f1 < R2) {
+    float t2 = 1.0f - (f2 - f1) / R2;
+    w2 = t2 * t2 * t2 * (t2 * (t2 * 6.0f - 15.0f) + 10.0f);
   }
-  float surfaceYA = baseHeight;
-  if (lfA.name.find("Ocean") != std::string::npos) {
-    surfaceYA = config.seaLevel - 15.0f;
-    heightModA *= 0.5f;
+  if (f3 - f1 < R3) {
+    float t3 = 1.0f - (f3 - f1) / R3;
+    w3 = t3 * t3 * t3 * (t3 * (t3 * 6.0f - 15.0f) + 10.0f);
   }
-  surfaceYA += heightModA;
 
-  // Height B
-  float heightModB;
-  if (!lfB.terrainOctaves.empty()) {
-    heightModB =
-        ((detail + 1.0f) * 0.5f) * lfB.terrainOctaves[0].amplitude * 80.0f;
-  } else {
-    heightModB = ((detail + 1.0f) * 0.5f) * 20.0f;
+  float totalW = w1 + w2 + w3;
+  float finalSurfaceY = (h1 * w1 + h2 * w2 + h3 * w3) / totalW;
+
+  if (w1 < 1.0f) {
+    float terrainDetail = noiseManager.GetTerrainDetail(x, z);
+    finalSurfaceY += terrainDetail * 15.0f * (1.0f - w1);
   }
-  float surfaceYB = baseHeight;
-  if (lfB.name.find("Ocean") != std::string::npos) {
-    surfaceYB = config.seaLevel - 15.0f;
-    heightModB *= 0.5f;
-  }
-  surfaceYB += heightModB;
-
-  // Blending
-  float edgeVal = noiseManager.GetLandformEdgeNoise(x, z);
-
-  float blendRadius = 0.2f;
-  float blendFactor = edgeVal / blendRadius;
-  if (blendFactor > 1.0f)
-    blendFactor = 1.0f;
-
-  float tMix = 0.5f + 0.5f * blendFactor;
-
-  // Lerp between B and A
-  float finalSurfaceY = surfaceYB + (surfaceYA - surfaceYB) * tMix;
 
   int surfaceY = (int)finalSurfaceY;
-
   if (surfaceY < 5)
     surfaceY = 5;
   if (surfaceY > 255)
