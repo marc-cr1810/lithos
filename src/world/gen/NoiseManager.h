@@ -10,6 +10,12 @@ public:
   explicit NoiseManager(const WorldGenConfig &config);
   ~NoiseManager() = default;
 
+  // Prevent copying/moving to avoid SmartNode reference issues
+  NoiseManager(const NoiseManager &) = delete;
+  NoiseManager &operator=(const NoiseManager &) = delete;
+  NoiseManager(NoiseManager &&) = delete;
+  NoiseManager &operator=(NoiseManager &&) = delete;
+
   void Initialize();
 
   // Single point sampling (slower, useful for sparse checks)
@@ -29,6 +35,8 @@ public:
                    int height) const;
   void GenLandform(float *output, int startX, int startZ, int width,
                    int height) const;
+  void GenLandformEdge(float *output, int startX, int startZ, int width,
+                       int height) const; // New
   void GenGeologic(float *output, int startX, int startZ, int width,
                    int height) const;
   void GenClimate(float *tempOut, float *humidOut, int startX, int startZ,
@@ -46,7 +54,8 @@ private:
 
   // FastNoise Nodes
   FastNoise::SmartNode<> upheavalNode;
-  FastNoise::SmartNode<> landformNode; // Cellular/Voronoi
+  FastNoise::SmartNode<> landformNode;     // Cellular/Voronoi
+  FastNoise::SmartNode<> landformEdgeNode; // Edge Distance
   FastNoise::SmartNode<> geologicNode;
   FastNoise::SmartNode<> tempNode;
   FastNoise::SmartNode<> humidNode;

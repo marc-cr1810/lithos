@@ -131,7 +131,36 @@ LandformRegistry::LandformRegistry() {
   auto K = [](int y, float val) { return YKey{y, val}; };
   auto Oct = [](float amp) { return OctaveParam{amp, 0.0f}; };
 
-  // --- 1. PLAINS GROUP ---
+  // --- 1. OCEAN / WETLANDS (LOW) ---
+  {
+    Landform lf;
+    lf.name = "Ocean";
+    lf.weight = 12.0f;
+    lf.useClimate = false;
+    lf.yKeys = {K(0, 1.0f), K(40, 0.0f), K(60, -1.0f)};
+    lf.terrainOctaves = {Oct(0.2f)};
+
+    lf.variants.push_back({"Deep", 4.0f, {K(0, 1.f), K(20, 0.f), K(50, -1.f)}});
+    lf.variants.push_back({"Warm", 3.0f});
+    lf.variants.push_back({"Frozen", 3.0f});
+    Register(lf);
+  }
+  {
+    Landform lf;
+    lf.name = "Swamp";
+    lf.weight = 5.0f;
+    lf.minTemp = 15.0f;
+    lf.maxTemp = 40.0f;
+    lf.minRain = 0.5f;
+    lf.maxRain = 1.0f;
+    lf.yKeys = {K(60, 1.0f), K(62, 0.0f), K(65, -1.0f)};
+    lf.terrainOctaves = {Oct(0.1f)};
+    lf.variants.push_back({"Mangrove", 3.0f});
+    lf.variants.push_back({"Bog", 3.0f});
+    Register(lf);
+  }
+
+  // --- 2. PLAINS / FLATLANDS (MID-LOW) ---
   {
     Landform lf;
     lf.name = "Plains";
@@ -141,13 +170,14 @@ LandformRegistry::LandformRegistry() {
     lf.maxTemp = 45.0f;
     lf.minRain = -0.5f;
     lf.maxRain = 0.5f;
-    lf.yKeys = {K(0, 1.0f), K(64, 0.0f), K(80, -0.5f), K(256, -1.0f)};
+    // Keys stay within typical plains range (60-80), preventing jumps to 256
+    lf.yKeys = {K(60, 1.0f), K(64, 0.5f), K(70, -0.5f), K(80, -1.0f)};
     lf.terrainOctaves = {Oct(0.2f)};
 
     lf.variants.push_back({"Grazing", 5.0f});   // Default
     lf.variants.push_back({"Sunflower", 1.0f}); // Rare
     lf.variants.push_back(
-        {"Plateau", 2.0f, {K(0, 1.f), K(85, 0.f), K(90, -1.f)}});
+        {"Plateau", 2.0f, {K(80, 1.f), K(85, 0.f), K(90, -1.f)}});
     Register(lf);
   }
   {
@@ -160,7 +190,7 @@ LandformRegistry::LandformRegistry() {
     lf.maxTemp = 60.0f;
     lf.minRain = -1.0f;
     lf.maxRain = -0.5f;
-    lf.yKeys = {K(0, 1.0f), K(70, 0.0f), K(256, -1.0f)};
+    lf.yKeys = {K(60, 1.0f), K(68, 0.0f), K(85, -1.0f)};
     lf.terrainOctaves = {Oct(0.3f)};
     lf.foliageTint = {0.8f, 0.7f, 0.4f}; // Dried out look
 
@@ -177,13 +207,13 @@ LandformRegistry::LandformRegistry() {
     lf.maxTemp = 45.0f;
     lf.minRain = -0.2f;
     lf.maxRain = 0.3f;
-    lf.yKeys = {K(0, 1.0f), K(68, 0.0f), K(256, -1.0f)};
+    lf.yKeys = {K(62, 1.0f), K(68, 0.0f), K(80, -1.0f)};
     lf.terrainOctaves = {Oct(0.25f)};
     lf.variants.push_back({"Scrub", 3.0f});
     lf.variants.push_back(
         {"Shattered",
          1.0f,
-         {K(0, 1.f), K(68, 0.f), K(120, 0.5f), K(130, -1.f)}});
+         {K(60, 1.f), K(68, 0.f), K(100, 0.5f), K(120, -1.f)}});
     Register(lf);
   }
   {
@@ -193,13 +223,14 @@ LandformRegistry::LandformRegistry() {
     // Cold
     lf.minTemp = -30.0f;
     lf.maxTemp = -5.0f;
-    lf.yKeys = {K(0, 1.0f), K(70, 0.0f), K(256, -1.0f)};
+    lf.yKeys = {K(60, 1.0f), K(65, 0.0f), K(75, -1.0f)};
     lf.terrainOctaves = {Oct(0.2f)};
     lf.variants.push_back({"Snowy", 4.0f});
     lf.variants.push_back(
-        {"Spikes", 1.0f, {K(0, 1.f), K(70, 0.f), K(80, 0.5f), K(85, -1.f)}});
+        {"Spikes", 1.0f, {K(60, 1.f), K(70, 0.f), K(80, 0.5f), K(90, -1.f)}});
     Register(lf);
   }
+  // Forest moved here as it is basically "Verdant Plains"
   {
     Landform lf;
     lf.name = "Forest";
@@ -209,14 +240,14 @@ LandformRegistry::LandformRegistry() {
     lf.maxTemp = 25.0f;
     lf.minRain = 0.0f;
     lf.maxRain = 1.0f;
-    lf.yKeys = {K(0, 1.0f), K(70, 0.0f), K(256, -1.0f)};
+    lf.yKeys = {K(60, 1.0f), K(70, 0.0f), K(90, -1.0f)};
     lf.terrainOctaves = {Oct(0.4f)};
     lf.variants.push_back({"Birch", 3.0f});
     lf.variants.push_back({"Deep Woods", 2.0f});
     Register(lf);
   }
 
-  // --- 2. HILLS GROUP ---
+  // --- 3. HILLS / HIGHLANDS (MID-HIGH) ---
   {
     Landform lf;
     lf.name = "Hills";
@@ -224,7 +255,7 @@ LandformRegistry::LandformRegistry() {
     // Wide temp range
     lf.minTemp = -10.0f;
     lf.maxTemp = 35.0f;
-    lf.yKeys = {K(0, 1.0f), K(70, 0.5f), K(90, 0.0f), K(110, -1.0f)};
+    lf.yKeys = {K(60, 1.0f), K(70, 0.5f), K(90, 0.0f), K(120, -1.0f)};
     lf.terrainOctaves = {Oct(0.6f)};
     lf.variants.push_back({"Rolling", 5.0f});
     lf.variants.push_back({"Forested", 5.0f});
@@ -238,30 +269,10 @@ LandformRegistry::LandformRegistry() {
     lf.maxTemp = 60.0f;
     lf.minRain = -1.0f;
     lf.maxRain = -0.5f;
-    lf.yKeys = {K(0, 1.0f), K(75, 0.3f), K(90, -1.0f)};
+    lf.yKeys = {K(60, 1.0f), K(75, 0.3f), K(100, -1.0f)};
     lf.terrainOctaves = {Oct(0.5f)};
     lf.variants.push_back({"Red Sand", 2.0f});
     lf.variants.push_back({"White Sand", 3.0f});
-    Register(lf);
-  }
-
-  // --- 3. MOUNTAINS GROUP ---
-  {
-    Landform lf;
-    lf.name = "Mountains";
-    lf.weight = 8.0f;
-    // Colder generally
-    lf.minTemp = -30.0f;
-    lf.maxTemp = 20.0f;
-    lf.yKeys = {K(0, 1.0f), K(50, 0.7f), K(120, 0.0f), K(200, -0.8f),
-                K(256, -1.0f)};
-    lf.terrainOctaves = {Oct(2.0f)};
-
-    lf.variants.push_back({"Alpine", 5.0f});
-    lf.variants.push_back(
-        {"Jagged", 3.0f, {K(0, 1.f), K(140, 0.f), K(240, -1.f)}});
-    lf.variants.push_back({"Wooded", 3.0f});
-    lf.variants.push_back({"Volcanic", 1.0f}); // Rare
     Register(lf);
   }
   {
@@ -270,41 +281,33 @@ LandformRegistry::LandformRegistry() {
     lf.weight = 5.0f;
     lf.minTemp = -15.0f;
     lf.maxTemp = 15.0f;
-    lf.yKeys = {K(0, 1.0f), K(90, 0.0f), K(110, -0.2f), K(130, -1.0f)};
+    lf.yKeys = {K(80, 1.0f), K(100, 0.0f), K(120, -0.2f), K(140, -1.0f)};
     lf.terrainOctaves = {Oct(1.2f)};
     Register(lf);
   }
 
-  // --- 4. WETLANDS / OCEAN ---
+  // --- 4. MOUNTAINS / BADLANDS (HIGH) ---
   {
     Landform lf;
-    lf.name = "Swamp";
-    lf.weight = 5.0f;
-    lf.minTemp = 15.0f;
-    lf.maxTemp = 40.0f;
-    lf.minRain = 0.5f;
-    lf.maxRain = 1.0f;
-    lf.yKeys = {K(0, 1.0f), K(60, 0.2f), K(62, 0.0f), K(65, -1.0f)};
-    lf.terrainOctaves = {Oct(0.1f)};
-    lf.variants.push_back({"Mangrove", 3.0f});
-    lf.variants.push_back({"Bog", 3.0f});
+    lf.name = "Mountains";
+    lf.weight = 8.0f;
+    // Colder generally
+    lf.minTemp = -30.0f;
+    lf.maxTemp = 20.0f;
+    // Reduced max height to 240 to avoid clamping (256 limit)
+    lf.yKeys = {K(60, 1.0f),  K(70, 0.8f),   K(100, 0.5f),
+                K(160, 0.0f), K(200, -0.6f), K(240, -1.0f)};
+    lf.terrainOctaves = {Oct(2.0f)};
+
+    lf.variants.push_back({"Alpine", 5.0f});
+    lf.variants.push_back(
+        {"Jagged",
+         3.0f,
+         {K(60, 1.f), K(120, 0.5f), K(180, 0.f), K(240, -1.f)}});
+    lf.variants.push_back({"Wooded", 3.0f});
+    lf.variants.push_back({"Volcanic", 1.0f}); // Rare
     Register(lf);
   }
-  {
-    Landform lf;
-    lf.name = "Ocean";
-    lf.weight = 12.0f;
-    lf.useClimate = false;
-    lf.yKeys = {K(0, 1.0f), K(40, 0.0f), K(60, -1.0f)};
-    lf.terrainOctaves = {Oct(0.2f)};
-
-    lf.variants.push_back({"Deep", 4.0f, {K(0, 1.f), K(20, 0.f), K(60, -1.f)}});
-    lf.variants.push_back({"Warm", 3.0f});
-    lf.variants.push_back({"Frozen", 3.0f});
-    Register(lf);
-  }
-
-  // --- 5. EXOTIC / SPECIAL ---
   {
     // Exotic
     Landform lf;
@@ -314,13 +317,12 @@ LandformRegistry::LandformRegistry() {
     lf.maxTemp = 50.0f;
     lf.minRain = -1.0f;
     lf.maxRain = -0.5f;
-    lf.yKeys = {K(0, 1.0f), K(80, 0.0f), K(256, -1.0f)};
+    lf.yKeys = {K(60, 1.0f), K(80, 0.0f), K(200, -1.0f)};
     lf.terrainOctaves = {Oct(0.5f)};
     lf.variants.push_back(
-        {"Eroded", 2.0f, {K(0, 1.f), K(70, 0.f), K(256, -1.f)}});
+        {"Eroded", 2.0f, {K(60, 1.f), K(70, 0.f), K(200, -1.f)}});
     lf.variants.push_back(
-        {"Wooded Plateau", 2.0f, {K(0, 1.f), K(100, 0.f), K(105, -1.f)}});
+        {"Wooded Plateau", 2.0f, {K(60, 1.f), K(100, 0.f), K(120, -1.f)}});
     Register(lf);
   }
-  // Removed Mushroom Island
 }

@@ -44,20 +44,22 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
   static thread_local std::vector<float> provinceNoise(CHUNK_SIZE * CHUNK_SIZE);
   static thread_local std::vector<float> tempMap(CHUNK_SIZE * CHUNK_SIZE);
   static thread_local std::vector<float> humidMap(CHUNK_SIZE * CHUNK_SIZE);
-  static thread_local std::vector<float> terrainDetail(CHUNK_SIZE *
-                                                       CHUNK_SIZE); // New
+  static thread_local std::vector<float> terrainDetail(CHUNK_SIZE * CHUNK_SIZE);
+  static thread_local std::vector<float> edgeNoise(CHUNK_SIZE *
+                                                   CHUNK_SIZE); // New
 
   noiseManager.GenUpheaval(upheaval.data(), startX, startZ, CHUNK_SIZE,
                            CHUNK_SIZE);
   noiseManager.GenLandform(landformNoise.data(), startX, startZ, CHUNK_SIZE,
                            CHUNK_SIZE);
+  noiseManager.GenLandformEdge(edgeNoise.data(), startX, startZ, CHUNK_SIZE,
+                               CHUNK_SIZE); // New
   noiseManager.GenGeologic(provinceNoise.data(), startX, startZ, CHUNK_SIZE,
                            CHUNK_SIZE);
   noiseManager.GenClimate(tempMap.data(), humidMap.data(), startX, startZ,
                           CHUNK_SIZE, CHUNK_SIZE);
   noiseManager.GenTerrainDetail(terrainDetail.data(), startX, startZ,
-                                CHUNK_SIZE,
-                                CHUNK_SIZE); // New
+                                CHUNK_SIZE, CHUNK_SIZE);
 
   // Decorator data
   static thread_local std::vector<float> forestMap(CHUNK_SIZE * CHUNK_SIZE);
@@ -136,6 +138,19 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
 
       // Modifier from Upheaval (optional, adds extra bumps)
       surfaceYFloat += upheaval[index] * 10.0f;
+
+      // EDGE BLENDING: Fade to baseline (64) at biome borders
+      float edgeVal = edgeNoise[index]; // Distance F2-F1
+
+      float blendFactor = edgeVal;
+      // Sharpen the blend curve so flattening only happens VERY close to edge
+      blendFactor = (blendFactor > 1.0f) ? 1.0f : blendFactor;
+      blendFactor = blendFactor * 2.0f; // Scale up to reach 1 faster
+      if (blendFactor > 1.0f)
+        blendFactor = 1.0f;
+
+      // Lerp towards Base Height (64) as blendFactor approaches 0
+      surfaceYFloat = 64.0f + (surfaceYFloat - 64.0f) * blendFactor;
 
       // Smoothing: Clamp extremely low/high values to keep within reasonable
       // bounds if needed But noise scaling should handle this naturally now.

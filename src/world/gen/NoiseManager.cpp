@@ -27,6 +27,25 @@ void NoiseManager::Initialize() {
   domainWarp->SetWarpFrequency(config.landformScale * 2.0f);
   landformNode = domainWarp;
 
+  // 2b. Landform Edge Detection (Cellular Distance F2-F1)
+  // Used to blend/flatten terrain at biome borders to prevent cliffs
+  auto edgeSource = FastNoise::New<FastNoise::CellularDistance>();
+  edgeSource->SetDistanceFunction(FastNoise::DistanceFunction::Euclidean);
+  // We want F2 - F1.
+  // Configure Index0=1 (F2), Index1=0 (F1).
+  // Then Index0Sub1 = F2 - F1.
+  edgeSource->SetDistanceIndex0(1);
+  edgeSource->SetDistanceIndex1(0);
+  edgeSource->SetReturnType(
+      FastNoise::CellularDistance::ReturnType::Index0Sub1);
+
+  // Apply SAME warp to ensure edges align with values
+  auto edgeWarp = FastNoise::New<FastNoise::DomainWarpGradient>();
+  edgeWarp->SetSource(edgeSource);
+  edgeWarp->SetWarpAmplitude(20.0f);
+  edgeWarp->SetWarpFrequency(config.landformScale * 2.0f);
+  landformEdgeNode = edgeWarp;
+
   // New: Terrain Detail (High frequency FRACTAL for height variance)
   // This drives the actual height spline within the landform cell
   auto detailSource = FastNoise::New<FastNoise::Simplex>();
@@ -179,4 +198,10 @@ void NoiseManager::GenTerrainDetail(float *output, int startX, int startZ,
   // Detail uses higher frequency than base landforms
   terrainDetailNode->GenUniformGrid2D(output, startX, startZ, width, height,
                                       config.landformScale * 4.0f, seed + 8);
+}
+
+void NoiseManager::GenLandformEdge(float *output, int startX, int startZ,
+                                   int width, int height) const {
+  landformEdgeNode->GenUniformGrid2D(output, startX, startZ, width, height,
+                                     config.landformScale, seed + 1);
 }
