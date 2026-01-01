@@ -6,7 +6,8 @@
 #include <glm/glm.hpp>
 
 class Chunk;
-class NoiseManager;   // Forward declaration
+class NoiseManager;
+struct ChunkColumn;   // Forward declaration
 class WorldGenerator; // If needed, but trying to minimize
 
 class CaveGenerator {
@@ -17,7 +18,8 @@ public:
   // Main API
   // bool IsCaveAt(int x, int y, int z, int maxDepth); // Deprecated/Internal
   // Optimized Batch Generation
-  void GenerateCaves(Chunk &chunk, const NoiseManager &noiseManager);
+  void GenerateCaves(Chunk &chunk, const ChunkColumn &column,
+                     const NoiseManager &noiseManager);
 
   void GenerateWormCave(Chunk &chunk, int startX, int startY, int startZ,
                         int maxDepth);

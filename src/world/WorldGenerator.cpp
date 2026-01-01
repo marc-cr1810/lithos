@@ -305,7 +305,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
   // 3. Caves
   {
     PROFILE_SCOPE_CONDITIONAL("ChunkGen_Caves", m_ProfilingEnabled);
-    caveGenerator->GenerateCaves(chunk, noiseManager);
+    caveGenerator->GenerateCaves(chunk, column, noiseManager);
   }
 
   // 4. Decorators
