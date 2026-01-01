@@ -178,12 +178,23 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
       float h2 = calcHeight(lf2);
       float h3 = calcHeight(lf3);
 
-      // --- 3-WAY VORONOI BLENDING ---
+      // --- ADAPTIVE BLEND RADIUS ---
+      // Use larger radius for similar landforms, smaller for very different
+      // ones
+      float heightDiff12 = std::abs(h2 - h1);
+      float heightDiff13 = std::abs(h3 - h1);
+
+      // Base radius scales with height similarity
+      // Similar heights (< 10 blocks diff) -> wider blend (0.5)
+      // Very different (> 40 blocks diff) -> sharp transition (0.15)
+      float avgDiff = (heightDiff12 + heightDiff13) * 0.5f;
+      float R = 0.5f - (avgDiff / 40.0f) * 0.35f;
+      R = std::max(0.15f, std::min(0.5f, R)); // Clamp between 0.15 and 0.5
+
+      // Get Voronoi distances for blending
       float f1 = landformF1[index];
       float f2 = landformF2[index];
       float f3 = landformF3[index];
-
-      float R = 0.2f;
 
       float w1 = 1.0f;
       float w2 = 0.0f;
@@ -202,12 +213,13 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
       float totalW = w1 + w2 + w3;
       float finalSurfaceY = (h1 * w1 + h2 * w2 + h3 * w3) / totalW;
 
-      // --- TRANSITION JITTER ---
-      // Add extra detail noise during transitions to look like eroded rocks
+      // --- REDUCED TRANSITION JITTER ---
+      // Gentle detail variation instead of harsh jitter
       float weight1 = w1 / totalW;
       if (weight1 < 1.0f) {
         float blendFactor = 1.0f - weight1;
-        float jitter = terrainDetail[index] * 15.0f * blendFactor;
+        float jitter =
+            terrainDetail[index] * 3.0f * blendFactor; // Reduced from 15.0f
         finalSurfaceY += jitter;
       }
 
