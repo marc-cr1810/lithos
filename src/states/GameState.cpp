@@ -845,6 +845,10 @@ void GameState::RenderUI(Application *app) {
       }
       auto &results = Profiler::Get().GetResults();
       for (auto &[name, times] : results) {
+        // Filter out benchmark/generation scopes from runtime view
+        if (name.find("Gen") == 0 || name.find("Decorator") == 0)
+          continue;
+
         if (!times.empty()) {
           char label[50];
           sprintf(label, "%.3fms", times.back());

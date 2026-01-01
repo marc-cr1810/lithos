@@ -179,7 +179,7 @@ private:
   WorldGenConfig config;
   int m_Seed;
   bool m_Initialized = false;
-  bool m_ProfilingEnabled = true;
+  bool m_ProfilingEnabled = false;
   std::mutex m_InitMutex;
 
   // FastNoise2 nodes
