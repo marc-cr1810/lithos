@@ -649,6 +649,31 @@ void GameState::RenderUI(Application *app) {
     ImGui::End();
   }
 
+  // Block Info HUD - Top center, shows what block you're looking at
+  if (!m_IsPaused && !m_ShowCreativeMenu && !m_IsDebugMode && m_Hit) {
+    ChunkBlock cb =
+        app->GetWorld()->getBlock(m_HitPos.x, m_HitPos.y, m_HitPos.z);
+    std::string blockName = BlockIdToName(cb.getType());
+
+    // Position window in top center
+    ImGuiViewport *viewport = ImGui::GetMainViewport();
+    ImVec2 windowPos =
+        ImVec2(viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + 10);
+    ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always, ImVec2(0.5f, 0.0f));
+    ImGui::SetNextWindowBgAlpha(0.6f); // Slightly transparent
+
+    ImGuiWindowFlags blockInfoFlags =
+        ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize |
+        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+        ImGuiWindowFlags_NoNav;
+
+    if (ImGui::Begin("BlockInfo", nullptr, blockInfoFlags)) {
+      ImGui::Text("%s", blockName.c_str());
+    }
+    ImGui::End();
+  }
+
   if (m_IsPaused) {
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
                             ImGuiCond_Always, ImVec2(0.5f, 0.5f));
