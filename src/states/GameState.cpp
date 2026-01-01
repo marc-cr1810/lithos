@@ -136,6 +136,23 @@ void GameState::HandleInput(Application *app) {
   if (m_IsPaused)
     return;
 
+  // Creative Menu (E)
+  static bool lastEState = false;
+  bool currentE = glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS;
+  if (currentE && !lastEState && !m_IsPaused && !m_IsDebugMode) {
+    m_ShowCreativeMenu = !m_ShowCreativeMenu;
+    if (m_ShowCreativeMenu) {
+      glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+    } else {
+      glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+      m_FirstMouse = true;
+    }
+  }
+  lastEState = currentE;
+
+  if (m_ShowCreativeMenu)
+    return;
+
   // Debug Toggles (M = Mouse/Debug Mode, P = Profiler)
   static bool lastMState = false;
   bool currentM = glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS;
@@ -626,6 +643,60 @@ void GameState::RenderUI(Application *app) {
     ImGui::End();
   }
 
+  if (m_ShowCreativeMenu) {
+    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
+                            ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(600, 400));
+
+    if (ImGui::Begin("Creative Menu", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                         ImGuiWindowFlags_NoResize)) {
+      ImGui::Text("Creative Menu");
+      ImGui::Separator();
+
+      // Scrollable Area
+      ImGui::BeginChild("Scrolling");
+
+      int buttonsPerRow = 8;
+      int blocks[] = {DIRT,           GRASS,        STONE,
+                      WOOD,           LEAVES,       COAL_ORE,
+                      IRON_ORE,       GLOWSTONE,    WATER,
+                      LAVA,           SAND,         GRAVEL,
+                      SNOW,           ICE,          CACTUS,
+                      PINE_WOOD,      PINE_LEAVES,  TALL_GRASS,
+                      DEAD_BUSH,      ROSE,         DRY_SHORT_GRASS,
+                      DRY_TALL_GRASS, OBSIDIAN,     COBBLESTONE,
+                      WOOD_PLANKS,    ANTHRACITE,   BAUXITE,
+                      CHALK,          CHERT,        CLAY,
+                      CLAYSTONE,      CONGLOMERATE, GREEN_MARBLE,
+                      HALITE,         KIMBERLITE,   LIMESTONE,
+                      MANTLE,         PERIDOTITE,   PHYLITE,
+                      PINK_MARBLE,    SCORIA,       SHALE,
+                      SLATE,          SUEVITE,      WHITE_MARBLE};
+      int numBlocks = sizeof(blocks) / sizeof(blocks[0]);
+
+      for (int i = 0; i < numBlocks; ++i) {
+        if (i > 0 && i % buttonsPerRow != 0)
+          ImGui::SameLine();
+        std::string label = BlockIdToName(blocks[i]);
+        if (ImGui::Button((label + "##inv").c_str(), ImVec2(60, 60))) {
+          m_SelectedBlock = (BlockType)blocks[i];
+          m_SelectedBlockMetadata = 0;
+        }
+        if (ImGui::IsItemHovered()) {
+          ImGui::SetTooltip("%s", label.c_str());
+        }
+        if ((int)m_SelectedBlock == blocks[i] && m_SelectedBlockMetadata == 0) {
+          ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(),
+                                              ImGui::GetItemRectMax(),
+                                              IM_COL32(255, 255, 0, 255), 3.0f);
+        }
+      }
+      ImGui::EndChild();
+    }
+    ImGui::End();
+  }
+
   if (m_IsDebugMode) {
     ImGui::Begin("Debug Info");
 
@@ -730,50 +801,6 @@ void GameState::RenderUI(Application *app) {
     ImGui::Checkbox("Fog", &m_DbgUseFog);
     if (m_DbgUseFog) {
       ImGui::SliderFloat("Fog Dist", &m_DbgFogDist, 10.0f, 200.0f);
-    }
-
-    if (ImGui::CollapsingHeader("Creative Menu",
-                                ImGuiTreeNodeFlags_DefaultOpen)) {
-      int buttonsPerRow = 5;
-      // All blocks except AIR (0)
-      int blocks[] = {DIRT,           GRASS,       STONE,
-                      WOOD,           LEAVES,      COAL_ORE,
-                      IRON_ORE,       GLOWSTONE,   WATER,
-                      LAVA,           SAND,        GRAVEL,
-                      SNOW,           ICE,         CACTUS,
-                      PINE_WOOD,      PINE_LEAVES, TALL_GRASS,
-                      DEAD_BUSH,      ROSE,        DRY_SHORT_GRASS,
-                      DRY_TALL_GRASS, OBSIDIAN,    COBBLESTONE,
-                      WOOD_PLANKS};
-      int numBlocks = sizeof(blocks) / sizeof(blocks[0]);
-
-      for (int i = 0; i < numBlocks; ++i) {
-        if (i > 0 && i % buttonsPerRow != 0)
-          ImGui::SameLine();
-        std::string label = BlockIdToName(blocks[i]);
-        if (ImGui::Button((label + "##btn").c_str(), ImVec2(60, 60))) {
-          m_SelectedBlock = (BlockType)blocks[i];
-          m_SelectedBlockMetadata = 0;
-        }
-        if ((int)m_SelectedBlock == blocks[i] && m_SelectedBlockMetadata == 0) {
-          ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(),
-                                              ImGui::GetItemRectMax(),
-                                              IM_COL32(255, 255, 0, 255), 3.0f);
-        }
-      }
-      if (numBlocks % buttonsPerRow != 0)
-        ImGui::SameLine();
-      if (ImGui::Button("Spruce Planks##btn", ImVec2(60, 60))) {
-        m_SelectedBlock = WOOD_PLANKS;
-        m_SelectedBlockMetadata = 1;
-      }
-      if (m_SelectedBlock == WOOD_PLANKS && m_SelectedBlockMetadata == 1) {
-        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(),
-                                            ImGui::GetItemRectMax(),
-                                            IM_COL32(255, 255, 0, 255), 3.0f);
-      }
-      ImGui::Text("Selected: %s (Meta: %d)", BlockIdToName(m_SelectedBlock),
-                  m_SelectedBlockMetadata);
     }
 
     if (ImGui::CollapsingHeader("Raycast", ImGuiTreeNodeFlags_DefaultOpen)) {

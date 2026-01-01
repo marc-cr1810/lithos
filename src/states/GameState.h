@@ -43,6 +43,7 @@ private:
   bool m_IsPaused = false;
   bool m_IsDebugMode = false;
   bool m_ShowProfiler = false;
+  bool m_ShowCreativeMenu = false;
   entt::entity m_PlayerEntity;
 
   // Interaction

@@ -240,6 +240,106 @@ BlockRegistry::BlockRegistry() {
   tuff->setTexture("tuff");
   registerBlock(tuff);
 
+  Block *anthracite = new SolidBlock(BlockType::ANTHRACITE, "Anthracite");
+  anthracite->setResourceId("lithos:anthracite");
+  anthracite->setTexture("anthracite");
+  registerBlock(anthracite);
+
+  Block *bauxite = new SolidBlock(BlockType::BAUXITE, "Bauxite");
+  bauxite->setResourceId("lithos:bauxite");
+  bauxite->setTexture("bauxite");
+  registerBlock(bauxite);
+
+  Block *chalk = new SolidBlock(BlockType::CHALK, "Chalk");
+  chalk->setResourceId("lithos:chalk");
+  chalk->setTexture("chalk");
+  registerBlock(chalk);
+
+  Block *chert = new SolidBlock(BlockType::CHERT, "Chert");
+  chert->setResourceId("lithos:chert");
+  chert->setTexture("chert");
+  registerBlock(chert);
+
+  Block *clay = new SolidBlock(BlockType::CLAY, "Clay");
+  clay->setResourceId("lithos:clay");
+  clay->setTexture("clay");
+  registerBlock(clay);
+
+  Block *claystone = new SolidBlock(BlockType::CLAYSTONE, "Claystone");
+  claystone->setResourceId("lithos:claystone");
+  claystone->setTexture("claystone");
+  registerBlock(claystone);
+
+  Block *conglomerate = new SolidBlock(BlockType::CONGLOMERATE, "Conglomerate");
+  conglomerate->setResourceId("lithos:conglomerate");
+  conglomerate->setTexture("conglomerate");
+  registerBlock(conglomerate);
+
+  Block *greenMarble = new SolidBlock(BlockType::GREEN_MARBLE, "Green Marble");
+  greenMarble->setResourceId("lithos:green_marble");
+  greenMarble->setTexture("green_marble");
+  registerBlock(greenMarble);
+
+  Block *halite = new SolidBlock(BlockType::HALITE, "Halite");
+  halite->setResourceId("lithos:halite");
+  halite->setTexture("halite");
+  registerBlock(halite);
+
+  Block *kimberlite = new SolidBlock(BlockType::KIMBERLITE, "Kimberlite");
+  kimberlite->setResourceId("lithos:kimberlite");
+  kimberlite->setTexture("kimberlite");
+  registerBlock(kimberlite);
+
+  Block *limestone = new SolidBlock(BlockType::LIMESTONE, "Limestone");
+  limestone->setResourceId("lithos:limestone");
+  limestone->setTexture("limestone");
+  registerBlock(limestone);
+
+  Block *mantle = new SolidBlock(BlockType::MANTLE, "Mantle");
+  mantle->setResourceId("lithos:mantle");
+  mantle->setTexture("mantle");
+  registerBlock(mantle);
+
+  Block *peridotite = new SolidBlock(BlockType::PERIDOTITE, "Peridotite");
+  peridotite->setResourceId("lithos:peridotite");
+  peridotite->setTexture("peridotite");
+  registerBlock(peridotite);
+
+  Block *phylite = new SolidBlock(BlockType::PHYLITE, "Phylite");
+  phylite->setResourceId("lithos:phylite");
+  phylite->setTexture("phylite");
+  registerBlock(phylite);
+
+  Block *pinkMarble = new SolidBlock(BlockType::PINK_MARBLE, "Pink Marble");
+  pinkMarble->setResourceId("lithos:pink_marble");
+  pinkMarble->setTexture("pink_marble");
+  registerBlock(pinkMarble);
+
+  Block *scoria = new SolidBlock(BlockType::SCORIA, "Scoria");
+  scoria->setResourceId("lithos:scoria");
+  scoria->setTexture("scoria");
+  registerBlock(scoria);
+
+  Block *shale = new SolidBlock(BlockType::SHALE, "Shale");
+  shale->setResourceId("lithos:shale");
+  shale->setTexture("shale");
+  registerBlock(shale);
+
+  Block *slate = new SolidBlock(BlockType::SLATE, "Slate");
+  slate->setResourceId("lithos:slate");
+  slate->setTexture("slate");
+  registerBlock(slate);
+
+  Block *suevite = new SolidBlock(BlockType::SUEVITE, "Suevite");
+  suevite->setResourceId("lithos:suevite");
+  suevite->setTexture("suevite");
+  registerBlock(suevite);
+
+  Block *whiteMarble = new SolidBlock(BlockType::WHITE_MARBLE, "White Marble");
+  whiteMarble->setResourceId("lithos:white_marble");
+  whiteMarble->setTexture("white_marble");
+  registerBlock(whiteMarble);
+
   // Dynamic Model Loading
   for (auto &pair : blocks) {
     Block *block = pair.second;

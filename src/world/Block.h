@@ -50,7 +50,27 @@ enum BlockType {
   MUD = 32,
   PODZOL = 33,
   SANDSTONE = 34,
-  TUFF = 35
+  TUFF = 35,
+  ANTHRACITE = 36,
+  BAUXITE = 37,
+  CHALK = 38,
+  CHERT = 39,
+  CLAY = 40,
+  CLAYSTONE = 41,
+  CONGLOMERATE = 42,
+  GREEN_MARBLE = 43,
+  HALITE = 44,
+  KIMBERLITE = 45,
+  LIMESTONE = 46,
+  MANTLE = 47,
+  PERIDOTITE = 48,
+  PHYLITE = 49,
+  PINK_MARBLE = 50,
+  SCORIA = 51,
+  SHALE = 52,
+  SLATE = 53,
+  SUEVITE = 54,
+  WHITE_MARBLE = 55
 };
 
 class World; // Forward declaration
