@@ -827,14 +827,17 @@ void GameState::RenderUI(Application *app) {
       WorldGenerator *gen = app->GetWorld()->GetGenerator();
       if (gen) {
         std::string lfName = gen->GetLandformNameAt(px, pz);
-        float temp = gen->GetTemperature(px, pz);
+        float adjTemp = gen->GetTemperature(px, pz);
+        float rawTemp = gen->GetNoiseManager().GetTemperature(px, pz);
         float humid = gen->GetHumidity(px, pz);
         float upheaval = gen->GetNoiseManager().GetUpheaval(px, pz);
 
         ImGui::Text("Landform: %s", lfName.c_str());
-        ImGui::Text("Temperature: %.2f C", temp);
+        ImGui::Text("Temp (Adj): %.2f C", adjTemp);
+        ImGui::Text("Temp (Raw): %.2f C", rawTemp);
         ImGui::Text("Humidity: %.2f", humid);
-        ImGui::Text("Upheaval/Continental: %.4f", upheaval);
+        ImGui::Text("Upheaval: %.4f", upheaval);
+        ImGui::Text("Sea Level: %d", gen->GetConfig().seaLevel);
       }
     }
 

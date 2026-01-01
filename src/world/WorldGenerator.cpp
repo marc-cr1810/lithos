@@ -183,25 +183,19 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
       float f2 = landformF2[index];
       float f3 = landformF3[index];
 
-      float R_base = 0.2f;
-      float heightDiff21 = std::abs(h1 - h2);
-      float R2 =
-          R_base + std::min(0.2f, heightDiff21 / 500.0f); // Wider for big jumps
+      float R = 0.2f;
 
       float w1 = 1.0f;
       float w2 = 0.0f;
       float w3 = 0.0f;
 
-      if (f2 - f1 < R2) {
-        float t2 = 1.0f - (f2 - f1) / R2;
+      if (f2 - f1 < R) {
+        float t2 = 1.0f - (f2 - f1) / R;
         w2 = t2 * t2 * t2 * (t2 * (t2 * 6.0f - 15.0f) + 10.0f); // Quintic
       }
 
-      float heightDiff31 = std::abs(h1 - h3);
-      float R3 = R_base + std::min(0.2f, heightDiff31 / 500.0f);
-
-      if (f3 - f1 < R3) {
-        float t3 = 1.0f - (f3 - f1) / R3;
+      if (f3 - f1 < R) {
+        float t3 = 1.0f - (f3 - f1) / R;
         w3 = t3 * t3 * t3 * (t3 * (t3 * 6.0f - 15.0f) + 10.0f); // Quintic
       }
 
@@ -210,8 +204,9 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
 
       // --- TRANSITION JITTER ---
       // Add extra detail noise during transitions to look like eroded rocks
-      if (w1 < 1.0f) {
-        float blendFactor = 1.0f - w1;
+      float weight1 = w1 / totalW;
+      if (weight1 < 1.0f) {
+        float blendFactor = 1.0f - weight1;
         float jitter = terrainDetail[index] * 15.0f * blendFactor;
         finalSurfaceY += jitter;
       }
@@ -402,29 +397,28 @@ int WorldGenerator::GetHeight(int x, int z) {
   float f1, f2, f3;
   noiseManager.GetLandformDistances(x, z, f1, f2, f3);
 
-  float R_base = 0.2f;
-  float R2 = R_base + std::min(0.2f, std::abs(h1 - h2) / 500.0f);
-  float R3 = R_base + std::min(0.2f, std::abs(h1 - h3) / 500.0f);
+  float R = 0.2f;
 
   float w1 = 1.0f;
   float w2 = 0.0f;
   float w3 = 0.0f;
 
-  if (f2 - f1 < R2) {
-    float t2 = 1.0f - (f2 - f1) / R2;
+  if (f2 - f1 < R) {
+    float t2 = 1.0f - (f2 - f1) / R;
     w2 = t2 * t2 * t2 * (t2 * (t2 * 6.0f - 15.0f) + 10.0f);
   }
-  if (f3 - f1 < R3) {
-    float t3 = 1.0f - (f3 - f1) / R3;
+  if (f3 - f1 < R) {
+    float t3 = 1.0f - (f3 - f1) / R;
     w3 = t3 * t3 * t3 * (t3 * (t3 * 6.0f - 15.0f) + 10.0f);
   }
 
   float totalW = w1 + w2 + w3;
   float finalSurfaceY = (h1 * w1 + h2 * w2 + h3 * w3) / totalW;
 
-  if (w1 < 1.0f) {
+  float weight1 = w1 / totalW;
+  if (weight1 < 1.0f) {
     float terrainDetail = noiseManager.GetTerrainDetail(x, z);
-    finalSurfaceY += terrainDetail * 15.0f * (1.0f - w1);
+    finalSurfaceY += terrainDetail * 15.0f * (1.0f - weight1);
   }
 
   int surfaceY = (int)finalSurfaceY;
@@ -449,7 +443,11 @@ BlockType WorldGenerator::GetSurfaceBlock(int x, int y, int z,
 }
 
 float WorldGenerator::GetTemperature(int x, int z) {
-  return noiseManager.GetTemperature(x, z);
+  float baseTemp = noiseManager.GetTemperature(x, z);
+  int surfaceY = GetHeight(x, z);
+  // Temperature lapse rate: colder at high altitudes
+  float altitudeFactor = (float)(surfaceY - config.seaLevel);
+  return baseTemp - (altitudeFactor * config.temperatureLapseRate);
 }
 float WorldGenerator::GetHumidity(int x, int z) {
   return noiseManager.GetHumidity(x, z);

@@ -7,6 +7,20 @@ NoiseManager::NoiseManager(const WorldGenConfig &config)
 }
 
 void NoiseManager::Initialize() {
+  // Helper to apply the SHARED landform warp chain
+  auto applyLandformWarp = [&](auto source) {
+    auto detail = FastNoise::New<FastNoise::DomainWarpGradient>();
+    detail->SetSource(source);
+    detail->SetWarpAmplitude(0.2f);
+    detail->SetWarpFrequency(2.0f); // 2.0 is the sweet spot
+
+    auto large = FastNoise::New<FastNoise::DomainWarpGradient>();
+    large->SetSource(detail);
+    large->SetWarpAmplitude(1.5f);
+    large->SetWarpFrequency(0.5f);
+    return large;
+  };
+
   // 1. Upheaval: Massive scale, influences base height consistency
   auto upheaval = FastNoise::New<FastNoise::Simplex>();
   auto upheavalFractal = FastNoise::New<FastNoise::FractalFBm>();
@@ -17,25 +31,12 @@ void NoiseManager::Initialize() {
   upheavalNode = upheavalFractal;
 
   // 2. Landform: Cellular/Voronoi for distinct regions
-  // This defines distinct cells like "Mountain", "Plain"
   // 2a. Landform Noise (Cell ID)
   auto landformSource = FastNoise::New<FastNoise::CellularValue>();
   landformSource->SetDistanceFunction(
       FastNoise::DistanceFunction::EuclideanSquared);
   landformSource->SetJitterModifier(1.0f);
-
-  // Detail Warp (Jagged)
-  auto landformWarpDetail = FastNoise::New<FastNoise::DomainWarpGradient>();
-  landformWarpDetail->SetSource(landformSource);
-  landformWarpDetail->SetWarpAmplitude(0.2f); // Small jaggedness
-  landformWarpDetail->SetWarpFrequency(8.0f);
-
-  // Large Warp (Meandering)
-  auto landformWarpLarge = FastNoise::New<FastNoise::DomainWarpGradient>();
-  landformWarpLarge->SetSource(landformWarpDetail);
-  landformWarpLarge->SetWarpAmplitude(1.5f); // Large shifts
-  landformWarpLarge->SetWarpFrequency(0.5f);
-  landformNode = landformWarpLarge;
+  landformNode = applyLandformWarp(landformSource);
 
   // 2b. Landform Edge (F2 - F1)
   auto edgeSource = FastNoise::New<FastNoise::CellularDistance>();
@@ -44,17 +45,7 @@ void NoiseManager::Initialize() {
   edgeSource->SetReturnType(
       FastNoise::CellularDistance::ReturnType::Index0Sub1);
   edgeSource->SetJitterModifier(1.0f);
-
-  auto edgeWarpDetail = FastNoise::New<FastNoise::DomainWarpGradient>();
-  edgeWarpDetail->SetSource(edgeSource);
-  edgeWarpDetail->SetWarpAmplitude(0.2f);
-  edgeWarpDetail->SetWarpFrequency(8.0f);
-
-  auto edgeWarpLarge = FastNoise::New<FastNoise::DomainWarpGradient>();
-  edgeWarpLarge->SetSource(edgeWarpDetail);
-  edgeWarpLarge->SetWarpAmplitude(1.5f);
-  edgeWarpLarge->SetWarpFrequency(0.5f);
-  landformEdgeNode = edgeWarpLarge;
+  landformEdgeNode = applyLandformWarp(edgeSource);
 
   // 2c. Landform Neighbor (2nd Closest Cell Value)
   auto neighborSource = FastNoise::New<FastNoise::CellularValue>();
@@ -62,17 +53,7 @@ void NoiseManager::Initialize() {
       FastNoise::DistanceFunction::EuclideanSquared);
   neighborSource->SetValueIndex(1); // Get 2nd closest
   neighborSource->SetJitterModifier(1.0f);
-
-  auto neighborWarpDetail = FastNoise::New<FastNoise::DomainWarpGradient>();
-  neighborWarpDetail->SetSource(neighborSource);
-  neighborWarpDetail->SetWarpAmplitude(0.2f);
-  neighborWarpDetail->SetWarpFrequency(8.0f);
-
-  auto neighborWarpLarge = FastNoise::New<FastNoise::DomainWarpGradient>();
-  neighborWarpLarge->SetSource(neighborWarpDetail);
-  neighborWarpLarge->SetWarpAmplitude(1.5f);
-  neighborWarpLarge->SetWarpFrequency(0.5f);
-  landformNodeNeighbor = neighborWarpLarge;
+  landformNodeNeighbor = applyLandformWarp(neighborSource);
 
   // 2d. Landform Neighbor 3 (3rd Closest Cell Value)
   auto neighbor3Source = FastNoise::New<FastNoise::CellularValue>();
@@ -80,17 +61,7 @@ void NoiseManager::Initialize() {
       FastNoise::DistanceFunction::EuclideanSquared);
   neighbor3Source->SetValueIndex(2); // Get 3rd closest
   neighbor3Source->SetJitterModifier(1.0f);
-
-  auto neighbor3WarpDetail = FastNoise::New<FastNoise::DomainWarpGradient>();
-  neighbor3WarpDetail->SetSource(neighbor3Source);
-  neighbor3WarpDetail->SetWarpAmplitude(0.2f);
-  neighbor3WarpDetail->SetWarpFrequency(8.0f);
-
-  auto neighbor3WarpLarge = FastNoise::New<FastNoise::DomainWarpGradient>();
-  neighbor3WarpLarge->SetSource(neighbor3WarpDetail);
-  neighbor3WarpLarge->SetWarpAmplitude(1.5f);
-  neighbor3WarpLarge->SetWarpFrequency(0.5f);
-  landformNodeNeighbor3 = neighbor3WarpLarge;
+  landformNodeNeighbor3 = applyLandformWarp(neighbor3Source);
 
   // 2e. Landform Distances (F1, F2, F3)
   auto f1Source = FastNoise::New<FastNoise::CellularDistance>();
@@ -98,51 +69,21 @@ void NoiseManager::Initialize() {
   f1Source->SetDistanceIndex0(0);
   f1Source->SetReturnType(FastNoise::CellularDistance::ReturnType::Index0);
   f1Source->SetJitterModifier(1.0f);
-
-  auto f1WarpDetail = FastNoise::New<FastNoise::DomainWarpGradient>();
-  f1WarpDetail->SetSource(f1Source);
-  f1WarpDetail->SetWarpAmplitude(0.2f);
-  f1WarpDetail->SetWarpFrequency(8.0f);
-
-  auto f1WarpLarge = FastNoise::New<FastNoise::DomainWarpGradient>();
-  f1WarpLarge->SetSource(f1WarpDetail);
-  f1WarpLarge->SetWarpAmplitude(1.5f);
-  f1WarpLarge->SetWarpFrequency(0.5f);
-  landformF1Node = f1WarpLarge;
+  landformF1Node = applyLandformWarp(f1Source);
 
   auto f2Source = FastNoise::New<FastNoise::CellularDistance>();
   f2Source->SetDistanceFunction(FastNoise::DistanceFunction::EuclideanSquared);
   f2Source->SetDistanceIndex0(1);
   f2Source->SetReturnType(FastNoise::CellularDistance::ReturnType::Index0);
   f2Source->SetJitterModifier(1.0f);
-
-  auto f2WarpDetail = FastNoise::New<FastNoise::DomainWarpGradient>();
-  f2WarpDetail->SetSource(f2Source);
-  f2WarpDetail->SetWarpAmplitude(0.2f);
-  f2WarpDetail->SetWarpFrequency(8.0f);
-
-  auto f2WarpLarge = FastNoise::New<FastNoise::DomainWarpGradient>();
-  f2WarpLarge->SetSource(f2WarpDetail);
-  f2WarpLarge->SetWarpAmplitude(1.5f);
-  f2WarpLarge->SetWarpFrequency(0.5f);
-  landformF2Node = f2WarpLarge;
+  landformF2Node = applyLandformWarp(f2Source);
 
   auto f3Source = FastNoise::New<FastNoise::CellularDistance>();
   f3Source->SetDistanceFunction(FastNoise::DistanceFunction::EuclideanSquared);
   f3Source->SetDistanceIndex0(2);
   f3Source->SetReturnType(FastNoise::CellularDistance::ReturnType::Index0);
   f3Source->SetJitterModifier(1.0f);
-
-  auto f3WarpDetail = FastNoise::New<FastNoise::DomainWarpGradient>();
-  f3WarpDetail->SetSource(f3Source);
-  f3WarpDetail->SetWarpAmplitude(0.2f);
-  f3WarpDetail->SetWarpFrequency(8.0f);
-
-  auto f3WarpLarge = FastNoise::New<FastNoise::DomainWarpGradient>();
-  f3WarpLarge->SetSource(f3WarpDetail);
-  f3WarpLarge->SetWarpAmplitude(1.5f);
-  f3WarpLarge->SetWarpFrequency(0.5f);
-  landformF3Node = f3WarpLarge;
+  landformF3Node = applyLandformWarp(f3Source);
 
   // New: Terrain Detail (High frequency FRACTAL for height variance)
   // This drives the actual height spline within the landform cell
@@ -247,8 +188,10 @@ float NoiseManager::GetGeologicNoise(int x, int z) const {
 }
 
 float NoiseManager::GetTemperature(int x, int z) const {
-  return tempNode->GenSingle2D((float)x * config.climateScale,
-                               (float)z * config.climateScale, seed + 1);
+  float val = tempNode->GenSingle2D((float)x * config.climateScale,
+                                    (float)z * config.climateScale, seed + 1);
+  // Map [-1, 1] to [-30, 60] (typical biome ranges)
+  return (val + 1.0f) * 0.5f * 90.0f - 30.0f;
 }
 
 float NoiseManager::GetHumidity(int x, int z) const {
@@ -335,6 +278,14 @@ void NoiseManager::GenClimate(float *tempOut, float *humidOut, int startX,
                              config.climateScale, seed + 1);
   humidNode->GenUniformGrid2D(humidOut, startX, startZ, width, height,
                               config.climateScale, seed + 2);
+
+  // Scale post-generation
+  for (int i = 0; i < width * height; ++i) {
+    // Temp: Map [-1, 1] to [-30, 60]
+    tempOut[i] = (tempOut[i] + 1.0f) * 0.5f * 90.0f - 30.0f;
+    // Humidity: Map [-1, 1] to [-1, 1] (already there, but for explicitness)
+    // humidOut[i] = humidOut[i];
+  }
 }
 
 // Fixed GenVegetation to use correct scales
@@ -431,6 +382,9 @@ void NoiseManager::GetPreview(NoiseType type, float *output, int width,
     // Only temp needed
     tempNode->GenUniformGrid2D(output, centerX, centerZ, width, height,
                                config.climateScale, seed + 1);
+    for (int i = 0; i < width * height; ++i) {
+      output[i] = (output[i] + 1.0f) * 0.5f * 90.0f - 30.0f;
+    }
     break;
   case NoiseType::Humidity:
     // Only humid needed
