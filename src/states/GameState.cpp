@@ -610,6 +610,45 @@ void GameState::RenderUI(Application *app) {
   ImGui_ImplGlfw_NewFrame();
   ImGui::NewFrame();
 
+  // HUD Window - Always visible during gameplay
+  if (!m_IsPaused && !m_ShowCreativeMenu && !m_IsDebugMode) {
+    auto &transform =
+        app->GetRegistry().get<TransformComponent>(m_PlayerEntity);
+    int px = (int)floor(transform.position.x);
+    int py = (int)floor(transform.position.y);
+    int pz = (int)floor(transform.position.z);
+
+    // Get world generation data
+    WorldGenerator *gen = app->GetWorld()->GetGenerator();
+    std::string landformName = "Unknown";
+    float temperature = 0.0f;
+
+    if (gen) {
+      landformName = gen->GetLandformNameAt(px, pz);
+      temperature = gen->GetTemperature(px, pz);
+    }
+
+    // Position window in top right corner
+    ImGuiViewport *viewport = ImGui::GetMainViewport();
+    ImVec2 windowPos =
+        ImVec2(viewport->Pos.x + viewport->Size.x - 10, viewport->Pos.y + 10);
+    ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+    ImGui::SetNextWindowBgAlpha(0.6f); // Slightly transparent
+
+    ImGuiWindowFlags hudFlags =
+        ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize |
+        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+        ImGuiWindowFlags_NoNav;
+
+    if (ImGui::Begin("HUD", nullptr, hudFlags)) {
+      ImGui::Text("Position: %d, %d, %d", px, py, pz);
+      ImGui::Text("Temperature: %.1f C", temperature);
+      ImGui::Text("Landform: %s", landformName.c_str());
+    }
+    ImGui::End();
+  }
+
   if (m_IsPaused) {
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
                             ImGuiCond_Always, ImVec2(0.5f, 0.5f));
