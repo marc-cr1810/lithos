@@ -19,18 +19,26 @@ static int GetPosRand(int x, int z, int seed, int salt) {
 // Tree generation helpers that check chunk bounds
 static void GenerateOak(Chunk &chunk, int gx, int gy, int gz, int seed) {
   int treeHeight = 4 + (GetPosRand(gx, gz, seed, 1) % 4);
+  World *world = chunk.getWorld();
   glm::ivec3 cp = chunk.chunkPosition * CHUNK_SIZE;
 
   // Trunk
   for (int h = 1; h <= treeHeight; ++h) {
-    int ly = (gy + h) - cp.y;
-    int lx = gx - cp.x;
-    int lz = gz - cp.z;
-    if (lx >= 0 && lx < CHUNK_SIZE && ly >= 0 && ly < CHUNK_SIZE && lz >= 0 &&
-        lz < CHUNK_SIZE) {
-      if (chunk.getBlock(lx, ly, lz).getType() == AIR ||
-          chunk.getBlock(lx, ly, lz).getType() == LEAVES)
-        chunk.setBlock(lx, ly, lz, WOOD);
+    int wy = gy + h;
+    if (world) {
+      BlockType existing = (BlockType)world->getBlock(gx, wy, gz).getType();
+      if (existing == AIR || existing == LEAVES)
+        world->setBlock(gx, wy, gz, WOOD);
+    } else {
+      int lx = gx - cp.x;
+      int ly = wy - cp.y;
+      int lz = gz - cp.z;
+      if (lx >= 0 && lx < CHUNK_SIZE && ly >= 0 && ly < CHUNK_SIZE && lz >= 0 &&
+          lz < CHUNK_SIZE) {
+        if (chunk.getBlock(lx, ly, lz).getType() == AIR ||
+            chunk.getBlock(lx, ly, lz).getType() == LEAVES)
+          chunk.setBlock(lx, ly, lz, WOOD);
+      }
     }
   }
 
@@ -49,14 +57,20 @@ static void GenerateOak(Chunk &chunk, int gx, int gy, int gz, int seed) {
             (GetPosRand(lx_g, lz_g, ly, seed) % 2 == 0))
           continue;
 
-        int lx = lx_g - cp.x;
-        int lz = lz_g - cp.z;
-        int ly_local = ly - cp.y;
-
-        if (lx >= 0 && lx < CHUNK_SIZE && ly_local >= 0 &&
-            ly_local < CHUNK_SIZE && lz >= 0 && lz < CHUNK_SIZE) {
-          if (chunk.getBlock(lx, ly_local, lz).getType() == AIR)
-            chunk.setBlock(lx, ly_local, lz, LEAVES);
+        if (world) {
+          BlockType existing =
+              (BlockType)world->getBlock(lx_g, ly, lz_g).getType();
+          if (existing == AIR)
+            world->setBlock(lx_g, ly, lz_g, LEAVES);
+        } else {
+          int lx = lx_g - cp.x;
+          int lz = lz_g - cp.z;
+          int ly_local = ly - cp.y;
+          if (lx >= 0 && lx < CHUNK_SIZE && ly_local >= 0 &&
+              ly_local < CHUNK_SIZE && lz >= 0 && lz < CHUNK_SIZE) {
+            if (chunk.getBlock(lx, ly_local, lz).getType() == AIR)
+              chunk.setBlock(lx, ly_local, lz, LEAVES);
+          }
         }
       }
     }
@@ -65,16 +79,22 @@ static void GenerateOak(Chunk &chunk, int gx, int gy, int gz, int seed) {
 
 static void GeneratePine(Chunk &chunk, int gx, int gy, int gz, int seed) {
   int height = 6 + (GetPosRand(gx, gz, seed, 2) % 4); // 6-9
+  World *world = chunk.getWorld();
   glm::ivec3 cp = chunk.chunkPosition * CHUNK_SIZE;
 
   // Trunk
   for (int h = 1; h <= height; ++h) {
-    int ly = (gy + h) - cp.y;
-    int lx = gx - cp.x;
-    int lz = gz - cp.z;
-    if (lx >= 0 && lx < CHUNK_SIZE && ly >= 0 && ly < CHUNK_SIZE && lz >= 0 &&
-        lz < CHUNK_SIZE) {
-      chunk.setBlock(lx, ly, lz, PINE_WOOD);
+    int wy = gy + h;
+    if (world) {
+      world->setBlock(gx, wy, gz, PINE_WOOD);
+    } else {
+      int lx = gx - cp.x;
+      int ly = wy - cp.y;
+      int lz = gz - cp.z;
+      if (lx >= 0 && lx < CHUNK_SIZE && ly >= 0 && ly < CHUNK_SIZE && lz >= 0 &&
+          lz < CHUNK_SIZE) {
+        chunk.setBlock(lx, ly, lz, PINE_WOOD);
+      }
     }
   }
 
@@ -101,14 +121,20 @@ static void GeneratePine(Chunk &chunk, int gx, int gy, int gz, int seed) {
             continue;
         }
 
-        int lx = lx_g - cp.x;
-        int lz = lz_g - cp.z;
-        int ly_local = ly_g - cp.y;
-
-        if (lx >= 0 && lx < CHUNK_SIZE && ly_local >= 0 &&
-            ly_local < CHUNK_SIZE && lz >= 0 && lz < CHUNK_SIZE) {
-          if (chunk.getBlock(lx, ly_local, lz).getType() == AIR)
-            chunk.setBlock(lx, ly_local, lz, PINE_LEAVES);
+        if (world) {
+          BlockType existing =
+              (BlockType)world->getBlock(lx_g, ly_g, lz_g).getType();
+          if (existing == AIR)
+            world->setBlock(lx_g, ly_g, lz_g, PINE_LEAVES);
+        } else {
+          int lx = lx_g - cp.x;
+          int lz = lz_g - cp.z;
+          int ly_local = ly_g - cp.y;
+          if (lx >= 0 && lx < CHUNK_SIZE && ly_local >= 0 &&
+              ly_local < CHUNK_SIZE && lz >= 0 && lz < CHUNK_SIZE) {
+            if (chunk.getBlock(lx, ly_local, lz).getType() == AIR)
+              chunk.setBlock(lx, ly_local, lz, PINE_LEAVES);
+          }
         }
       }
     }
@@ -117,14 +143,21 @@ static void GeneratePine(Chunk &chunk, int gx, int gy, int gz, int seed) {
 
 static void GenerateCactus(Chunk &chunk, int gx, int gy, int gz, int seed) {
   int height = 2 + (GetPosRand(gx, gz, seed, 3) % 3); // 2-4
+  World *world = chunk.getWorld();
   glm::ivec3 cp = chunk.chunkPosition * CHUNK_SIZE;
+
   for (int h = 1; h <= height; ++h) {
-    int ly = (gy + h) - cp.y;
-    int lx = gx - cp.x;
-    int lz = gz - cp.z;
-    if (lx >= 0 && lx < CHUNK_SIZE && ly >= 0 && ly < CHUNK_SIZE && lz >= 0 &&
-        lz < CHUNK_SIZE) {
-      chunk.setBlock(lx, ly, lz, CACTUS);
+    int wy = gy + h;
+    if (world) {
+      world->setBlock(gx, wy, gz, CACTUS);
+    } else {
+      int lx = gx - cp.x;
+      int ly = wy - cp.y;
+      int lz = gz - cp.z;
+      if (lx >= 0 && lx < CHUNK_SIZE && ly >= 0 && ly < CHUNK_SIZE && lz >= 0 &&
+          lz < CHUNK_SIZE) {
+        chunk.setBlock(lx, ly, lz, CACTUS);
+      }
     }
   }
 }
