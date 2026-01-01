@@ -33,7 +33,7 @@ void GameState::Init(Application *app) {
   app->GetCamera().Position = m_SpawnPos + glm::vec3(0.0f, 1.6f, 0.0f);
 
   InitEntities(app);
-  InitRendering(app);
+  InitRendering();
 
   m_DbgTeleportPos[0] = m_SpawnPos.x;
   m_DbgTeleportPos[1] = m_SpawnPos.y;
@@ -59,8 +59,8 @@ void GameState::InitEntities(Application *app) {
   registry.emplace<PlayerTag>(m_PlayerEntity);
 }
 
-void GameState::InitRendering(Application *app) {
-  auto &rm = app->GetResourceManager();
+void GameState::InitRendering() {
+  auto &rm = ResourceManager::Get();
   m_Shader = rm.GetShader("basic");
   m_Atlas = rm.GetTextureAtlas("blocks");
   m_BlockTexture = rm.GetTexture("blocks");

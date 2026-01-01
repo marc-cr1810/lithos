@@ -26,7 +26,7 @@ public:
 
 private:
   void InitEntities(Application *app);
-  void InitRendering(Application *app);
+  void InitRendering();
 
   // Member Variables
   glm::vec3 m_SpawnPos;

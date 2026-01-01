@@ -35,7 +35,7 @@ static void HelpMarker(const char *desc) {
   }
 }
 
-void MenuState::InitPreview(Application *app) {
+void MenuState::InitPreview() {
   m_PreviewFBO = std::make_unique<Framebuffer>(512, 512);
 
   // Initialize Camera
@@ -46,7 +46,7 @@ void MenuState::InitPreview(Application *app) {
   m_PreviewPitch = -30.0f; // Look down slightly
 
   // Initialize Resources (Shader & Atlas) from ResourceManager
-  auto &rm = app->GetResourceManager();
+  auto &rm = ResourceManager::Get();
 
   m_PreviewShader = rm.GetShader("basic");
   // If shader failed to load in RM, this might be null. We should check or
@@ -154,7 +154,7 @@ void MenuState::Init(Application *app) {
   // Pre-calculate benchmarks or similar? No.
 
   // Init Preview
-  InitPreview(app);
+  InitPreview();
 
   // Initial seed buffer
   snprintf(m_SeedBuffer, sizeof(m_SeedBuffer), "%d", m_Config.seed);

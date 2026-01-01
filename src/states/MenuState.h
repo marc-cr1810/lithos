@@ -71,6 +71,6 @@ private:
   glm::vec2 m_LastMousePos = {0.0f, 0.0f};
   bool m_IsDraggingPreview = false;
 
-  void InitPreview(Application *app);
+  void InitPreview();
   void UpdatePreview3D();
 };

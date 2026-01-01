@@ -1,6 +1,23 @@
 #include "ResourceManager.h"
 #include "../debug/Logger.h"
 
+// Initialize static instance
+ResourceManager *ResourceManager::s_Instance = nullptr;
+
+ResourceManager &ResourceManager::Get() {
+  // We assume the instance exists because Application owns it.
+  // If this is called before App init, it will crash/assert.
+  return *s_Instance;
+}
+
+ResourceManager::ResourceManager() { s_Instance = this; }
+
+ResourceManager::~ResourceManager() {
+  if (s_Instance == this) {
+    s_Instance = nullptr;
+  }
+}
+
 void ResourceManager::LoadShader(const std::string &name,
                                  const std::string &vsPath,
                                  const std::string &fsPath) {

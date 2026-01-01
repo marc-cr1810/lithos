@@ -7,11 +7,13 @@
 #include <string>
 #include <unordered_map>
 
-
 class ResourceManager {
 public:
-  ResourceManager() = default;
-  ~ResourceManager() = default;
+  // Static Accessor
+  static ResourceManager &Get();
+
+  ResourceManager();
+  ~ResourceManager();
 
   // Forbidden copy and assignment
   ResourceManager(const ResourceManager &) = delete;
@@ -33,6 +35,8 @@ public:
   void Clear();
 
 private:
+  static ResourceManager *s_Instance;
+
   std::unordered_map<std::string, std::unique_ptr<Shader>> m_Shaders;
   std::unordered_map<std::string, std::unique_ptr<TextureAtlas>>
       m_TextureAtlases;
