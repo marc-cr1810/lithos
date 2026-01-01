@@ -94,12 +94,12 @@ void NoiseManager::Initialize() {
   detailFractal->SetLacunarity(2.0f);
   terrainDetailNode = detailFractal;
 
-  // 3. Geologic Province
-  auto geologic = FastNoise::New<FastNoise::Simplex>();
-  auto geologicFractal = FastNoise::New<FastNoise::FractalFBm>();
-  geologicFractal->SetSource(geologic);
-  geologicFractal->SetOctaveCount(3);
-  geologicNode = geologicFractal;
+  // 3. Geologic Province (Voronoi with jagged edges)
+  auto geologicSource = FastNoise::New<FastNoise::CellularValue>();
+  geologicSource->SetDistanceFunction(
+      FastNoise::DistanceFunction::EuclideanSquared);
+  geologicSource->SetJitterModifier(1.0f);
+  geologicNode = applyLandformWarp(geologicSource);
 
   // 4. Climate
   auto temp = FastNoise::New<FastNoise::Perlin>();
