@@ -195,9 +195,9 @@ void NoiseManager::GenBeach(float *output, int startX, int startZ, int width,
 
 void NoiseManager::GenTerrainDetail(float *output, int startX, int startZ,
                                     int width, int height) const {
-  // Detail uses higher frequency than base landforms
+  // Detail uses its own configurable scale (default is landformScale * 4)
   terrainDetailNode->GenUniformGrid2D(output, startX, startZ, width, height,
-                                      config.landformScale * 4.0f, seed + 8);
+                                      config.terrainDetailScale, seed + 8);
 }
 
 void NoiseManager::GenLandformEdge(float *output, int startX, int startZ,

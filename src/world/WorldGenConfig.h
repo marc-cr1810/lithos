@@ -71,9 +71,11 @@ struct WorldGenConfig {
 
   // New Noise Scales for Rework
   float upheavalScale = 0.0005f; // Large scale for generalized height shifts
-  float forestScale = 0.05f;     // For tree placement
-  float bushScale = 0.08f;       // For bush placement
-  float beachScale = 0.01f;      // For beach placement
+  float terrainDetailScale =
+      0.002f;                // Default is landformScale * 4 (0.0005 * 4)
+  float forestScale = 0.05f; // For tree placement
+  float bushScale = 0.08f;   // For bush placement
+  float beachScale = 0.01f;  // For beach placement
 
   WorldGenConfig() {
     // Initialize with default values seen in WorldGenerator.cpp
@@ -153,6 +155,7 @@ inline void to_json(json &j, const WorldGenConfig &c) {
            {"cactusDensity", c.cactusDensity},
            {"floraDensity", c.floraDensity},
            {"upheavalScale", c.upheavalScale},
+           {"terrainDetailScale", c.terrainDetailScale},
            {"forestScale", c.forestScale},
            {"bushScale", c.bushScale},
            {"beachScale", c.beachScale}};
@@ -204,6 +207,8 @@ inline void from_json(const json &j, WorldGenConfig &c) {
   j.at("floraDensity").get_to(c.floraDensity);
   if (j.contains("upheavalScale"))
     j.at("upheavalScale").get_to(c.upheavalScale);
+  if (j.contains("terrainDetailScale"))
+    j.at("terrainDetailScale").get_to(c.terrainDetailScale);
   if (j.contains("forestScale"))
     j.at("forestScale").get_to(c.forestScale);
   if (j.contains("bushScale"))

@@ -8,6 +8,7 @@
 #include "../render/TextureAtlas.h"
 #include "../world/Block.h" // For BlockRegistry
 #include "../world/World.h"
+#include "../world/WorldGenerator.h"
 #include "GameState.h"
 #include "LoadingState.h"
 #include "imgui.h"
@@ -200,23 +201,41 @@ void MenuState::Init(Application *app) {
 }
 
 void MenuState::UpdatePreview() {
-  for (int i = 0; i < 256; ++i) {
-    if (i % 2 == 0) {
-      int idx = i / 2;
-      m_PreviewData[idx] = 0.0f;
-      m_TempData[idx] = 0.0f;
-      m_HumidData[idx] = 0.0f;
-      m_BiomeData[idx] = 0.0f;
-      m_CaveProbData[idx] = 0.0f;
-      m_OceansData[idx] = 0.0f;
-      m_ValleysData[idx] = 0.0f;
-      m_PlainsData[idx] = 0.0f;
-      m_HillsData[idx] = 0.0f;
-      m_MountainsData[idx] = 0.0f;
+  // Create temporary WorldGenerator with current config
+  WorldGenerator tempGen(m_Config);
+
+  // Sample 128 points along X-axis (0 to 512 blocks)
+  for (int i = 0; i < 128; i++) {
+    int x = i * 4; // Sample every 4 blocks
+    int z = 0;     // Along Z=0 line
+
+    // Get blended final height
+    m_PreviewData[i] = (float)tempGen.GetHeight(x, z);
+
+    // Get landform name to determine which landform is dominant
+    std::string landform = tempGen.GetLandformNameAt(x, z);
+
+    // Store landform ID for cellular visualization
+    if (landform == "oceans") {
+      m_BiomeData[i] = 0.0f;
+      m_OceansData[i] = m_PreviewData[i];
+    } else if (landform == "valleys") {
+      m_BiomeData[i] = 1.0f;
+      m_ValleysData[i] = m_PreviewData[i];
+    } else if (landform == "plains") {
+      m_BiomeData[i] = 2.0f;
+      m_PlainsData[i] = m_PreviewData[i];
+    } else if (landform == "hills") {
+      m_BiomeData[i] = 3.0f;
+      m_HillsData[i] = m_PreviewData[i];
+    } else if (landform == "mountains") {
+      m_BiomeData[i] = 4.0f;
+      m_MountainsData[i] = m_PreviewData[i];
     }
-    for (int j = 0; j < 128; ++j) {
-      m_CaveSliceData[i + j * 256] = 0.0f;
-    }
+
+    // Get temperature & humidity for reference
+    m_TempData[i] = tempGen.GetTemperature(x, z);
+    m_HumidData[i] = tempGen.GetHumidity(x, z);
   }
 
   // Clear any benchmark results if we are live-editing
@@ -592,7 +611,7 @@ void MenuState::RenderUI(Application *app) {
       if (ImGui::BeginTabItem("Climate")) {
         ImGui::Dummy(ImVec2(0, 5));
 
-        ImGui::Text("Biome & Noise Scales");
+        ImGui::Text("Climate & Temperature Settings");
         ImGui::Separator();
         bool changed = false;
         if (ImGui::SliderFloat("Temp Scale", &m_Config.tempScale, 0.0001f,
@@ -603,18 +622,7 @@ void MenuState::RenderUI(Application *app) {
                                0.0001f, 0.01f))
           changed = true;
         HelpMarker("Scale of rainfall variation. Affects vegetation.");
-        if (ImGui::SliderFloat("Landform Scale", &m_Config.landformScale,
-                               0.0001f, 0.01f))
-          changed = true;
-        HelpMarker("Scale of landform zones (Oceans vs Mountains).");
-        if (ImGui::SliderFloat("Climate Scale", &m_Config.climateScale, 0.0001f,
-                               0.01f))
-          changed = true;
-        HelpMarker("Very large scale noise for macro-climate variations.");
-        if (ImGui::SliderFloat("Geologic Scale", &m_Config.geologicScale,
-                               0.0001f, 0.01f))
-          changed = true;
-        HelpMarker("Scale of underground strata variation.");
+
         if (ImGui::SliderFloat("Biome Variation", &m_Config.biomeVariation,
                                0.0f, 0.5f))
           changed = true;
@@ -635,237 +643,6 @@ void MenuState::RenderUI(Application *app) {
 
         if (changed)
           UpdatePreview();
-
-        ImGui::Separator();
-        ImGui::Text("Biome Distribution Preview");
-        ImGui::Separator();
-
-        // Draw terrain cross-section with biome colors
-        ImDrawList *drawList = ImGui::GetWindowDrawList();
-        ImVec2 plotPos = ImGui::GetCursorScreenPos();
-        float availWidth = ImGui::GetContentRegionAvail().x - 10;
-        // Reduce width for the terrain plot to make room for the temp graph
-        float terrainWidth = availWidth * 0.95f;
-        float tempGraphWidth = availWidth * 0.025f; // Even narrower bar
-        ImVec2 terrainPlotSize(terrainWidth, 200.0f);
-
-        // Reserve space for the whole block
-        ImGui::InvisibleButton("##biomeplot", ImVec2(availWidth, 200.0f));
-
-        // --- TERRAIN PLOT ---
-
-        // Check if mouse is hovering over the terrain plot
-        if (ImGui::IsItemHovered()) {
-          ImVec2 mousePos = ImGui::GetMousePos();
-          // Check if within terrain bounds
-          if (mousePos.x >= plotPos.x &&
-              mousePos.x <= plotPos.x + terrainWidth) {
-            float relX = (mousePos.x - plotPos.x) / terrainPlotSize.x;
-            if (relX >= 0.0f && relX <= 1.0f) {
-              int sampleIdx = (int)(relX * 128.0f);
-              if (sampleIdx >= 0 && sampleIdx < 128) {
-                int biome = (int)m_BiomeData[sampleIdx];
-                float height = m_PreviewData[sampleIdx];
-
-                const char *biomeName = "Unknown";
-                switch (biome) {
-                case 0:
-                  biomeName = "Ocean";
-                  break;
-                case 1:
-                  biomeName = "Beach";
-                  break;
-                case 2:
-                  biomeName = "Desert";
-                  break;
-                case 3:
-                  biomeName = "Tundra";
-                  break;
-                case 4:
-                  biomeName = "Forest";
-                  break;
-                case 5:
-                  biomeName = "Plains";
-                  break;
-                }
-
-                ImGui::BeginTooltip();
-                ImGui::Text("Biome: %s", biomeName);
-                ImGui::Text("Height: %.1f", height);
-                ImGui::EndTooltip();
-              }
-            }
-          }
-        }
-
-        // Draw background for terrain
-        drawList->AddRectFilled(plotPos,
-                                ImVec2(plotPos.x + terrainPlotSize.x,
-                                       plotPos.y + terrainPlotSize.y),
-                                IM_COL32(30, 30, 35, 255));
-
-        // Draw biome-colored terrain profile
-        for (int i = 0; i < 127; i++) {
-          float x0 = plotPos.x + (i / 128.0f) * terrainPlotSize.x;
-          float x1 = plotPos.x + ((i + 1) / 128.0f) * terrainPlotSize.x;
-
-          // Get height and biome for this position
-          float height = m_PreviewData[i];
-          float heightNext = m_PreviewData[i + 1];
-          int biome = (int)m_BiomeData[i];
-
-          // Normalize heights to plot space
-          float y0 = plotPos.y + terrainPlotSize.y -
-                     (height / (float)m_Config.worldHeight) * terrainPlotSize.y;
-          float y1 =
-              plotPos.y + terrainPlotSize.y -
-              (heightNext / (float)m_Config.worldHeight) * terrainPlotSize.y;
-
-          // Determine biome color
-          ImU32 biomeColor;
-          switch (biome) {
-          case 0:
-            biomeColor = IM_COL32(30, 60, 120, 255);
-            break; // Ocean - dark blue
-          case 1:
-            biomeColor = IM_COL32(220, 200, 150, 255);
-            break; // Beach - sandy
-          case 2:
-            biomeColor = IM_COL32(220, 200, 120, 255);
-            break; // Desert - tan
-          case 3:
-            biomeColor = IM_COL32(200, 220, 240, 255);
-            break; // Tundra - icy blue-white
-          case 4:
-            biomeColor = IM_COL32(60, 140, 60, 255);
-            break; // Forest - dark green
-          case 5:
-            biomeColor = IM_COL32(140, 180, 100, 255);
-            break; // Plains - light green
-          default:
-            biomeColor = IM_COL32(150, 150, 150, 255);
-            break;
-          }
-
-          // Draw filled polygon from bottom to terrain height
-          ImVec2 points[4] = {ImVec2(x0, plotPos.y + terrainPlotSize.y),
-                              ImVec2(x0, y0), ImVec2(x1, y1),
-                              ImVec2(x1, plotPos.y + terrainPlotSize.y)};
-          drawList->AddConvexPolyFilled(points, 4, biomeColor);
-        }
-
-        // Draw sea level line
-        float seaY = plotPos.y + terrainPlotSize.y -
-                     ((float)m_Config.seaLevel / (float)m_Config.worldHeight) *
-                         terrainPlotSize.y;
-        drawList->AddLine(ImVec2(plotPos.x, seaY),
-                          ImVec2(plotPos.x + terrainPlotSize.x, seaY),
-                          IM_COL32(50, 100, 200, 200), 2.0f);
-
-        // --- TEMPERATURE VERTICAL GRADIENT BAR ---
-
-        ImVec2 tempPos(plotPos.x + terrainWidth + (availWidth * 0.02f),
-                       plotPos.y);
-        ImVec2 tempSize(tempGraphWidth, 200.0f);
-
-        // Background/Border
-        drawList->AddRectFilled(
-            tempPos, ImVec2(tempPos.x + tempSize.x, tempPos.y + tempSize.y),
-            IM_COL32(20, 20, 25, 255));
-
-        // Draw gradient strips
-        for (int i = 0; i < 100; ++i) {
-          float relY = (float)i / 100.0f; // 0 (bottom) to 1 (top)
-          int worldY = (int)(relY * m_Config.worldHeight);
-
-          // Calculate Temp (Base - Lapse + Geothermal)
-          float temp = 0.5f;
-          if (worldY > m_Config.seaLevel) {
-            temp -= (float)(worldY - m_Config.seaLevel) *
-                    m_Config.temperatureLapseRate;
-          }
-          if (worldY < m_Config.seaLevel) {
-            temp += (float)(m_Config.seaLevel - worldY) *
-                    m_Config.geothermalGradient;
-          }
-
-          // Clamp visual range for color mapping
-          // 0.0 -> Blue, 0.5 -> Green, 1.0 -> Red
-          float t = std::clamp(temp, 0.0f, 1.0f);
-
-          ImU32 col;
-          // White(255,255,255) -> Green(0,255,0) -> Red(255,0,0)
-          if (t < 0.5f) {
-            // White to Green
-            float f = t * 2.0f; // 0..1
-            // R: 255->0, G: 255->255, B: 255->0
-            int rb = (int)(255.0f * (1.0f - f));
-            col = IM_COL32(rb, 255, rb, 255);
-          } else {
-            // Green to Red
-            float f = (t - 0.5f) * 2.0f; // 0..1
-            // R: 0->255, G: 255->0, B: 0->0
-            int r = (int)(255.0f * f);
-            int g = (int)(255.0f * (1.0f - f));
-            col = IM_COL32(r, g, 0, 255);
-          }
-
-          float yBottom = tempPos.y + tempSize.y * (1.0f - relY);
-          float yTop =
-              tempPos.y + tempSize.y * (1.0f - ((float)(i + 1) / 100.0f));
-
-          drawList->AddRectFilled(ImVec2(tempPos.x, yTop),
-                                  ImVec2(tempPos.x + tempSize.x, yBottom), col);
-        }
-
-        // Sea Level Line extension
-        drawList->AddLine(ImVec2(tempPos.x, seaY),
-                          ImVec2(tempPos.x + tempSize.x, seaY),
-                          IM_COL32(255, 255, 255, 150), 2.0f);
-
-        // Border around bar
-        drawList->AddRect(
-            tempPos, ImVec2(tempPos.x + tempSize.x, tempPos.y + tempSize.y),
-            IM_COL32(100, 100, 120, 255));
-
-        // Add simple tooltip on hover
-        if (ImGui::IsMouseHoveringRect(
-                tempPos,
-                ImVec2(tempPos.x + tempSize.x, tempPos.y + tempSize.y))) {
-          ImVec2 mousePos = ImGui::GetMousePos();
-          float relY = 1.0f - (mousePos.y - tempPos.y) / tempSize.y;
-          int paramY = (int)(relY * m_Config.worldHeight);
-
-          float temp = 0.5f;
-          if (paramY > m_Config.seaLevel) {
-            temp -= (float)(paramY - m_Config.seaLevel) *
-                    m_Config.temperatureLapseRate;
-          }
-          if (paramY < m_Config.seaLevel) {
-            temp += (float)(m_Config.seaLevel - paramY) *
-                    m_Config.geothermalGradient;
-          }
-
-          ImGui::BeginTooltip();
-          ImGui::Text("Height: %d", paramY);
-          ImGui::Text("Base Temp: %.2f", temp);
-          ImGui::EndTooltip();
-        }
-
-        // Legend
-        ImGui::Text("Biome Colors:");
-        ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.12f, 0.24f, 0.47f, 1.0f), "Ocean");
-        ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.86f, 0.78f, 0.59f, 1.0f), "Beach");
-        ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.86f, 0.78f, 0.47f, 1.0f), "Desert");
-        ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.78f, 0.86f, 0.94f, 1.0f), "Tundra");
-        ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.24f, 0.55f, 0.24f, 1.0f), "Forest");
-        ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.55f, 0.71f, 0.39f, 1.0f), "Plains");
 
         ImGui::EndTabItem();
       }
@@ -994,25 +771,28 @@ void MenuState::RenderUI(Application *app) {
 
         // Draw each layer if enabled
         if (m_ShowOceans)
-          drawSeries(m_OceansData, IM_COL32(30, 80, 150, 255));
+          drawSeries(m_OceansData, IM_COL32(30, 80, 150, 180));
         if (m_ShowValleys)
-          drawSeries(m_ValleysData, IM_COL32(80, 150, 120, 255));
+          drawSeries(m_ValleysData, IM_COL32(80, 150, 120, 180));
         if (m_ShowPlains)
-          drawSeries(m_PlainsData, IM_COL32(100, 180, 80, 255));
+          drawSeries(m_PlainsData, IM_COL32(100, 180, 80, 180));
         if (m_ShowHills)
-          drawSeries(m_HillsData, IM_COL32(200, 180, 60, 255));
+          drawSeries(m_HillsData, IM_COL32(200, 180, 60, 180));
         if (m_ShowMountains)
-          drawSeries(m_MountainsData, IM_COL32(220, 100, 100, 255));
+          drawSeries(m_MountainsData, IM_COL32(220, 100, 100, 180));
+
+        // ALWAYS draw the blended final terrain height (white line, thicker)
         if (m_ShowBlended)
-          drawSeries(m_PreviewData, IM_COL32(255, 255, 255, 255), 2.5f);
+          drawSeries(m_PreviewData, IM_COL32(255, 255, 255, 255), 3.0f);
 
         // Draw border
         drawList->AddRect(
             plotPos, ImVec2(plotPos.x + plotSize.x, plotPos.y + plotSize.y),
             IM_COL32(100, 100, 120, 255));
 
-        // Biome Color Bar
-        ImGui::Text("Biome Strip:");
+        // Landform Color Bar (Cellular Selection)
+        ImGui::Text("Landform Strip:");
+        HelpMarker("Shows which landform is selected by cellular noise");
         ImVec2 p0 = ImGui::GetCursorScreenPos();
         float width = ImGui::GetContentRegionAvail().x;
         float height = 20.0f;
@@ -1022,29 +802,24 @@ void MenuState::RenderUI(Application *app) {
 
         float step = width / 128.0f;
         for (int i = 0; i < 128; ++i) {
-          ImU32 col = IM_COL32(200, 200, 200, 255);
-          switch ((int)m_BiomeData[i]) {
+          ImU32 col = IM_COL32(100, 100, 100, 255); // Default gray
+          int landformId = (int)m_BiomeData[i];
+          switch (landformId) {
           case 0:
-            col = IM_COL32(30, 60, 180, 255);
-            break; // Ocean
+            col = IM_COL32(30, 80, 150, 255);
+            break; // Oceans - dark blue
           case 1:
-            col = IM_COL32(200, 180, 100, 255);
-            break; // Desert
+            col = IM_COL32(80, 150, 120, 255);
+            break; // Valleys - teal
           case 2:
-            col = IM_COL32(100, 200, 100, 255);
-            break; // Plains
+            col = IM_COL32(100, 180, 80, 255);
+            break; // Plains - green
           case 3:
-            col = IM_COL32(50, 150, 50, 255);
-            break; // Forest
+            col = IM_COL32(200, 180, 60, 255);
+            break; // Hills - yellow/tan
           case 4:
-            col = IM_COL32(100, 100, 150, 255);
-            break; // Hills
-          case 5:
-            col = IM_COL32(200, 200, 200, 255);
-            break; // Mountains
-          case 6:
-            col = IM_COL32(220, 220, 255, 255);
-            break; // Tundra
+            col = IM_COL32(220, 100, 100, 255);
+            break; // Mountains - red/brown
           }
           drawList->AddRectFilled(ImVec2(p0.x + i * step, p0.y),
                                   ImVec2(p0.x + (i + 1) * step, p1.y), col);
@@ -1188,37 +963,6 @@ void MenuState::RenderUI(Application *app) {
 
         ImGui::Text("High-resolution vertical slice (256x128).");
 
-        ImGui::EndTabItem();
-      }
-
-      // Hydrology Tab
-      if (ImGui::BeginTabItem("Hydrology")) {
-        ImGui::Dummy(ImVec2(0, 5));
-        ImGui::Text("Rivers & Lakes Configuration");
-        ImGui::Separator();
-        bool changed = false;
-        if (ImGui::Checkbox("Enable Rivers", &m_Config.enableRivers))
-          changed = true;
-        HelpMarker("Toggle generation of narrow river channels.");
-        if (ImGui::SliderFloat("River Scale", &m_Config.riverScale, 0.0001f,
-                               0.02f))
-          changed = true;
-        HelpMarker("Controls the frequency/wiggle of rivers.");
-        if (ImGui::SliderFloat("River Threshold", &m_Config.riverThreshold,
-                               0.001f, 0.2f))
-          changed = true;
-        HelpMarker("Controls the width of the river channels.");
-        if (ImGui::SliderFloat("River Depth", &m_Config.riverDepth, 1.0f,
-                               32.0f))
-          changed = true;
-        HelpMarker("Maximum depth of river channel cuts.");
-        HelpMarker("Depth of water at the bottom of river channels.");
-        if (ImGui::SliderInt("Lake Level", &m_Config.lakeLevel, 0, 100))
-          changed = true;
-        HelpMarker("Basins below this level will fill with water.");
-
-        if (changed)
-          UpdatePreview();
         ImGui::EndTabItem();
       }
 
@@ -1404,6 +1148,12 @@ void MenuState::RenderUI(Application *app) {
                                  0.0001f, 0.005f, "%.4f");
           HelpMarker("Large-scale height variation");
 
+          scalesChanged |= ImGui::SliderFloat("Terrain Detail Scale",
+                                              &m_Config.terrainDetailScale,
+                                              0.0001f, 0.01f, "%.4f");
+          HelpMarker(
+              "Fine detail bumps and ridges (default is landformScale*4)");
+
           scalesChanged |= ImGui::SliderFloat(
               "Temperature Scale", &m_Config.tempScale, 0.0005f, 0.01f, "%.4f");
           HelpMarker("Size of temperature zones");
@@ -1417,6 +1167,18 @@ void MenuState::RenderUI(Application *app) {
               ImGui::SliderFloat("Geologic Scale", &m_Config.geologicScale,
                                  0.0001f, 0.005f, "%.4f");
           HelpMarker("Size of rock province regions");
+
+          scalesChanged |= ImGui::SliderFloat(
+              "Forest Scale", &m_Config.forestScale, 0.01f, 0.1f, "%.3f");
+          HelpMarker("Scale for tree placement noise");
+
+          scalesChanged |= ImGui::SliderFloat("Bush Scale", &m_Config.bushScale,
+                                              0.01f, 0.15f, "%.3f");
+          HelpMarker("Scale for bush placement noise");
+
+          scalesChanged |= ImGui::SliderFloat(
+              "Beach Scale", &m_Config.beachScale, 0.005f, 0.05f, "%.3f");
+          HelpMarker("Scale for beach detection noise");
 
           if (scalesChanged) {
             m_NeedsPreviewUpdate = true;
