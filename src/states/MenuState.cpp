@@ -286,6 +286,7 @@ void MenuState::Render(Application *app) {
     m_PreviewShader->setMat4("projection", projection);
     m_PreviewShader->setVec3("viewPos", m_PreviewCamera.Position);
     m_PreviewShader->setFloat("fogDist", 5000.0f); // Large fog for preview
+    m_PreviewShader->setBool("useTexture", true);
 
     // Bind Texture
     glActiveTexture(GL_TEXTURE0);
@@ -509,6 +510,9 @@ void MenuState::RenderUI(Application *app) {
 
             // Debug Overlay: Camera Info
             ImVec2 overlayPos = ImGui::GetItemRectMin();
+            ImVec2 restorePos =
+                ImGui::GetCursorScreenPos(); // Save position for next controls
+
             ImGui::SetCursorScreenPos(
                 ImVec2(overlayPos.x + 5, overlayPos.y + 5));
             ImGui::TextColored(
@@ -516,6 +520,9 @@ void MenuState::RenderUI(Application *app) {
                 "Cam: Yaw %.1f, Pitch %.1f, Dist %.1f\nChunks: %zu",
                 m_PreviewYaw, m_PreviewPitch, m_PreviewDistance,
                 m_PreviewWorld ? m_PreviewWorld->getChunkCount() : 0);
+
+            // Restore cursor for next items (Separator, Buttons)
+            ImGui::SetCursorScreenPos(restorePos);
 
             // Input Handling for Orbit
             if (isHovered) {
