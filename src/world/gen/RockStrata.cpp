@@ -1,6 +1,10 @@
 #include "RockStrata.h"
+#include "../../debug/Logger.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <fstream>
+#include <nlohmann/json.hpp>
 
 RockStrataRegistry &RockStrataRegistry::Get() {
   static RockStrataRegistry instance;
@@ -26,59 +30,85 @@ const GeologicProvince *RockStrataRegistry::GetProvince(float noise) {
 
 BlockType RockStrataRegistry::GetStrataBlock(int x, int y, int z, int surfaceY,
                                              float provinceNoise,
-                                             float strataNoise, int seed) {
+                                             float strataNoise,
+                                             float distortion, int seed) {
   const GeologicProvince *prov = GetProvince(provinceNoise);
-  if (!prov)
+  if (!prov) {
+    // std::cout << "Null Province!" << std::endl;
     return BlockType::STONE;
+  }
+  // std::cout << "Prov: " << prov->name << std::endl;
 
-  int currentDepth = surfaceY - y;
-  if (currentDepth < 0)
-    return BlockType::AIR; // Should catch this before
+  // Distortion: Bend the layers!
+  // distortion is typically -1 to 1 (noise).
+  // We scale it to have significant vertical impact (e.g. +/- 40 blocks)
+  // But wait, the caller might pass scaled distortion.
+  // Let's assume distortion is the raw noise value or pre-scaled?
+  // Caller (WorldGen) has 'upheaval' which is used for height shift.
+  // If we utilize the SAME upheaval, the strata will follow the terrain bumps,
+  // which is good. But we might want INDEPENDENT folding. For now, let's just
+  // apply it directly to Y.
+
+  // Warp the Y coordinate used for layer lookup
+  // If we move up (higher Y), we should see deeper layers?
+  // If Y=10 and warp=+10, we look up layer at Y=20.
+  // This effectively pushes the strata DOWN at that location.
+  // Wait, if layer is at Depth 10.
+  // if Y=60 (Surface). Depth=0.
+  // Y lookup should be relative to surface?
+  // The original code used: currentDepth = surfaceY - y;
+  // This means strata follows the terrain surface perfectly parallel.
+  // To make it look like REAL geology (independent of surface erosion),
+  // we should look up based on ABOSLUTE Y, not Depth from Surface.
+  // VS uses Absolute Y with Upheaval.
+
+  // NEW LOGIC: Absolute Y Mapping + Distortion
+  // But we must ensure the top layer matches the surface block type roughly?
+  // No, real geology doesn't guarantee top layer is sandstone. It could be
+  // granite if eroded. HOWEVER, Lithos expects Top Soil (Grass/Dirt) to be
+  // placed by WorldGen separately. This function places the ROCK below.
+
+  // Let's try Absolute Y Strata.
+  // 0 = Bedrock. 320 = Sky.
+  // Layers stack from bottom up? Or top down from some "Simulated Max Height"?
+  // Let's stack from Bottom Up (Igneous -> Metamorphic -> Sedimentary).
+  // distortedY = y + distortion * 50.0f; // Scale distortion
+
+  // But wait, if we switch to Absolute Y, we break the "Sedimentary Basin" feel
+  // where it fills valleys. VS Hybrid approach: Some layers follow surface,
+  // some are absolute? Let's stick to "Depth from Surface" but modulate the
+  // Depth calculation. distortedDepth = (surfaceY - y) + distortion * 40.0f; If
+  // distortion is positive, depth increases -> we see deeper layers
+  // (erosion/uplift). If distortion is negative, depth decreases -> we see top
+  // layers (depression).
+
+  float distortionScale = 60.0f;
+  int distortedDepth = (surfaceY - y) + (int)(distortion * distortionScale);
+
+  // If distortedDepth < 0, it means we are "above" the simulated strata stack.
+  // This can happen if upheaval pushes the strata so far down that we are
+  // checking high up? Or rather, if we are exposed. We clamp to 0 (Top Layer).
+  if (distortedDepth < 0)
+    distortedDepth = 0;
 
   // Modulation: Use the coherent strataNoise passed from WorldGenerator.
-  // We use the layer index to "offset" the noise lookup so layers don't wobble
-  // identically. Actually, wobbling identically looks like compression, which
-  // is good! But strictly parallel layers look boring. Let's use (strataNoise +
-  // i * 0.1) or similar. Or just use the same wobble. A wobble of thickness
-  // means "this layer is thicker here". If layer 1 is thick, layer 2 is pushed
-  // down. We calculate thickness. thickness = base + (int)(strataNoise *
-  // variation).
-
   auto getNoise = [&](int id) {
-    // Use the coherent noise, modulate by id slightly?
-    // Actually, we want coherent visual.
-    // If we use strataNoise for all layers, then all layers are thick/thin
-    // together. That visually reinforces the "wave". But `strataNoise` is
-    // -1..1. We map it to 0..1?
     float n = (strataNoise + 1.0f) * 0.5f;
-    // Let's add a tiny offset base on id so they aren't PERFECTLY synced?
-    // No, simple is smooth.
     return n;
   };
 
   int depthAccumulator = 0;
+
   // 1. Sedimentary (Top)
   for (size_t i = 0; i < prov->sedimentary.size(); ++i) {
     const auto &layer = prov->sedimentary[i];
-    // Use the smooth noise. Maybe hash the noise with index to allow different
-    // layers to swell differently? "Jagged" came from White Noise (no spatial
-    // correlation). If we use strataNoise (spatially correlated), we solve
-    // jaggedness. If we simply use strataNoise, all layers swell together. That
-    // prevents layers from pinching out one another, which is safe. Let's just
-    // use it directly.
     float noise = (strataNoise + 1.0f) * 0.5f;
 
-    // Add simple variation per layer to avoid "copy-paste" look?
-    // float layerVar = (float)((i * 37) % 10) / 10.0f;
-    // noise = std::fmod(noise + layerVar, 1.0f); // Wrap around? No, jagged
-    // discontinuities.
-
-    // Simple: ALL layers follow the main warp.
     int thickness =
         layer.baseThickness + (int)(noise * layer.thicknessVariation);
 
-    if (currentDepth >= depthAccumulator &&
-        currentDepth < depthAccumulator + thickness) {
+    if (distortedDepth >= depthAccumulator &&
+        distortedDepth < depthAccumulator + thickness) {
       return layer.block;
     }
     depthAccumulator += thickness;
@@ -91,109 +121,215 @@ BlockType RockStrataRegistry::GetStrataBlock(int x, int y, int z, int surfaceY,
     int thickness =
         layer.baseThickness + (int)(noise * layer.thicknessVariation);
 
-    if (currentDepth >= depthAccumulator &&
-        currentDepth < depthAccumulator + thickness) {
+    if (distortedDepth >= depthAccumulator &&
+        distortedDepth < depthAccumulator + thickness) {
       return layer.block;
     }
     depthAccumulator += thickness;
   }
 
-  // 3. Igneous (Bottom/Base)
-  // Everything below is igneous
-  return prov->igneousBlock;
+  // 3. Igneous / Volcanic (Bottom up? Check deeper?)
+  // If we fell through here, we are *below* the sedimentary/metamorphic stack.
+  // The "distortedDepth" is how far we are *below the surface*.
+  // Sed/Meta stack has a total thickness.
+
+  // Total thickness of top layers
+  int topStackThickness = depthAccumulator;
+
+  // We are at depth "distortedDepth".
+  // relative depth in igneous = distortedDepth - topStackThickness.
+  int igneousDepth = distortedDepth - topStackThickness;
+
+  if (igneousDepth < 0)
+    return BlockType::STONE; // Should not trigger if logic above is correct
+
+  // Traverse Igneous layers (Top Down relative to start of Igneous?)
+  // rockstrata.json says "BottomUp" for some, "TopDown" for others.
+  // Converting "BottomUp" to layer logic means: Thickness 100 means it occupies
+  // 0..100? Let's simplified assumption: Igneous layers stack Top-Down *from
+  // the bottom of Metamorphic*.
+
+  for (size_t i = 0; i < prov->igneous.size(); ++i) {
+    const auto &layer = prov->igneous[i];
+    float noise = (strataNoise + 1.0f) * 0.5f;
+
+    // Some igneous layers might be huge (Unitu) or small (dykes).
+    // rockstrata.json: "lithos:basalt" (Igneous) amp=[10,5...] -> thickness
+    // ~17. "lithos:granite" amp=[2.9...] -> thickness ~5. Wait, Granite is
+    // usually the *Base*. It should ideally be Infinite. If rockstrata.json
+    // gives it finite thickness, what's below? Maybe the last layer should be
+    // infinite? Or we loop?
+
+    int thickness =
+        layer.baseThickness + (int)(noise * layer.thicknessVariation);
+
+    if (igneousDepth < thickness) {
+      return layer.block;
+    }
+    igneousDepth -= thickness;
+  }
+
+  // Fallback to the LAST igneous layer if we go deeper?
+  // Or just STONE.
+  if (!prov->igneous.empty()) {
+    return prov->igneous.back().block;
+  }
+
+  return BlockType::STONE;
+}
+
+// Global Palette Storage (Private to this TU or member if moved to header, but
+// static here is easier for now) Actually, these should probably be members of
+// Registry to allow clearing/reloading properly. But since LoadStrataLayers and
+// LoadProvinces are separate, we need state persistence. Let's add them as
+// static members of the methods or file-scoped.
+static std::vector<StrataLayer> g_Sedimentary;
+static std::vector<StrataLayer> g_Metamorphic;
+static std::vector<StrataLayer> g_Igneous;
+static std::vector<StrataLayer> g_Volcanic;
+
+void RockStrataRegistry::LoadStrataLayers(const std::string &path) {
+  std::ifstream file(path);
+  if (!file.is_open()) {
+    LOG_ERROR("Failed to open rockstrata JSON: {}", path);
+    return;
+  }
+
+  nlohmann::json root;
+  try {
+    root = nlohmann::json::parse(file, nullptr, true, true);
+  } catch (const std::exception &e) {
+    LOG_ERROR("JSON Parse Error (RockStrata): {}", e.what());
+    return;
+  }
+
+  g_Sedimentary.clear();
+  g_Metamorphic.clear();
+  g_Igneous.clear();
+  g_Volcanic.clear();
+
+  if (root.contains("variants")) {
+    for (const auto &j : root["variants"]) {
+      std::string code;
+      if (j.contains("blockcode"))
+        code = j["blockcode"];
+      else
+        continue;
+
+      Block *block = BlockRegistry::getInstance().getBlock(code);
+      if (block->getId() == BlockType::AIR && code != "lithos:air") {
+        // Warning log?
+        continue;
+      }
+
+      StrataLayer layer;
+      layer.block = (BlockType)block->getId();
+
+      // Calc Thickness
+      float sumAmp = 0.0f;
+      if (j.contains("amplitudes")) {
+        for (float a : j["amplitudes"])
+          sumAmp += a;
+      }
+      layer.baseThickness = (int)sumAmp;
+      if (layer.baseThickness < 2)
+        layer.baseThickness = 2;
+      layer.thicknessVariation = (int)(sumAmp * 0.5f);
+      if (layer.thicknessVariation < 1)
+        layer.thicknessVariation = 1;
+
+      // Group
+      std::string group = j.value("rockGroup", "Sedimentary");
+
+      if (group == "Sedimentary")
+        g_Sedimentary.push_back(layer);
+      else if (group == "Metamorphic")
+        g_Metamorphic.push_back(layer);
+      else if (group == "Igneous")
+        g_Igneous.push_back(layer);
+      else if (group == "Volcanic")
+        g_Volcanic.push_back(layer);
+    }
+  }
+  LOG_INFO("Loaded Global Strata Layers: Sed={} Meta={} Ign={} Volc={}",
+           g_Sedimentary.size(), g_Metamorphic.size(), g_Igneous.size(),
+           g_Volcanic.size());
+}
+
+void RockStrataRegistry::LoadProvinces(const std::string &path) {
+  std::ifstream file(path);
+  if (!file.is_open()) {
+    LOG_ERROR("Failed to open provinces JSON: {}", path);
+    return;
+  }
+
+  nlohmann::json root;
+  try {
+    root = nlohmann::json::parse(file, nullptr, true, true);
+  } catch (const std::exception &e) {
+    LOG_ERROR("JSON Parse Error (Provinces): {}", e.what());
+    return;
+  }
+
+  provinces.clear();
+
+  if (root.contains("variants")) {
+    for (const auto &j : root["variants"]) {
+      GeologicProvince p;
+      if (j.contains("code"))
+        p.name = j["code"];
+
+      // Check constraints
+      bool allowSed = true;
+      bool allowMeta = true;
+      bool allowIgn = true; // Always true?
+      bool allowVolc = true;
+
+      if (j.contains("rockstrata")) {
+        const auto &rs = j["rockstrata"];
+        if (rs.contains("Sedimentary") &&
+            rs["Sedimentary"].value("maxThickness", 100) == 0)
+          allowSed = false;
+        if (rs.contains("Metamorphic") &&
+            rs["Metamorphic"].value("maxThickness", 100) == 0)
+          allowMeta = false;
+        if (rs.contains("Igneous") &&
+            rs["Igneous"].value("maxThickness", 255) == 0)
+          allowIgn = false;
+        if (rs.contains("Volcanic") &&
+            rs["Volcanic"].value("maxThickness", 100) == 0)
+          allowVolc = false;
+        // If Volcanic entry missing, assume false? VS config usually explicit.
+        // geologicprovinces.json has "Volcanic" in some, "Igneous" in all.
+        if (!rs.contains("Volcanic"))
+          allowVolc = false;
+      }
+
+      if (allowSed)
+        p.sedimentary = g_Sedimentary;
+      if (allowMeta)
+        p.metamorphic = g_Metamorphic;
+      if (allowIgn)
+        p.igneous = g_Igneous;
+      // Also append Volcanic to Igneous? Or Separate?
+      // Let's create a separate volcanic vector in struct or append to igneous?
+      // If I append to igneous, they mix.
+      // rockstrata.json says Volcanic is "BottomUp" or "TopDown"?
+      // "lithos:kimberlite" (Volcanic) is "BottomUp".
+      // "lithos:basalt" (Volcanic) is "TopDown".
+      // "lithos:basalt" (Igneous) is "BottomUp".
+      // Complex. For now, let's treat Volcanic as "Special Igneous" and add to
+      // igneous list.
+      if (allowVolc) {
+        p.igneous.insert(p.igneous.end(), g_Volcanic.begin(), g_Volcanic.end());
+      }
+
+      Register(p);
+    }
+  }
+  LOG_INFO("Loaded {} Geologic Provinces.", provinces.size());
 }
 
 RockStrataRegistry::RockStrataRegistry() {
-  // 1. Cratons / Shields (Ancient, Stable, Igneous/Metamorphic Surface)
-  {
-    GeologicProvince p;
-    p.name = "Craton Shield";
-    // Exposed basement
-    p.sedimentary = {}; // Very little to no sedimentary
-    p.metamorphic = {{BlockType::GNEISS, 20, 10}, {BlockType::SLATE, 10, 5}};
-    p.igneousBlock = BlockType::GRANITE;
-    Register(p);
-  }
-
-  // 2. Platforms (Sedimentary over Craton)
-  {
-    GeologicProvince p;
-    p.name = "Platform";
-    p.sedimentary = {{BlockType::SANDSTONE, 10, 5},
-                     {BlockType::LIMESTONE, 15, 8},
-                     {BlockType::CLAYSTONE, 10, 4}};
-    p.metamorphic = {{BlockType::SHALE, 8, 3}};
-    p.igneousBlock = BlockType::GRANITE;
-    Register(p);
-  }
-
-  // 3. Orogens / Fold Belts (Mountain roots, Uplift)
-  {
-    GeologicProvince p;
-    p.name = "Orogen";
-    p.sedimentary = {{BlockType::LIMESTONE, 5, 2}};
-    // Twisted metamorphic layers
-    p.metamorphic = {{BlockType::SLATE, 20, 10},
-                     {BlockType::WHITE_MARBLE, 10, 5}, // Marble veins
-                     {BlockType::PHYLLITE, 15, 5}};
-    p.igneousBlock = BlockType::DIORITE;
-    Register(p);
-  }
-
-  // 4. Basins (Thick Sedimentary)
-  {
-    GeologicProvince p;
-    p.name = "Sedimentary Basin";
-    p.sedimentary = {{BlockType::SANDSTONE, 20, 10},
-                     {BlockType::SHALE, 15, 5},
-                     {BlockType::COAL_ORE, 2, 1}, // Seams
-                     {BlockType::LIMESTONE, 20, 10}};
-    p.metamorphic = {{BlockType::SLATE, 5, 2}};
-    p.igneousBlock = BlockType::ANDESITE;
-    Register(p);
-  }
-
-  // 5. Large Igneous Provinces (LIPs) - Flood Basalts
-  {
-    GeologicProvince p;
-    p.name = "Flood Basalt (LIP)";
-    p.sedimentary = {{BlockType::BASALT, 15, 5}, // Layers of flow
-                     {BlockType::SCORIA, 5, 2}};
-    p.metamorphic = {};
-    p.igneousBlock = BlockType::BASALT;
-    Register(p);
-  }
-
-  // 6. Extended Regions (Faulted)
-  {
-    GeologicProvince p;
-    p.name = "Extended Crust";
-    p.sedimentary = {{BlockType::CONGLOMERATE, 10, 5},
-                     {BlockType::SANDSTONE, 10, 5}};
-    p.metamorphic = {{BlockType::GNEISS, 10, 5}};
-    p.igneousBlock = BlockType::RHYOLITE;
-    Register(p);
-  }
-
-  // 7. Volcanic Arcs (Subduction zones)
-  {
-    GeologicProvince p;
-    p.name = "Volcanic Arc";
-    p.sedimentary = {{BlockType::TUFF, 10, 5}, {BlockType::ANDESITE, 10, 5}};
-    p.metamorphic = {{BlockType::SLATE, 5, 2}};
-    p.igneousBlock = BlockType::ANDESITE;
-    Register(p);
-  }
-
-  // 8. Metallogenic Province (Ore rich)
-  {
-    GeologicProvince p;
-    p.name = "Metallogenic";
-    p.sedimentary = {{BlockType::LIMESTONE, 10, 5}};
-    p.metamorphic = {{BlockType::PHYLLITE, 10, 5},
-                     {BlockType::IRON_ORE, 2, 1}, // Richer ores
-                     {BlockType::GOLD_ORE, 1, 0}};
-    p.igneousBlock = BlockType::GRANITE;
-    Register(p);
-  }
+  // Empty constructor - no hardcoded values
 }

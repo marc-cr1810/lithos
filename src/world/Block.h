@@ -345,6 +345,7 @@ public:
 
   void registerBlock(Block *block);
   Block *getBlock(uint8_t id);
+  Block *getBlock(const std::string &resourceId);
 
   // New: resolve all blocks
   void resolveUVs(const TextureAtlas &atlas) {

@@ -397,6 +397,15 @@ Block *BlockRegistry::getBlock(uint8_t id) {
   return defaultBlock;
 }
 
+Block *BlockRegistry::getBlock(const std::string &resourceId) {
+  for (const auto &pair : blocks) {
+    if (pair.second->getResourceId() == resourceId) {
+      return pair.second;
+    }
+  }
+  return defaultBlock;
+}
+
 BlockRegistry::~BlockRegistry() {
   // Cleanup
 }

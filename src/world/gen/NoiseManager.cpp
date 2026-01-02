@@ -25,7 +25,7 @@ void NoiseManager::Initialize() {
 
   auto warpFractal = FastNoise::New<FastNoise::FractalFBm>();
   warpFractal->SetSource(warpSource);
-  warpFractal->SetOctaveCount(3);
+  warpFractal->SetOctaveCount(2); // VS uses 2 octaves for "Wobble"
   warpFractal->SetGain(0.5f);
   warpFractal->SetLacunarity(2.0f);
 
@@ -175,34 +175,41 @@ float NoiseManager::GetUpheaval(int x, int z) const {
 
 // Helper for warp
 // Matches GenLandformComposite
-void NoiseManager::GetWarpedCoord(float x, float z, float &wx,
-                                  float &wz) const {
-  float X = x * config.landformScale;
-  float Z = z * config.landformScale;
+void NoiseManager::GetWarpedCoord(float x, float z, float &wx, float &wz,
+                                  float scale) const {
+  // Use a common warp frequency relative to the scale
+  float warpFreq = 0.5f;
+  float nx =
+      warpXNode->GenSingle2D(x * scale * warpFreq, z * scale * warpFreq, seed);
+  float nz = warpYNode->GenSingle2D(x * scale * warpFreq, z * scale * warpFreq,
+                                    seed + 1337);
 
-  float nx = warpXNode->GenSingle2D(X, Z, seed);
-  float nz = warpYNode->GenSingle2D(X, Z, seed + 1337);
+  float amp = 1.5f / scale; // Shift up to 1.5 "cells"
+  wx = (x + nx * (1.5f / scale)) * scale;
+  wz = (z + nz * (1.5f / scale)) * scale;
 
-  float amp = 1.5f;
-  wx = X + nx * amp;
-  wz = Z + nz * amp;
+  // Actually, let's keep it simpler to match VS logic:
+  // Warp the COORDINATE then scale it.
+  float warpIntensity = 1.5f; // cell widths
+  wx = (x + nx * warpIntensity / scale) * scale;
+  wz = (z + nz * warpIntensity / scale) * scale;
 }
 
 float NoiseManager::GetLandformNoise(int x, int z) const {
   float wx, wz;
-  GetWarpedCoord((float)x, (float)z, wx, wz);
+  GetWarpedCoord((float)x, (float)z, wx, wz, config.landformScale);
   return landformNode->GenSingle2D(wx, wz, seed);
 }
 
 float NoiseManager::GetLandformEdgeNoise(int x, int z) const {
   float wx, wz;
-  GetWarpedCoord((float)x, (float)z, wx, wz);
+  GetWarpedCoord((float)x, (float)z, wx, wz, config.landformScale);
   return landformEdgeNode->GenSingle2D(wx, wz, seed);
 }
 
 float NoiseManager::GetLandformNeighborNoise(int x, int z) const {
   float wx, wz;
-  GetWarpedCoord((float)x, (float)z, wx, wz);
+  GetWarpedCoord((float)x, (float)z, wx, wz, config.landformScale);
   return landformNodeNeighbor->GenSingle2D(wx, wz, seed);
 }
 
@@ -213,15 +220,35 @@ float NoiseManager::GetGeologicNoise(int x, int z) const {
 }
 
 float NoiseManager::GetTemperature(int x, int z) const {
-  float val = tempNode->GenSingle2D((float)x * config.climateScale,
-                                    (float)z * config.climateScale, seed + 1);
+  float wx, wz;
+  GetWarpedCoord((float)x, (float)z, wx, wz, config.climateScale);
+  float val = tempNode->GenSingle2D(wx, wz, seed + 1);
   // Map [-1, 1] to [-30, 60] (typical biome ranges)
   return (val + 1.0f) * 0.5f * 90.0f - 30.0f;
 }
 
 float NoiseManager::GetHumidity(int x, int z) const {
-  return humidNode->GenSingle2D((float)x * config.climateScale,
-                                (float)z * config.climateScale, seed + 2);
+  float wx, wz;
+  GetWarpedCoord((float)x, (float)z, wx, wz, config.climateScale);
+  return humidNode->GenSingle2D(wx, wz, seed + 2);
+}
+
+float NoiseManager::GetTerrainDetail(int x, int z) const {
+  return terrainDetailNode->GenSingle2D((float)x * config.terrainDetailScale,
+                                        (float)z * config.terrainDetailScale,
+                                        seed);
+}
+
+// Samples a specific terrain octave with default frequency scaling
+float NoiseManager::GetTerrainOctave(float x, float z, int octave) const {
+  // Base frequency similar to VS (Wavelength ~2000 blocks for octave 0)
+  float baseFreq = 0.0005f;
+  float freq = baseFreq * std::pow(2.0f, (float)octave);
+  // Use landformNode as a base simplex source (it's CellularValue(0), wait...)
+  // Actually, I should use a Simplex node.
+  // I'll use warpXNode (Simplex) or create a dedicated one in init.
+  // For now, let's use warpXNode->GenSingle2D which is simplex.
+  return warpXNode->GenSingle2D(x * freq, z * freq, seed + 100 + octave);
 }
 
 float NoiseManager::GetForestNoise(int x, int z) const {
@@ -238,21 +265,16 @@ float NoiseManager::GetBeachNoise(int x, int z) const {
   return beachNode->GenSingle2D((float)x, (float)z, seed + 5);
 }
 
-// New: Terrain Detail for driving height splines
-float NoiseManager::GetTerrainDetail(int x, int z) const {
-  return terrainDetailNode->GenSingle2D((float)x, (float)z, seed + 10);
-}
-
 float NoiseManager::GetLandformNeighbor3Noise(int x, int z) const {
   float wx, wz;
-  GetWarpedCoord((float)x, (float)z, wx, wz);
+  GetWarpedCoord((float)x, (float)z, wx, wz, config.landformScale);
   return landformNodeNeighbor3->GenSingle2D(wx, wz, seed);
 }
 
 void NoiseManager::GetLandformDistances(int x, int z, float &f1, float &f2,
                                         float &f3) const {
   float wx, wz;
-  GetWarpedCoord((float)x, (float)z, wx, wz);
+  GetWarpedCoord((float)x, (float)z, wx, wz, config.landformScale);
   f1 = landformF1Node->GenSingle2D(wx, wz, seed);
   f2 = landformF2Node->GenSingle2D(wx, wz, seed);
   f3 = landformF3Node->GenSingle2D(wx, wz, seed);
@@ -429,27 +451,28 @@ void NoiseManager::GetPreview(NoiseType type, float *output, int width,
     break;
   case NoiseType::LandformEdge:
     GenLandformComposite(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                         output, centerX, centerZ, width, height);
+                         tempData.data(), centerX, centerZ, width, height);
     break;
   case NoiseType::Geologic:
-    GenGeologic(output, centerX, centerZ, width, height);
+    GenGeologic(tempData.data(), centerX, centerZ, width, height);
     break;
   case NoiseType::Temperature:
     // Only temp needed
-    tempNode->GenUniformGrid2D(output, centerX, centerZ, width, height,
+    tempNode->GenUniformGrid2D(tempData.data(), centerX, centerZ, width, height,
                                config.climateScale, seed + 1);
     for (int i = 0; i < width * height; ++i) {
-      output[i] = (output[i] + 1.0f) * 0.5f * 90.0f - 30.0f;
+      tempData[i] = (tempData[i] + 1.0f) * 0.5f * 90.0f - 30.0f;
     }
+    // Copy to output handled at end
     break;
   case NoiseType::Humidity:
     // Only humid needed
-    humidNode->GenUniformGrid2D(output, centerX, centerZ, width, height,
-                                config.climateScale, seed + 2);
+    humidNode->GenUniformGrid2D(tempData.data(), centerX, centerZ, width,
+                                height, config.climateScale, seed + 2);
     break;
   case NoiseType::LandformNeighbor:
-    GenLandformComposite(nullptr, output, nullptr, nullptr, nullptr, nullptr,
-                         nullptr, centerX, centerZ, width, height);
+    GenLandformComposite(nullptr, tempData.data(), nullptr, nullptr, nullptr,
+                         nullptr, nullptr, centerX, centerZ, width, height);
     break;
   case NoiseType::TerrainDetail:
     GenTerrainDetail(tempData.data(), startX, startZ, width, height);
@@ -491,4 +514,26 @@ void NoiseManager::GetPreview(NoiseType type, float *output, int width,
       }
     }
   }
+}
+
+// 3D Terrain Noise
+float NoiseManager::GetTerrainNoise3D(int x, int y, int z) const {
+  // Use terrainDetailNode but as 3D source?
+  // FastNoise2 nodes are often dimension-agnostic, but let's verify if
+  // terrainDetailNode (FractalFBm) supports 3D input.
+  // Standard Simplex/Fractal does.
+  // We use the same 'terrainDetailNode' which is FractalFBm -> Simplex.
+  // We scale coordinates by detailScale.
+  return terrainDetailNode->GenSingle3D((float)x * config.terrainDetailScale,
+                                        (float)y * config.terrainDetailScale,
+                                        (float)z * config.terrainDetailScale,
+                                        seed + 10);
+}
+
+void NoiseManager::GenTerrainNoise3D(float *output, int startX, int startY,
+                                     int startZ, int width, int height,
+                                     int depth) const {
+  terrainDetailNode->GenUniformGrid3D(output, startX, startY, startZ, width,
+                                      height, depth, config.terrainDetailScale,
+                                      seed + 10);
 }

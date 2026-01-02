@@ -11,8 +11,9 @@
 #include "imgui.h"
 
 #include "../world/Block.h"
+#include "../world/gen/Landform.h"
+#include "../world/gen/RockStrata.h"
 #include <iostream>
-
 
 void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
   auto app = reinterpret_cast<Application *>(glfwGetWindowUserPointer(window));
@@ -84,6 +85,14 @@ void Application::Init() {
     BlockRegistry::getInstance().resolveUVs(*atlas);
   }
 
+  // Load WorldGen Data Assets (Single Global Load)
+  LOG_INFO("Loading WorldGen Assets...");
+  LandformRegistry::Get().LoadFromJson("assets/worldgen/landforms.json");
+  RockStrataRegistry::Get().LoadStrataLayers("assets/worldgen/rockstrata.json");
+  RockStrataRegistry::Get().LoadProvinces(
+      "assets/worldgen/geologicprovinces.json");
+  LOG_INFO("WorldGen Assets Loaded.");
+
   // Apply Config
   m_Camera.Zoom = m_Config.fov;
 }
@@ -113,6 +122,7 @@ void Application::Run() {
 
   while (!glfwWindowShouldClose(m_Window) && m_Running) {
     PROFILE_SCOPE("Main Loop");
+    // std::cout << "Loop Frame" << std::endl;
     float currentFrame = static_cast<float>(glfwGetTime());
     float deltaTime = currentFrame - lastFrame;
     lastFrame = currentFrame;

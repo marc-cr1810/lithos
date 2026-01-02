@@ -16,7 +16,8 @@ struct WorldGenConfig {
   int seed = 0;
   float globalScale = 1.0f;
   float terrainScale = 0.0025f;
-  int seaLevel = 60;
+  int seaLevel =
+      100; // Overwritten by WorldGenerator based on worldHeight (~43%)
   int surfaceDepth = 4;
   int worldHeight = 320; // World height in blocks (must be multiple of 32)
   bool fixedWorld = false;
@@ -26,7 +27,7 @@ struct WorldGenConfig {
   float tempScale = 0.003f;     // Balanced for moderate biome regions
   float humidityScale = 0.003f; // Balanced for moderate biome regions
   float landformScale =
-      0.0005f; // Decreased for larger, more consistent landforms
+      0.002f; // Increased for smaller, more varied landform cells (~500 blocks)
   float climateScale = 0.0001f;
   float geologicScale = 0.001f;
   float biomeVariation = 0.25f; // Adds noise to break up smooth biome blobs

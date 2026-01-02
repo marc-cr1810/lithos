@@ -1,14 +1,14 @@
 #include <argparse/argparse.hpp>
+#include <ctime>
 #include <iostream>
 #include <random>
-
 
 #include "core/Application.h"
 #include "debug/CrashHandler.h"
 #include "debug/Logger.h"
 
-
 int main(int argc, char *argv[]) {
+  srand((unsigned int)time(NULL));
   // Argument Parsing
   argparse::ArgumentParser program("Lithos");
 

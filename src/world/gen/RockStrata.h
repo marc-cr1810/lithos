@@ -15,9 +15,8 @@ struct GeologicProvince {
   // Layers ordered from Top to Bottom
   std::vector<StrataLayer> sedimentary;
   std::vector<StrataLayer> metamorphic;
-
-  // Base igneous rock (fills from bottom up to the other layers)
-  BlockType igneousBlock = BlockType::STONE; // Default granite/stone
+  std::vector<StrataLayer> igneous;  // Multiple igneous layers supported
+  std::vector<StrataLayer> volcanic; // Volcanic layers
 };
 
 class RockStrataRegistry {
@@ -26,13 +25,14 @@ public:
 
   void Register(const GeologicProvince &province);
 
+  void LoadStrataLayers(const std::string &path);
+  void LoadProvinces(const std::string &path);
+
   // Returns the primary rock type for a given coordinate
-  // y: current height
-  // surfaceY: height of the terrain surface
-  // provinceNoise: -1 to 1 value selecting the province
-  // seed: for thickness variation noise
+  // distortion: vertical warp/upheaval to bend layers
   BlockType GetStrataBlock(int x, int y, int z, int surfaceY,
-                           float provinceNoise, float strataNoise, int seed);
+                           float provinceNoise, float strataNoise,
+                           float distortion, int seed);
 
 private:
   RockStrataRegistry();

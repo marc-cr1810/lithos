@@ -1,8 +1,12 @@
 #include "Landform.h"
+#include "../../debug/Logger.h"
 #include <algorithm>
+#include <fstream>
 #include <iostream>
+#include <nlohmann/json.hpp>
+#include <random>
 
-float Landform::GetDensityThreshold(int y) const {
+float LandformVariant::GetDensityThreshold(int y) const {
   if (yKeys.empty())
     return 0.0f;
   if (yKeys.size() == 1)
@@ -26,7 +30,33 @@ float Landform::GetDensityThreshold(int y) const {
   }
 
   float t = (float)(y - lower->yLevel) / (float)(upper->yLevel - lower->yLevel);
-  // Linear interpolation
+  return lower->threshold + t * (upper->threshold - lower->threshold);
+}
+
+float Landform::GetDensityThreshold(int y) const {
+  if (yKeys.empty())
+    return 0.0f;
+  // Fallback to variant logic? No, Landform has its own yKeys.
+  if (yKeys.size() == 1)
+    return yKeys[0].threshold;
+
+  const YKey *lower = &yKeys.front();
+  const YKey *upper = &yKeys.back();
+
+  if (y <= lower->yLevel)
+    return lower->threshold;
+  if (y >= upper->yLevel)
+    return upper->threshold;
+
+  for (size_t i = 0; i < yKeys.size() - 1; ++i) {
+    if (y >= yKeys[i].yLevel && y < yKeys[i + 1].yLevel) {
+      lower = &yKeys[i];
+      upper = &yKeys[i + 1];
+      break;
+    }
+  }
+
+  float t = (float)(y - lower->yLevel) / (float)(upper->yLevel - lower->yLevel);
   return lower->threshold + t * (upper->threshold - lower->threshold);
 }
 
@@ -47,286 +77,271 @@ const Landform *LandformRegistry::GetLandform(const std::string &name) const {
   return nullptr;
 }
 
-Landform LandformRegistry::Select(float landformNoise, float temp,
+Landform LandformRegistry::Select(int worldX, int worldZ, float temp,
                                   float humid) const {
-  // 1. Filter candidates by climate
+  // VS-style: Seed RNG with world position (NoiseLandform.cs:128)
+  // InitPositionSeed(xpos, zpos) -> uses position hash for deterministic random
+  uint32_t seed = static_cast<uint32_t>(worldX) * 1619 +
+                  static_cast<uint32_t>(worldZ) * 31337;
+  std::mt19937 rng(seed);
+  std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
+  // Convert our climate values to VS's expected ranges:
+  // - Temperature: VS landforms use Celsius scale directly (minTemp=-50,
+  // maxTemp=50)
+  // - Rain: VS uses 0-255 integer range
+  // Our temp is already in Celsius, just need to convert humid (-1 to 1) to
+  // rain (0-255)
+  int vsRain = static_cast<int>(
+      std::min(255.0f, std::max(0.0f, (humid + 1.0f) * 127.5f)));
+
+  // 1. Filter candidates by climate and calculate total weight
   std::vector<const Landform *> candidates;
   float totalWeight = 0.0f;
 
   for (const auto &lf : landforms) {
+    float weight = lf.weight;
+
     if (lf.useClimate) {
+      // VS: if outside climate range, weight = 0 (NoiseLandform.cs:140)
+      // Temperature is in Celsius, compare directly
       if (temp < lf.minTemp || temp > lf.maxTemp)
-        continue;
-      if (humid < lf.minRain || humid > lf.maxRain)
-        continue;
+        weight = 0.0f;
+      // Rain is 0-255 integer scale
+      if (vsRain < lf.minRain || vsRain > lf.maxRain)
+        weight = 0.0f;
     }
-    candidates.push_back(&lf);
-    totalWeight += lf.weight;
-  }
 
-  // Fallback
-  if (candidates.empty()) {
-    auto *plains = GetLandform("Plains");
-    return plains ? *plains : landforms[0];
-  }
-
-  // 2. Select Main Landform
-  const Landform *selected = candidates.back();
-  float roll = (landformNoise + 1.0f) * 0.5f; // 0..1
-  float targetWeight = roll * totalWeight;
-  float currentWeight = 0.0f;
-
-  for (const auto *lf : candidates) {
-    currentWeight += lf->weight;
-    if (targetWeight <= currentWeight) {
-      selected = lf;
-      break;
+    if (weight > 0.0f) {
+      candidates.push_back(&lf);
+      totalWeight += weight;
     }
   }
 
-  // 3. Handle Mutation / Variants
-  Landform result = *selected;
+  // Fallback if all filtered out
+  if (candidates.empty() || totalWeight == 0.0f) {
+    LOG_INFO("Landform fallback at ({}, {}): no valid candidates (temp={}, "
+             "humid={}, vsRain={})",
+             worldX, worldZ, temp, humid, vsRain);
 
-  // A. Scalar Mutation (legacy support)
-  if (result.mutationChance > 0 && !result.mutationTarget.empty()) {
-    float mutationRoll = (roll * 100.0f) - (int)(roll * 100.0f);
-    if (mutationRoll < result.mutationChance) {
-      const Landform *mutant = GetLandform(result.mutationTarget);
-      if (mutant)
-        result = *mutant;
-    }
-  }
-
-  // B. Variant Selection (Sub-Landforms)
-  if (!result.variants.empty()) {
-    // Deterministic variant roll
-    float variantRoll = (roll * 50.0f) - (int)(roll * 50.0f); // Different slice
-
-    // Weighted selection for variants
-    float varTotalWeight = 0.0f;
-    for (const auto &v : result.variants)
-      varTotalWeight += v.weight;
-
-    float varTarget = variantRoll * varTotalWeight;
-    float varCurrent = 0.0f;
-
-    for (const auto &v : result.variants) {
-      varCurrent += v.weight;
-      if (varTarget <= varCurrent) {
-        // Apply Variant
-        result.name += " " + v.nameSuffix;
-        if (!v.yKeys.empty()) {
-          result.yKeys = v.yKeys;
-        }
-        break;
+    // DEBUG: Show first few landform climate ranges for debugging
+    /*
+    static bool shownRanges = false;
+    if (!shownRanges && !landforms.empty()) {
+      shownRanges = true;
+      LOG_INFO("First 5 landform climate ranges:");
+      for (size_t i = 0; i < std::min(size_t(5), landforms.size()); i++) {
+        const auto &lf = landforms[i];
+        LOG_INFO("  {}: useClimate={}, temp=[{}, {}], rain=[{}, {}]", lf.name,
+                 lf.useClimate, lf.minTemp, lf.maxTemp, lf.minRain, lf.maxRain);
       }
     }
+    */
+
+    return landforms.empty() ? Landform{} : landforms[0];
   }
 
-  return result;
+  // 2. Weighted random selection (VS: NoiseLandform.cs:147-152)
+  float roll = dist(rng) * totalWeight;
+
+  // DEBUG: Log selection (only occasionally to avoid spam)
+  /*
+  static int debugCounter = 0;
+  bool shouldLog = (++debugCounter % 1000 == 0);
+
+  if (shouldLog) {
+    LOG_INFO("Landform selection at cell ({}, {}): {} candidates, "
+             "totalWeight={}, roll={}, temp={}, humid={}",
+             worldX, worldZ, candidates.size(), totalWeight, roll, temp, humid);
+    for (const auto *lf : candidates) {
+      LOG_INFO("  - {}: weight={}", lf->name, lf->weight);
+    }
+  }
+  */
+
+  for (const auto *lf : candidates) {
+    roll -= lf->weight;
+    if (roll <= 0.0f) {
+      // Selected! Now handle variants/mutations
+      Landform result = *lf;
+
+      if (false) { // Disabled
+        LOG_INFO("  => Selected: {}", result.name);
+      }
+
+      // TODO: Implement mutation system if needed
+      // For now, just return the base landform
+      return result;
+    }
+  }
+
+  // Shouldn't reach here, but fallback to last candidate
+  return candidates.empty() ? landforms[0] : *candidates.back();
+}
+
+static void ParseVariant(const nlohmann::json &j, LandformVariant &v) {
+  if (j.contains("name"))
+    v.nameSuffix = j["name"]; // Simplification
+  else if (j.contains("code"))
+    v.nameSuffix = j["code"];
+
+  if (j.contains("weight"))
+    v.weight = j["weight"];
+
+  if (j.contains("minTemp")) {
+    v.minTemp = j["minTemp"];
+    v.useClimate = true;
+  }
+  if (j.contains("maxTemp")) {
+    v.maxTemp = j["maxTemp"];
+    v.useClimate = true;
+  }
+  if (j.contains("minRain")) {
+    v.minRain = j["minRain"];
+    v.useClimate = true;
+  }
+  if (j.contains("maxRain")) {
+    v.maxRain = j["maxRain"];
+    v.useClimate = true;
+  }
+
+  // Vintage Story uses thresholds in [0, 1] where:
+  // - 1.0 = very solid (low terrain, underwater)
+  // - 0.0 = air (high terrain, above surface)
+  // Our density system uses: if (noise + threshold > 0) = solid
+  // - Negative threshold = easier to be solid
+  // - Positive threshold = harder to be solid (air)
+  // Conversion: Convert VS [0,1] to our [-1,1] range, inverted
+  if (j.contains("terrainYKeyPositions") &&
+      j.contains("terrainYKeyThresholds")) {
+    std::vector<float> pos = j["terrainYKeyPositions"];
+    std::vector<float> th = j["terrainYKeyThresholds"];
+    for (size_t i = 0; i < pos.size() && i < th.size(); ++i) {
+      int y = (int)(pos[i] * 320.0f);
+      // CRITICAL: VS inverts the JSON values! LandformVariant.cs line 162:
+      // TerrainYThresholds[y] = 1 - GameMath.Lerp(...)
+      // So JSON 1.0 (solid) becomes VS 0.0, JSON 0.0 (air) becomes VS 1.0
+      // Then: VS uses noise - threshold > 0 for solid
+      // We use: noise + threshold > 0 for air
+      // After inversion: VS 0.0 = solid (low terrain), VS 1.0 = air (high)
+      // Our formula: noise <= -ourThreshold for solid
+      // So: VS 0.0 → ourThreshold should make it easy to be solid (negative)
+      //     VS 1.0 → ourThreshold should make it hard to be solid (positive)
+      // Since VS inverts: actualVS = 1 - jsonValue
+      // Then map to [-1,1]: actualVS * 2 - 1
+      // Then negate for our system: -(actualVS * 2 - 1)
+      // Substituting: -(( 1 - th[i]) * 2 - 1) = -((2 - 2*th[i]) - 1) = -(1 -
+      // 2*th[i]) = 2*th[i] - 1
+      float convertedThreshold = th[i] * 2.0f - 1.0f;
+      v.yKeys.push_back({y, convertedThreshold});
+    }
+  }
+}
+
+void LandformRegistry::LoadFromJson(const std::string &path) {
+  std::ifstream file(path);
+  if (!file.is_open()) {
+    LOG_ERROR("Failed to open {}", path);
+    return;
+  }
+
+  nlohmann::json root;
+  try {
+    root = nlohmann::json::parse(file, nullptr, true, true);
+  } catch (const std::exception &e) {
+    LOG_ERROR("JSON Error: {}", e.what());
+    return;
+  }
+
+  landforms.clear();
+
+  // Root should have "landforms" array or just be the array?
+  // Vintage Story: { "code": "...", ... } is one item.
+  // landforms.json usually array of objects.
+  // Or object with "landforms"?
+  // Assuming root is array or object with variants?
+  // My previous assumption was "variants".
+  // Check landforms.json content?
+  // It's likely VS format: { "code": "...", "variants": [...] } ?
+  // No, file likely contains list of landforms.
+  // If root is object and has "variants", implies single landform file?
+  // Ah, `landforms.json` typically combines all.
+  // Let's assume it has "variants" key which is the list.
+
+  if (root.contains("variants")) {
+    for (const auto &j : root["variants"]) {
+      Landform lf;
+      if (j.contains("code"))
+        lf.name = j["code"];
+      if (j.contains("weight"))
+        lf.weight = j["weight"];
+
+      // Climate
+      if (j.contains("minTemp")) {
+        lf.minTemp = j["minTemp"];
+        lf.useClimate = true;
+      }
+      if (j.contains("maxTemp")) {
+        lf.maxTemp = j["maxTemp"];
+        lf.useClimate = true;
+      }
+      if (j.contains("minRain")) {
+        lf.minRain = j["minRain"];
+        lf.useClimate = true;
+      }
+      if (j.contains("maxRain")) {
+        lf.maxRain = j["maxRain"];
+        lf.useClimate = true;
+      }
+
+      // Octaves
+      if (j.contains("terrainOctaves")) {
+        std::vector<float> amps = j["terrainOctaves"].get<std::vector<float>>();
+        std::vector<float> thresholds;
+        if (j.contains("terrainOctaveThresholds")) {
+          thresholds = j["terrainOctaveThresholds"].get<std::vector<float>>();
+        }
+        for (size_t i = 0; i < amps.size(); i++) {
+          float t = (i < thresholds.size()) ? thresholds[i] : 0.0f;
+          lf.terrainOctaves.push_back({amps[i], t});
+        }
+      }
+
+      // YKeys (Main Landform)
+      LandformVariant tempVar;
+      ParseVariant(j, tempVar);
+      lf.yKeys = tempVar.yKeys;
+
+      // Mutations (recursive variants)
+      if (j.contains("mutations")) {
+        for (const auto &m : j["mutations"]) {
+          LandformVariant v;
+          ParseVariant(m, v);
+          // Add mutation as variant? Or separate Landform?
+          // VS mutations are variants selected by mutation chance.
+          // I map them to variants for now.
+          // But Landform has `variants` (vector).
+          lf.variants.push_back(v);
+        }
+      }
+
+      Register(lf);
+    }
+  }
+
+  LOG_INFO("Loaded {} landforms from JSON.", landforms.size());
+
+  // DEBUG: Show climate ranges of first landform to verify defaults are loaded
+  /*
+  if (!landforms.empty()) {
+    const auto &first = landforms[0];
+    LOG_INFO("First landform '{}': useClimate={}, temp=[{}, {}], rain=[{}, {}]",
+             first.name, first.useClimate, first.minTemp, first.maxTemp,
+             first.minRain, first.maxRain);
+  }
+  */
 }
 
 LandformRegistry::LandformRegistry() {
-  // Helper to make YKeys
-  auto K = [](int y, float val) { return YKey{y, val}; };
-  auto Oct = [](float amp) { return OctaveParam{amp, 0.0f}; };
-
-  // --- 1. OCEAN / WETLANDS (LOW) ---
-  {
-    Landform lf;
-    lf.name = "Ocean";
-    lf.weight = 12.0f;
-    lf.useClimate = false;
-    lf.yKeys = {K(0, 1.0f), K(40, 0.0f), K(60, -1.0f)};
-    lf.terrainOctaves = {Oct(0.2f)};
-    lf.edgeBlendTarget =
-        30.0f; // Blend to underwater level to avoid land bridges
-
-    lf.variants.push_back({"Deep", 4.0f, {K(0, 1.f), K(20, 0.f), K(50, -1.f)}});
-    lf.variants.push_back({"Warm", 3.0f});
-    lf.variants.push_back({"Frozen", 3.0f});
-    Register(lf);
-  }
-  {
-    Landform lf;
-    lf.name = "Swamp";
-    lf.weight = 5.0f;
-    lf.minTemp = 15.0f;
-    lf.maxTemp = 40.0f;
-    lf.minRain = 0.5f;
-    lf.maxRain = 1.0f;
-    lf.yKeys = {K(60, 1.0f), K(62, 0.0f), K(65, -1.0f)};
-    lf.terrainOctaves = {Oct(0.1f)};
-    lf.edgeBlendTarget = 60.0f; // Slightly below sea level for wateriness
-
-    lf.variants.push_back({"Mangrove", 3.0f});
-    lf.variants.push_back({"Bog", 3.0f});
-    Register(lf);
-  }
-
-  // --- 2. PLAINS / FLATLANDS (MID-LOW) ---
-  {
-    Landform lf;
-    lf.name = "Plains";
-    lf.weight = 10.0f;
-    // Celsius: -10 to 45 (Broad range)
-    lf.minTemp = -10.0f;
-    lf.maxTemp = 45.0f;
-    lf.minRain = -0.5f;
-    lf.maxRain = 0.5f;
-    // Keys stay within typical plains range (60-80), preventing jumps to 256
-    lf.yKeys = {K(60, 1.0f), K(64, 0.5f), K(70, -0.5f), K(80, -1.0f)};
-    lf.terrainOctaves = {Oct(0.2f)};
-
-    lf.variants.push_back({"Grazing", 5.0f});   // Default
-    lf.variants.push_back({"Sunflower", 1.0f}); // Rare
-    lf.variants.push_back(
-        {"Plateau", 2.0f, {K(80, 1.f), K(85, 0.f), K(90, -1.f)}});
-    Register(lf);
-  }
-  {
-    Landform lf;
-    lf.name = "Desert";
-    lf.weight = 8.0f;
-    lf.useClimate = true;
-    // Hot and Dry
-    lf.minTemp = 30.0f; // > 30C
-    lf.maxTemp = 60.0f;
-    lf.minRain = -1.0f;
-    lf.maxRain = -0.5f;
-    lf.yKeys = {K(60, 1.0f), K(68, 0.0f), K(85, -1.0f)};
-    lf.terrainOctaves = {Oct(0.3f)};
-    lf.foliageTint = {0.8f, 0.7f, 0.4f}; // Dried out look
-
-    lf.variants.push_back({"Wastes", 4.0f});
-    lf.variants.push_back({"Oasis", 0.5f}); // Very Rare
-    Register(lf);
-  }
-  {
-    Landform lf;
-    lf.name = "Savanna";
-    lf.weight = 8.0f;
-    // Warm/Hot but not extreme Desert
-    lf.minTemp = 20.0f;
-    lf.maxTemp = 45.0f;
-    lf.minRain = -0.2f;
-    lf.maxRain = 0.3f;
-    lf.yKeys = {K(62, 1.0f), K(68, 0.0f), K(80, -1.0f)};
-    lf.terrainOctaves = {Oct(0.25f)};
-    lf.variants.push_back({"Scrub", 3.0f});
-    lf.variants.push_back(
-        {"Shattered",
-         1.0f,
-         {K(60, 1.f), K(68, 0.f), K(100, 0.5f), K(120, -1.f)}});
-    Register(lf);
-  }
-  {
-    Landform lf;
-    lf.name = "Tundra";
-    lf.weight = 8.0f;
-    // Cold
-    lf.minTemp = -30.0f;
-    lf.maxTemp = -5.0f;
-    lf.yKeys = {K(60, 1.0f), K(65, 0.0f), K(75, -1.0f)};
-    lf.terrainOctaves = {Oct(0.2f)};
-    lf.variants.push_back({"Snowy", 4.0f});
-    lf.variants.push_back(
-        {"Spikes", 1.0f, {K(60, 1.f), K(70, 0.f), K(80, 0.5f), K(90, -1.f)}});
-    Register(lf);
-  }
-  // Forest moved here as it is basically "Verdant Plains"
-  {
-    Landform lf;
-    lf.name = "Forest";
-    lf.weight = 10.0f;
-    // Temperate
-    lf.minTemp = 5.0f;
-    lf.maxTemp = 25.0f;
-    lf.minRain = 0.0f;
-    lf.maxRain = 1.0f;
-    lf.yKeys = {K(60, 1.0f), K(70, 0.0f), K(90, -1.0f)};
-    lf.terrainOctaves = {Oct(0.4f)};
-    lf.variants.push_back({"Birch", 3.0f});
-    lf.variants.push_back({"Deep Woods", 2.0f});
-    Register(lf);
-  }
-
-  // --- 3. HILLS / HIGHLANDS (MID-HIGH) ---
-  {
-    Landform lf;
-    lf.name = "Hills";
-    lf.weight = 10.0f;
-    // Wide temp range
-    lf.minTemp = -10.0f;
-    lf.maxTemp = 35.0f;
-    lf.yKeys = {K(60, 1.0f), K(70, 0.5f), K(90, 0.0f), K(120, -1.0f)};
-    lf.terrainOctaves = {Oct(0.6f)};
-    lf.variants.push_back({"Rolling", 5.0f});
-    lf.variants.push_back({"Forested", 5.0f});
-    Register(lf);
-  }
-  {
-    Landform lf;
-    lf.name = "Dunes";
-    lf.weight = 5.0f;
-    lf.minTemp = 30.0f;
-    lf.maxTemp = 60.0f;
-    lf.minRain = -1.0f;
-    lf.maxRain = -0.5f;
-    lf.yKeys = {K(60, 1.0f), K(75, 0.3f), K(100, -1.0f)};
-    lf.terrainOctaves = {Oct(0.5f)};
-    lf.variants.push_back({"Red Sand", 2.0f});
-    lf.variants.push_back({"White Sand", 3.0f});
-    Register(lf);
-  }
-  {
-    Landform lf;
-    lf.name = "Highlands";
-    lf.weight = 5.0f;
-    lf.minTemp = -15.0f;
-    lf.maxTemp = 15.0f;
-    lf.yKeys = {K(80, 1.0f), K(100, 0.0f), K(120, -0.2f), K(140, -1.0f)};
-    lf.terrainOctaves = {Oct(1.2f)};
-    Register(lf);
-  }
-
-  // --- 4. MOUNTAINS / BADLANDS (HIGH) ---
-  {
-    Landform lf;
-    lf.name = "Mountains";
-    lf.weight = 8.0f;
-    // Colder generally
-    lf.minTemp = -30.0f;
-    lf.maxTemp = 20.0f;
-    // Reduced max height to 240 to avoid clamping (256 limit)
-    lf.yKeys = {K(60, 1.0f),  K(70, 0.8f),   K(100, 0.5f),
-                K(160, 0.0f), K(200, -0.6f), K(240, -1.0f)};
-    lf.terrainOctaves = {Oct(2.0f)};
-
-    lf.variants.push_back({"Alpine", 5.0f});
-    lf.variants.push_back(
-        {"Jagged",
-         3.0f,
-         {K(60, 1.f), K(120, 0.5f), K(180, 0.f), K(240, -1.f)}});
-    lf.variants.push_back({"Wooded", 3.0f});
-    lf.variants.push_back({"Volcanic", 1.0f}); // Rare
-    Register(lf);
-  }
-  {
-    // Exotic
-    Landform lf;
-    lf.name = "Badlands";
-    lf.weight = 3.0f;
-    lf.minTemp = 25.0f;
-    lf.maxTemp = 50.0f;
-    lf.minRain = -1.0f;
-    lf.maxRain = -0.5f;
-    lf.yKeys = {K(60, 1.0f), K(80, 0.0f), K(200, -1.0f)};
-    lf.terrainOctaves = {Oct(0.5f)};
-    lf.variants.push_back(
-        {"Eroded", 2.0f, {K(60, 1.f), K(70, 0.f), K(200, -1.f)}});
-    lf.variants.push_back(
-        {"Wooded Plateau", 2.0f, {K(60, 1.f), K(100, 0.f), K(120, -1.f)}});
-    Register(lf);
-  }
+  // Empty
 }

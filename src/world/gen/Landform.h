@@ -20,6 +20,15 @@ struct LandformVariant {
   std::string nameSuffix;
   float weight = 1.0f;
   std::vector<YKey> yKeys;
+
+  // Climate Matching for Variants
+  bool useClimate = true;
+  float minTemp = -50.0f; // VS default: -50
+  float maxTemp = 50.0f;  // VS default: 50
+  int minRain = 0;        // VS default: 0
+  int maxRain = 255;      // VS default: 255.0f;
+
+  float GetDensityThreshold(int y) const;
 };
 
 struct Landform {
@@ -32,10 +41,10 @@ struct Landform {
 
   // Climate Matching
   bool useClimate = true;
-  float minTemp = -1.0f;
-  float maxTemp = 1.0f;
-  float minRain = -1.0f; // Rainfall/Humidity
-  float maxRain = 1.0f;
+  float minTemp = -50.0f; // VS default: -50
+  float maxTemp = 50.0f;  // VS default: 50
+  int minRain = 0;        // VS default: 0
+  int maxRain = 255;      // VS default: 255
 
   std::vector<OctaveParam> terrainOctaves;
   std::vector<YKey> yKeys;
@@ -54,12 +63,15 @@ class LandformRegistry {
 public:
   static LandformRegistry &Get();
 
+  void LoadFromJson(const std::string &path);
+
   void Register(const Landform &landform);
   const Landform *GetLandform(const std::string &name) const;
 
   // Select a landform based on environment
   // Returns by value to allow variants/mutations to be applied
-  Landform Select(float landformNoise, float temp, float humid) const;
+  // VS-style: position-seeded weighted random selection
+  Landform Select(int worldX, int worldZ, float temp, float humid) const;
 
 private:
   LandformRegistry(); // Private constructor to register defaults

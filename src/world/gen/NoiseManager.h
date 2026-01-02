@@ -29,8 +29,9 @@ public:
   float GetBushNoise(int x, int z) const; // Restored
   float GetBeachNoise(int x, int z) const;
   float GetTerrainDetail(int x, int z) const;
-  float GetLandformNeighborNoise(int x, int z) const;  // 2nd closest
-  float GetLandformNeighbor3Noise(int x, int z) const; // 3rd closest
+  float GetTerrainOctave(float x, float z, int octave) const; // New
+  float GetLandformNeighborNoise(int x, int z) const;         // 2nd closest
+  float GetLandformNeighbor3Noise(int x, int z) const;        // 3rd closest
   void GetLandformDistances(int x, int z, float &f1, float &f2,
                             float &f3) const; // Raw F1, F2, F3
   float GetStrata(int x, int z) const;
@@ -61,6 +62,13 @@ public:
 
   void GenStrata(float *output, int startX, int startZ, int width,
                  int height) const; // New: Smoother strata layers
+
+  // 3D Terrain Noise Batch Generation
+  void GenTerrainNoise3D(float *output, int startX, int startY, int startZ,
+                         int width, int height, int depth) const;
+
+  // Single point access for 3D terrain density
+  float GetTerrainNoise3D(int x, int y, int z) const;
 
   // Cave Generation (3D)
   void GenCave3D(float *output, int startX, int startY, int startZ, int width,
@@ -122,7 +130,8 @@ private:
   FastNoise::SmartNode<> warpYNode;
 
   // Helper for warp consistency
-  void GetWarpedCoord(float x, float z, float &wx, float &wz) const;
+  void GetWarpedCoord(float x, float z, float &wx, float &wz,
+                      float scale) const;
 
   FastNoise::SmartNode<> cave3DNode;
   FastNoise::SmartNode<> caveEntranceNode;
