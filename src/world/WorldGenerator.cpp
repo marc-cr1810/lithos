@@ -192,30 +192,72 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
       // --- 3D Density Search ---
       int surfaceY = 0;
 
+      // Optimization: Batch Generate 3D Noise for the entire column
+      static thread_local std::vector<float> noiseColumn(
+          320); // Default size 320
+      if ((int)noiseColumn.size() < config.worldHeight)
+        noiseColumn.resize(config.worldHeight);
+
+      // Generate using SIMD (1xHx1)
+      noiseManager.GenTerrainNoise3D(noiseColumn.data(), wx, 0, wz, 1,
+                                     config.worldHeight, 1);
+
+      // Optimization: Hoist LUT pointers
+      const std::vector<float> *lut1Ptr = lf1.GetLUT();
+      const float *lut1Data = lut1Ptr ? lut1Ptr->data() : nullptr;
+      int lut1Size = lut1Ptr ? (int)lut1Ptr->size() : 0;
+
+      const std::vector<float> *lut2Ptr = lf2.GetLUT();
+      const float *lut2Data = lut2Ptr ? lut2Ptr->data() : nullptr;
+      int lut2Size = lut2Ptr ? (int)lut2Ptr->size() : 0;
+
+      const std::vector<float> *lut3Ptr = lf3.GetLUT();
+      const float *lut3Data = lut3Ptr ? lut3Ptr->data() : nullptr;
+      int lut3Size = lut3Ptr ? (int)lut3Ptr->size() : 0;
+
       // Optimization: Coarse Search
-      // Step size for initial search
       const int coarseStep = 4;
 
       // Start from top, step down by coarseStep
       for (int y = config.worldHeight - 1; y > 0; y -= coarseStep) {
-        // 1. Check potential Solidity at this coarse Y
 
         // Helper to calculate density at specific Y
         auto getDensity = [&](int sampleY) -> float {
           // Apply Upheaval
           int shiftedY = (int)(sampleY - (upVal * 40.0f));
 
-          float th1 = lf1.GetDensityThreshold(shiftedY);
-          float th2 = lf2.GetDensityThreshold(shiftedY);
-          float th3 = lf3.GetDensityThreshold(shiftedY);
+          float th1, th2, th3;
+
+          if (lut1Data && shiftedY >= 0 && shiftedY < lut1Size)
+            th1 = lut1Data[shiftedY];
+          else
+            th1 = lf1.GetDensityThreshold(shiftedY);
+
+          if (lut2Data && shiftedY >= 0 && shiftedY < lut2Size)
+            th2 = lut2Data[shiftedY];
+          else
+            th2 = lf2.GetDensityThreshold(shiftedY);
+
+          if (lut3Data && shiftedY >= 0 && shiftedY < lut3Size)
+            th3 = lut3Data[shiftedY];
+          else
+            th3 = lf3.GetDensityThreshold(shiftedY);
 
           float th = th1 * w1 + th2 * w2 + th3 * w3;
 
-          // Optimization: If threshold is low enough that noise can't verify
-          // it, skip? Assuming noise is [-1, 1]. If th < -1.2, result is
-          // certainly < -0.2 (Air). But we can just compute it.
+          // Optimization: Early Exit
+          if (th > 1.2f)
+            return 1.0f; // Definitely Solid
+          if (th < -1.2f)
+            return -1.0f; // Definitely Air
 
-          float n = noiseManager.GetTerrainNoise3D(wx, sampleY, wz);
+          // Use batched noise
+          float n = 0.0f;
+          if (sampleY >= 0 && sampleY < config.worldHeight) {
+            n = noiseColumn[sampleY];
+          } else {
+            n = noiseManager.GetTerrainNoise3D(wx, sampleY, wz);
+          }
           return n + th;
         };
 
@@ -338,22 +380,6 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
     Block *dirtBlock = BlockRegistry::getInstance().getBlock(BlockType::DIRT);
 
     // Lambda to get density (Similar to GenerateColumn but for specific y)
-    auto checkDensity = [&](int x, int z, int y, int idx, const Landform &lf1,
-                            const Landform &lf2, const Landform &lf3, float w1,
-                            float w2, float w3) -> bool {
-      float upVal = upheaval[idx];
-      float upheavalYShift = upVal * 40.0f;
-      int sampleY = (int)(y - upheavalYShift);
-
-      float th1 = lf1.GetDensityThreshold(sampleY);
-      float th2 = lf2.GetDensityThreshold(sampleY);
-      float th3 = lf3.GetDensityThreshold(sampleY);
-
-      float threshold = th1 * w1 + th2 * w2 + th3 * w3;
-      float noise3d = noiseManager.GetTerrainNoise3D(startX + x, y, startZ + z);
-
-      return (noise3d + threshold) > 0;
-    };
 
     for (int lx = 0; lx < CHUNK_SIZE; lx++) {
       for (int lz = 0; lz < CHUNK_SIZE; lz++) {
@@ -397,35 +423,107 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
         float pNoise = provinceNoise[index];
         float sNoise = strataNoise[index];
 
-        for (int ly = 0; ly < CHUNK_SIZE; ly++) {
-          int wy = startY + ly;
+        // Optimization: Pre-calculate density thresholds for this column slice
+        // Only needed if we are below surface height
+        float columnThresholds[CHUNK_SIZE];
+        float upVal = upheaval[index];
 
-          bool isSolid = false;
+        // Determine how many blocks need density check
+        // We only check density if wy <= surfaceHeight
+        // wy = startY + ly.  startY + ly <= surfaceHeight  => ly <=
+        // surfaceHeight - startY
+        int processLimit = surfaceHeight - startY;
 
-          if (wy <= surfaceHeight) {
-            // Below the calculated "surface", checks density
-            // Optimization: Deep underground is always solid?
-            // Only check density if within some range of surface?
-            // For full overhang support, we must check.
-            isSolid =
-                checkDensity(lx, lz, wy, index, lf1, lf2, lf3, w1, w2, w3);
+        if (processLimit >= 0) {
+          int maxLy = std::min(CHUNK_SIZE - 1, processLimit);
+
+          const std::vector<float> *lut1Ptr = lf1.GetLUT();
+          const float *lut1Data = lut1Ptr ? lut1Ptr->data() : nullptr;
+          int lut1Size = lut1Ptr ? (int)lut1Ptr->size() : 0;
+
+          const std::vector<float> *lut2Ptr = lf2.GetLUT();
+          const float *lut2Data = lut2Ptr ? lut2Ptr->data() : nullptr;
+          int lut2Size = lut2Ptr ? (int)lut2Ptr->size() : 0;
+
+          const std::vector<float> *lut3Ptr = lf3.GetLUT();
+          const float *lut3Data = lut3Ptr ? lut3Ptr->data() : nullptr;
+          int lut3Size = lut3Ptr ? (int)lut3Ptr->size() : 0;
+
+          // Generate Landform Densities
+          for (int ly = 0; ly <= maxLy; ly++) {
+            int wy = startY + ly;
+            int sampleY = (int)(wy - (upVal * 40.0f));
+
+            float th1, th2, th3;
+
+            if (lut1Data && sampleY >= 0 && sampleY < lut1Size)
+              th1 = lut1Data[sampleY];
+            else
+              th1 = lf1.GetDensityThreshold(sampleY);
+
+            if (lut2Data && sampleY >= 0 && sampleY < lut2Size)
+              th2 = lut2Data[sampleY];
+            else
+              th2 = lf2.GetDensityThreshold(sampleY);
+
+            if (lut3Data && sampleY >= 0 && sampleY < lut3Size)
+              th3 = lut3Data[sampleY];
+            else
+              th3 = lf3.GetDensityThreshold(sampleY);
+
+            columnThresholds[ly] = th1 * w1 + th2 * w2 + th3 * w3;
           }
 
-          // 1. Base Terrain
-          if (isSolid) {
-            BlockType rockType =
-                strataRegistry.GetStrataBlock(wx, wy, wz, surfaceHeight, pNoise,
-                                              sNoise, upheaval[index], m_Seed);
-            chunk.blocks[lx][ly][lz].block =
-                BlockRegistry::getInstance().getBlock(rockType);
-            chunk.blocks[lx][ly][lz].metadata = 0;
-          } else if (wy <
-                     config.seaLevel) { // VS: seaLevel is exclusive upper bound
-            chunk.blocks[lx][ly][lz].block = waterBlock;
-            chunk.blocks[lx][ly][lz].metadata = 0;
-          } else {
-            chunk.blocks[lx][ly][lz].block = airBlock;
-            chunk.blocks[lx][ly][lz].metadata = 0;
+          // Optimization: Batch convert noise for the column
+          // Width=1, Height=(maxLy+1), Depth=1
+          static thread_local std::vector<float> noiseBuffer(CHUNK_SIZE);
+          noiseManager.GenTerrainNoise3D(noiseBuffer.data(), wx, startY, wz, 1,
+                                         maxLy + 1, 1);
+
+          for (int ly = 0; ly < CHUNK_SIZE; ly++) {
+            int wy = startY + ly;
+            bool isSolid = false;
+
+            if (ly <= maxLy) {
+              float threshold = columnThresholds[ly];
+              if (threshold > 1.2f) {
+                isSolid = true;
+              } else if (threshold < -1.2f) {
+                isSolid = false;
+              } else {
+                float noise3d = noiseBuffer[ly];
+                isSolid = (noise3d + threshold) > 0;
+              }
+            }
+
+            // Block Placement Logic inside loop
+            if (isSolid) {
+              BlockType rockType = strataRegistry.GetStrataBlock(
+                  wx, wy, wz, surfaceHeight, pNoise, sNoise, upheaval[index],
+                  m_Seed);
+              chunk.blocks[lx][ly][lz].block =
+                  BlockRegistry::getInstance().getBlock(rockType);
+              chunk.blocks[lx][ly][lz].metadata = 0;
+            } else if (wy < config.seaLevel) {
+              chunk.blocks[lx][ly][lz].block = waterBlock;
+              chunk.blocks[lx][ly][lz].metadata = 0;
+            } else {
+              chunk.blocks[lx][ly][lz].block = airBlock;
+              chunk.blocks[lx][ly][lz].metadata = 0;
+            }
+          }
+        } else {
+          // ProcessLimit < 0 means surface is below startY (Air chunk or water
+          // chunk if below sea level) Just fill air/water
+          for (int ly = 0; ly < CHUNK_SIZE; ly++) {
+            int wy = startY + ly;
+            if (wy < config.seaLevel) {
+              chunk.blocks[lx][ly][lz].block = waterBlock;
+              chunk.blocks[lx][ly][lz].metadata = 0;
+            } else {
+              chunk.blocks[lx][ly][lz].block = airBlock;
+              chunk.blocks[lx][ly][lz].metadata = 0;
+            }
           }
         }
 

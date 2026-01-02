@@ -6,25 +6,25 @@
 #include <nlohmann/json.hpp>
 #include <random>
 
-float LandformVariant::GetDensityThreshold(int y) const {
-  if (yKeys.empty())
+// Internal helper for exact calculation
+float CalculateThreshold(int y, const std::vector<YKey> &keys) {
+  if (keys.empty())
     return 0.0f;
-  if (yKeys.size() == 1)
-    return yKeys[0].threshold;
+  if (keys.size() == 1)
+    return keys[0].threshold;
 
-  // Find keys surrounding y
-  const YKey *lower = &yKeys.front();
-  const YKey *upper = &yKeys.back();
+  const YKey *lower = &keys.front();
+  const YKey *upper = &keys.back();
 
   if (y <= lower->yLevel)
     return lower->threshold;
   if (y >= upper->yLevel)
     return upper->threshold;
 
-  for (size_t i = 0; i < yKeys.size() - 1; ++i) {
-    if (y >= yKeys[i].yLevel && y < yKeys[i + 1].yLevel) {
-      lower = &yKeys[i];
-      upper = &yKeys[i + 1];
+  for (size_t i = 0; i < keys.size() - 1; ++i) {
+    if (y >= keys[i].yLevel && y < keys[i + 1].yLevel) {
+      lower = &keys[i];
+      upper = &keys[i + 1];
       break;
     }
   }
@@ -33,31 +33,38 @@ float LandformVariant::GetDensityThreshold(int y) const {
   return lower->threshold + t * (upper->threshold - lower->threshold);
 }
 
-float Landform::GetDensityThreshold(int y) const {
-  if (yKeys.empty())
-    return 0.0f;
-  // Fallback to variant logic? No, Landform has its own yKeys.
-  if (yKeys.size() == 1)
-    return yKeys[0].threshold;
-
-  const YKey *lower = &yKeys.front();
-  const YKey *upper = &yKeys.back();
-
-  if (y <= lower->yLevel)
-    return lower->threshold;
-  if (y >= upper->yLevel)
-    return upper->threshold;
-
-  for (size_t i = 0; i < yKeys.size() - 1; ++i) {
-    if (y >= yKeys[i].yLevel && y < yKeys[i + 1].yLevel) {
-      lower = &yKeys[i];
-      upper = &yKeys[i + 1];
-      break;
-    }
+void LandformVariant::BuildLUT(int worldHeight) {
+  densityLUT = std::make_shared<std::vector<float>>(worldHeight);
+  for (int y = 0; y < worldHeight; ++y) {
+    (*densityLUT)[y] = CalculateThreshold(y, yKeys);
   }
+}
 
-  float t = (float)(y - lower->yLevel) / (float)(upper->yLevel - lower->yLevel);
-  return lower->threshold + t * (upper->threshold - lower->threshold);
+float LandformVariant::GetDensityThreshold(int y) const {
+  if (densityLUT && y >= 0 && y < (int)densityLUT->size()) {
+    return (*densityLUT)[y];
+  }
+  return CalculateThreshold(y, yKeys);
+}
+
+void Landform::BuildLUT(int worldHeight) {
+  densityLUT = std::make_shared<std::vector<float>>(worldHeight);
+  for (int y = 0; y < worldHeight; ++y) {
+    (*densityLUT)[y] = CalculateThreshold(y, yKeys);
+  }
+}
+
+float Landform::GetDensityThreshold(int y) const {
+  if (densityLUT && y >= 0 && y < (int)densityLUT->size()) {
+    return (*densityLUT)[y];
+  }
+  return CalculateThreshold(y, yKeys);
+}
+
+const std::vector<float> *Landform::GetLUT() const {
+  if (densityLUT)
+    return densityLUT.get();
+  return nullptr;
 }
 
 LandformRegistry &LandformRegistry::Get() {
@@ -419,14 +426,12 @@ void LandformRegistry::LoadFromJson(const std::string &path) {
         for (const auto &m : j["mutations"]) {
           LandformVariant v;
           ParseVariant(m, v);
-          // Add mutation as variant? Or separate Landform?
-          // VS mutations are variants selected by mutation chance.
-          // I map them to variants for now.
-          // But Landform has `variants` (vector).
+          v.BuildLUT(1024); // Pre-calc LUT
           lf.variants.push_back(v);
         }
       }
 
+      lf.BuildLUT(1024); // Pre-calc LUT for main landform
       Register(lf);
     }
   }

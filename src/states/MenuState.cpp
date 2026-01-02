@@ -21,7 +21,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <random>
 
-
 MenuState::MenuState() = default;
 MenuState::~MenuState() = default;
 
@@ -109,7 +108,7 @@ void MenuState::UpdatePreview3D() {
       float cx = (minX * size + (maxX + 1) * size) / 2.0f;
       float cz = (minZ * size + (maxZ + 1) * size) / 2.0f;
 
-      m_PreviewTarget = glm::vec3(cx, (float)m_Config.seaLevel, cz);
+      m_PreviewTarget = glm::vec3(cx, 138.0f, cz);
 
     } else {
       // Default target if live previewing

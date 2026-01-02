@@ -1,5 +1,6 @@
 #pragma once
 #include <glm/glm.hpp>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -29,6 +30,8 @@ struct LandformVariant {
   int maxRain = 255;      // VS default: 255.0f;
 
   float GetDensityThreshold(int y) const;
+  void BuildLUT(int worldHeight);
+  std::shared_ptr<std::vector<float>> densityLUT;
 };
 
 struct Landform {
@@ -57,6 +60,9 @@ struct Landform {
 
   // Helper: Interpolate threshold for a given Y
   float GetDensityThreshold(int y) const;
+  const std::vector<float> *GetLUT() const;
+  void BuildLUT(int worldHeight);
+  std::shared_ptr<std::vector<float>> densityLUT;
 };
 
 class LandformRegistry {
