@@ -102,7 +102,7 @@ private:
   void addFace(std::vector<float> &vertices, int x, int y, int z, int faceDir,
                const Block *block, int width, int height, int aoBL, int aoBR,
                int aoTR, int aoTL, uint8_t metadata, float hBL, float hBR,
-               float hTR, float hTL, int layer = 0);
+               float hTR, float hTL, int layer = 0, bool isInternal = false);
   int vertexAO(bool side1, bool side2, bool corner);
 };
 

@@ -171,12 +171,14 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
     uint8_t blockVal;
     uint8_t ao[4]; // BL, BR, TR, TL
     uint8_t metadata;
+    bool isInternal;
 
     bool operator==(const MaskInfo &other) const {
       return block == other.block && sky == other.sky &&
              blockVal == other.blockVal && ao[0] == other.ao[0] &&
              ao[1] == other.ao[1] && ao[2] == other.ao[2] &&
-             ao[3] == other.ao[3] && metadata == other.metadata;
+             ao[3] == other.ao[3] && metadata == other.metadata &&
+             isInternal == other.isInternal;
     }
     bool operator!=(const MaskInfo &other) const { return !(*this == other); }
   };
@@ -224,7 +226,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
       MaskInfo mask[CHUNK_SIZE][CHUNK_SIZE];
       for (int u = 0; u < CHUNK_SIZE; ++u)
         for (int v = 0; v < CHUNK_SIZE; ++v)
-          mask[u][v] = {airBlock, 0, 0, {0, 0, 0, 0}, 0};
+          mask[u][v] = {airBlock, 0, 0, {0, 0, 0, 0}, 0, false};
 
       for (int v = 0; v < CHUNK_SIZE; ++v) {
         for (int u = 0; u < CHUNK_SIZE; ++u) {
@@ -237,6 +239,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             int nz = lz + nZ;
 
             bool occluded = false;
+            bool internalFace = false;
             uint8_t skyVal = 0;
             uint8_t blockVal = 0;
 
@@ -250,7 +253,11 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                   bool isLiquid =
                       (b.block->getId() == WATER || b.block->getId() == LAVA);
                   bool isLeaves = (b.block->getId() == LEAVES ||
-                                   b.block->getId() == SPRUCE_LEAVES);
+                                   b.block->getId() == SPRUCE_LEAVES ||
+                                   b.block->getId() == ACACIA_LEAVES ||
+                                   b.block->getId() == BIRCH_LEAVES ||
+                                   b.block->getId() == DARK_OAK_LEAVES ||
+                                   b.block->getId() == JUNGLE_LEAVES);
 
                   if (isLiquid && faceDir == 4) {
                     // Only occlude if neighbor is also Liquid (same type)
@@ -259,9 +266,22 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                     if (nb.block == b.block)
                       occluded = true;
                   }
-                  // Optimization for Leaves: Cull internal faces
-                  else if (isLeaves && nb.block == b.block) {
-                    occluded = true;
+                  // Leaves: Don't cull against other leaves (transparent look)
+                  else if (isLeaves) {
+                    if (nb.isOpaque()) {
+                      occluded = true;
+                    } else {
+                      // Check if neighbor is also leaf
+                      bool nbIsLeaves = (nb.block->getId() == LEAVES ||
+                                         nb.block->getId() == SPRUCE_LEAVES ||
+                                         nb.block->getId() == ACACIA_LEAVES ||
+                                         nb.block->getId() == BIRCH_LEAVES ||
+                                         nb.block->getId() == DARK_OAK_LEAVES ||
+                                         nb.block->getId() == JUNGLE_LEAVES);
+                      if (nbIsLeaves)
+                        internalFace = true;
+                    }
+                    // Else false (draw against air or other leaves)
                   } else {
                     if (nb.block == b.block || nb.isOpaque())
                       occluded = true;
@@ -307,13 +327,29 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                     bool isLiquid =
                         (b.block->getId() == WATER || b.block->getId() == LAVA);
                     bool isLeaves = (b.block->getId() == LEAVES ||
-                                     b.block->getId() == SPRUCE_LEAVES);
+                                     b.block->getId() == SPRUCE_LEAVES ||
+                                     b.block->getId() == ACACIA_LEAVES ||
+                                     b.block->getId() == BIRCH_LEAVES ||
+                                     b.block->getId() == DARK_OAK_LEAVES ||
+                                     b.block->getId() == JUNGLE_LEAVES);
 
                     if (isLiquid && faceDir == 4) {
                       if (nb.block == b.block)
                         occluded = true;
-                    } else if (isLeaves && nb.block == b.block) {
-                      occluded = true;
+                    } else if (isLeaves) {
+                      if (nb.isOpaque()) {
+                        occluded = true;
+                      } else {
+                        bool nbIsLeaves =
+                            (nb.block->getId() == LEAVES ||
+                             nb.block->getId() == SPRUCE_LEAVES ||
+                             nb.block->getId() == ACACIA_LEAVES ||
+                             nb.block->getId() == BIRCH_LEAVES ||
+                             nb.block->getId() == DARK_OAK_LEAVES ||
+                             nb.block->getId() == JUNGLE_LEAVES);
+                        if (nbIsLeaves)
+                          internalFace = true;
+                      }
                     } else {
                       if (nb.block == b.block || nb.isOpaque())
                         occluded = true;
@@ -435,11 +471,9 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
               aos[3] = sampleAO(u - 1, v, u, v + 1, u - 1, v + 1);
               aos[2] = sampleAO(u + 1, v, u, v + 1, u + 1, v + 1);
               aos[3] = sampleAO(u - 1, v, u, v + 1, u - 1, v + 1);
-              mask[u][v] = {b.block,
-                            skyVal,
-                            blockVal,
-                            {aos[0], aos[1], aos[2], aos[3]},
-                            b.metadata};
+              mask[u][v] = {b.block,    skyVal,
+                            blockVal,   {aos[0], aos[1], aos[2], aos[3]},
+                            b.metadata, internalFace};
             }
           }
         }
@@ -989,7 +1023,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             addFace(isTrans ? transparentVertices : opaqueVertices, lx, ly, lz,
                     faceDir, current.block, w, h, current.ao[0], current.ao[1],
                     current.ao[2], current.ao[3], current.metadata, hBL, hBR,
-                    hTR, hTL, 0);
+                    hTR, hTL, 0, current.isInternal);
 
             if (current.block->hasOverlay(faceDir)) {
               // Render Overlay (Cutout)
@@ -999,7 +1033,8 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
               addFace(isTrans ? transparentVertices : opaqueVertices, lx, ly,
                       lz, faceDir, current.block, w, h, current.ao[0],
                       current.ao[1], current.ao[2], current.ao[3],
-                      current.metadata, hBL, hBR, hTR, hTL, 1);
+                      current.metadata, hBL, hBR, hTR, hTL, 1,
+                      current.isInternal);
             }
 
             for (int j = 0; j < h; ++j)
@@ -2153,7 +2188,8 @@ void Chunk::updateMesh() {
 void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
                     int faceDir, const Block *block, int width, int height,
                     int aoBL, int aoBR, int aoTR, int aoTL, uint8_t metadata,
-                    float hBL, float hBR, float hTR, float hTL, int layer) {
+                    float hBL, float hBR, float hTR, float hTL, int layer,
+                    bool isInternal) {
   float r, g, b;
   block->getColor(r, g, b); // Base Tint
 
@@ -2435,6 +2471,19 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
     vTop = 0.0f;
   }
 
+  bool isDoubleSided =
+      (block->getId() == LEAVES || block->getId() == SPRUCE_LEAVES ||
+       block->getId() == ACACIA_LEAVES || block->getId() == BIRCH_LEAVES ||
+       block->getId() == DARK_OAK_LEAVES || block->getId() == JUNGLE_LEAVES);
+
+  if (isInternal) {
+    if (faceDir % 2 != 0)
+      return;             // Cull Odd faces for internal (Canonical Rendering)
+    isDoubleSided = true; // Even faces are double-sided
+  }
+
+  float eps = 0.01f;
+
   if (faceDir == 0) { // Front Z+ (at z+1)
     pushVert(fx, botY, fz + 1, 0, vBottom, (float)aoBL);
     pushVert(fx + fw, botY, fz + 1, fw, vBottom, (float)aoBR);
@@ -2443,6 +2492,17 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
     pushVert(fx, botY, fz + 1, 0, vBottom, (float)aoBL);
     pushVert(fx + fw, fy + yTR, fz + 1, fw, vTop, (float)aoTR);
     pushVert(fx, fy + yTL, fz + 1, 0, vTop, (float)aoTL);
+
+    if (isDoubleSided) {
+      float zBack = fz + 1.0f - eps;
+      pushVert(fx, botY, zBack, 0, vBottom, (float)aoBL);
+      pushVert(fx + fw, fy + yTR, zBack, fw, vTop, (float)aoTR);
+      pushVert(fx + fw, botY, zBack, fw, vBottom, (float)aoBR);
+
+      pushVert(fx, botY, zBack, 0, vBottom, (float)aoBL);
+      pushVert(fx, fy + yTL, zBack, 0, vTop, (float)aoTL);
+      pushVert(fx + fw, fy + yTR, zBack, fw, vTop, (float)aoTR);
+    }
   } else if (faceDir == 1) { // Back Z- (at z=0)
     pushVert(fx + fw, botY, fz, 0, vBottom, (float)aoBR);
     pushVert(fx, botY, fz, fw, vBottom, (float)aoBL);
@@ -2451,6 +2511,17 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
     pushVert(fx + fw, botY, fz, 0, vBottom, (float)aoBR);
     pushVert(fx, fy + yBL, fz, fw, vTop, (float)aoTL);
     pushVert(fx + fw, fy + yBR, fz, 0, vTop, (float)aoTR);
+
+    if (isDoubleSided) {
+      float zBack = fz + eps;
+      pushVert(fx + fw, botY, zBack, 0, vBottom, (float)aoBR);
+      pushVert(fx, fy + yBL, zBack, fw, vTop, (float)aoTL);
+      pushVert(fx, botY, zBack, fw, vBottom, (float)aoBL);
+
+      pushVert(fx + fw, botY, zBack, 0, vBottom, (float)aoBR);
+      pushVert(fx + fw, fy + yBR, zBack, 0, vTop, (float)aoTR);
+      pushVert(fx, fy + yBL, zBack, fw, vTop, (float)aoTL);
+    }
   } else if (faceDir == 2) { // Left X- (at x=0)
     pushVert(fx, botY, fz, 0, vBottom, (float)aoBL);
     pushVert(fx, botY, fz + fw, fw, vBottom, (float)aoBR);
@@ -2459,6 +2530,17 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
     pushVert(fx, botY, fz, 0, vBottom, (float)aoBL);
     pushVert(fx, fy + yTL, fz + fw, fw, vTop, (float)aoTR);
     pushVert(fx, fy + yBL, fz, 0, vTop, (float)aoTL);
+
+    if (isDoubleSided) {
+      float xBack = fx + eps;
+      pushVert(xBack, botY, fz, 0, vBottom, (float)aoBL);
+      pushVert(xBack, fy + yTL, fz + fw, fw, vTop, (float)aoTR);
+      pushVert(xBack, botY, fz + fw, fw, vBottom, (float)aoBR);
+
+      pushVert(xBack, botY, fz, 0, vBottom, (float)aoBL);
+      pushVert(xBack, fy + yBL, fz, 0, vTop, (float)aoTL);
+      pushVert(xBack, fy + yTL, fz + fw, fw, vTop, (float)aoTR);
+    }
   } else if (faceDir == 3) { // Right X+ (at x+1)
     pushVert(fx + 1, botY, fz + fw, 0, vBottom, (float)aoBR);
     pushVert(fx + 1, botY, fz, fw, vBottom, (float)aoBL);
@@ -2467,15 +2549,19 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
     pushVert(fx + 1, botY, fz + fw, 0, vBottom, (float)aoBR);
     pushVert(fx + 1, fy + yBR, fz, fw, vTop, (float)aoTL);
     pushVert(fx + 1, fy + yTR, fz + fw, 0, vTop, (float)aoTR);
-  } else if (faceDir == 4) { // Top Y+ (at y+1)
-    // Uses all 4 corner heights.
-    // The 'width' (fw) here is along X, 'height' (fh) is along Z.
-    // Vertices for this face:
-    // Top-Left of quad: (fx, fy+yTL, fz+fw)
-    // Top-Right of quad: (fx+fw, fy+yTR, fz+fw)
-    // Bottom-Right of quad: (fx+fw, fy+yBR, fz)
-    // Bottom-Left of quad: (fx, fy+yBL, fz)
 
+    if (isDoubleSided) {
+      float xBack = fx + 1.0f - eps;
+
+      pushVert(xBack, botY, fz + fw, 0, vBottom, (float)aoBR);
+      pushVert(xBack, fy + yBR, fz, fw, vTop, (float)aoTL);
+      pushVert(xBack, botY, fz, fw, vBottom, (float)aoBL);
+
+      pushVert(xBack, botY, fz + fw, 0, vBottom, (float)aoBR);
+      pushVert(xBack, fy + yTR, fz + fw, 0, vTop, (float)aoTR);
+      pushVert(xBack, fy + yBR, fz, fw, vTop, (float)aoTL);
+    }
+  } else if (faceDir == 4) { // Top Y+ (at y+1)
     pushVert(fx, fy + yTL, fz + fh, 0, 0, (float)aoTL);
     pushVert(fx + fw, fy + yTR, fz + fh, fw, 0, (float)aoTR);
     pushVert(fx + fw, fy + yBR, fz, fw, fh, (float)aoBR);
@@ -2483,8 +2569,33 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
     pushVert(fx, fy + yTL, fz + fh, 0, 0, (float)aoTL);
     pushVert(fx + fw, fy + yBR, fz, fw, fh, (float)aoBR);
     pushVert(fx, fy + yBL, fz, 0, fh, (float)aoBL);
+
+    if (isDoubleSided) {
+      // float eps = 0.01f; // Removed redundant definition
+      // Top starts at fy + fh (since fw=width, fh=height usually? For top face
+      // fw is X, fh is Z? No, see Face 4 code) Face 4 code: `pushVert(fx, fy +
+      // yTL, fz + fh...)` Wait, fh is Height?? For Top Face, yTL is Height
+      // offset? Chunk.cpp line 2483 comments: "The 'width' (fw) here is along
+      // X, 'height' (fh) is along Z." So Top Plane is at Ymax? Actually Face 4
+      // code uses `fy + yTL`. yTL/TR/etc are the computed heights
+      // (usually 1.0). So Top Plane is roughly `fy + 1.0`. The Backface should
+      // be slightly lower. But we have 4 different Ys! We should subtract eps
+      // from ALL Ys.
+
+      float yTL_B = yTL - eps;
+      float yTR_B = yTR - eps;
+      float yBR_B = yBR - eps;
+      float yBL_B = yBL - eps;
+
+      pushVert(fx, fy + yTL_B, fz + fh, 0, 0, (float)aoTL);
+      pushVert(fx + fw, fy + yBR_B, fz, fw, fh, (float)aoBR);
+      pushVert(fx + fw, fy + yTR_B, fz + fh, fw, 0, (float)aoTR);
+
+      pushVert(fx, fy + yTL_B, fz + fh, 0, 0, (float)aoTL);
+      pushVert(fx, fy + yBL_B, fz, 0, fh, (float)aoBL);
+      pushVert(fx + fw, fy + yBR_B, fz, fw, fh, (float)aoBR);
+    }
   } else { // Bottom Y- (at y=0)
-    // Bottom face always uses botY (fy)
     pushVert(fx, botY, fz, 0, 0, (float)aoBL);
     pushVert(fx + fw, botY, fz, fw, 0, (float)aoBR);
     pushVert(fx + fw, botY, fz + fh, fw, fh, (float)aoTR);
@@ -2492,6 +2603,18 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
     pushVert(fx, botY, fz, 0, 0, (float)aoBL);
     pushVert(fx + fw, botY, fz + fh, fw, fh, (float)aoTR);
     pushVert(fx, botY, fz + fh, 0, fh, (float)aoTL);
+
+    if (isDoubleSided) {
+      float yBack = botY + eps; // botY is usually fy.
+
+      pushVert(fx, yBack, fz, 0, 0, (float)aoBL);
+      pushVert(fx + fw, yBack, fz + fh, fw, fh, (float)aoTR);
+      pushVert(fx + fw, yBack, fz, fw, 0, (float)aoBR);
+
+      pushVert(fx, yBack, fz, 0, 0, (float)aoBL);
+      pushVert(fx, yBack, fz + fh, 0, fh, (float)aoTL);
+      pushVert(fx + fw, yBack, fz + fh, fw, fh, (float)aoTR);
+    }
   }
 }
 
