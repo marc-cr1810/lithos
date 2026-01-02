@@ -94,7 +94,13 @@ const Landform *LandformRegistry::Select(int worldX, int worldZ, float temp,
   hash = hash * 0x27d4eb2d;
   hash = hash ^ (hash >> 15);
 
-  float roll = (float)(hash % 1000000) / 1000000.0f; // [0, 1)
+  float entropy = (float)(hash % 1000000) / 1000000.0f; // [0, 1)
+  return Select(entropy, temp, humid);
+}
+
+const Landform *LandformRegistry::Select(float entropy, float temp,
+                                         float humid) const {
+  float roll = entropy;
 
   // Convert our climate values to VS's expected ranges:
   // - Temperature: VS landforms use Celsius scale directly (minTemp=-50,
@@ -136,44 +142,13 @@ const Landform *LandformRegistry::Select(int worldX, int worldZ, float temp,
 
   // Fallback if all filtered out
   if (candidates.empty() || totalWeight == 0.0f) {
-    LOG_INFO("Landform fallback at ({}, {}): no valid candidates (temp={}, "
-             "humid={}, vsRain={})",
-             worldX, worldZ, temp, humid, vsRain);
-
-    // DEBUG: Show first few landform climate ranges for debugging
-    /*
-    static bool shownRanges = false;
-    if (!shownRanges && !landforms.empty()) {
-      shownRanges = true;
-      LOG_INFO("First 5 landform climate ranges:");
-      for (size_t i = 0; i < std::min(size_t(5), landforms.size()); i++) {
-        const auto &lf = landforms[i];
-        LOG_INFO("  {}: useClimate={}, temp=[{}, {}], rain=[{}, {}]", lf.name,
-                 lf.useClimate, lf.minTemp, lf.maxTemp, lf.minRain, lf.maxRain);
-      }
-    }
-    */
-
+    // LOG_INFO("Landform fallback val candidates (temp={}, humid={})", temp,
+    // humid);
     return landforms.empty() ? nullptr : &landforms[0];
   }
 
   // 2. Weighted random selection (VS: NoiseLandform.cs:147-152)
   roll *= totalWeight;
-
-  // DEBUG: Log selection (only occasionally to avoid spam)
-  /*
-  static int debugCounter = 0;
-  bool shouldLog = (++debugCounter % 1000 == 0);
-
-  if (shouldLog) {
-    LOG_INFO("Landform selection at cell ({}, {}): {} candidates, "
-             "totalWeight={}, roll={}, temp={}, humid={}",
-             worldX, worldZ, candidates.size(), totalWeight, roll, temp, humid);
-    for (const auto *lf : candidates) {
-      LOG_INFO("  - {}: weight={}", lf->name, lf->weight);
-    }
-  }
-  */
 
   for (const auto *lf : candidates) {
     roll -= lf->weight;

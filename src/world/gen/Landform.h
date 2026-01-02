@@ -79,6 +79,9 @@ public:
   // VS-style: position-seeded weighted random selection
   const Landform *Select(int worldX, int worldZ, float temp, float humid) const;
 
+  // Select using a pre-calculated entropy value (0..1)
+  const Landform *Select(float entropy, float temp, float humid) const;
+
 private:
   LandformRegistry(); // Private constructor to register defaults
   std::vector<Landform> landforms;

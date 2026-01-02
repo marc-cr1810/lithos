@@ -141,14 +141,11 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
 
       // Use world X/Z for position-seeded selection (scaled to cellular grid)
       // landformScale is frequency; wavelength = 1/frequency gives cell size
-      int cellScale = std::max(1, (int)(1.0f / config.landformScale));
-      int cellX = wx / cellScale;
-      int cellZ = wz / cellScale;
-
-      const Landform *lf1 = landformRegistry.Select(cellX, cellZ, t, h);
-      // For now, use same landform for all 3 (we can add neighbor lookup later)
-      const Landform *lf2 = lf1;
-      const Landform *lf3 = lf1;
+      const Landform *lf1 = landformRegistry.Select(landformNoise[index], t, h);
+      const Landform *lf2 =
+          landformRegistry.Select(landformNeighbor[index], t, h);
+      const Landform *lf3 =
+          landformRegistry.Select(landformNeighbor3[index], t, h);
 
       float upVal = upheaval[index];
       // float baseHeight = 64.0f + upVal * 20.0f; // Upheaval handled in
@@ -410,14 +407,12 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
         w3 /= totalW;
 
         // Select Landforms using world position
-        int cellScale = std::max(1, (int)(1.0f / config.landformScale));
-        int cellX = wx / cellScale;
-        int cellZ = wz / cellScale;
-
         const Landform *lf1 = landformRegistry.Select(
-            cellX, cellZ, tempMap[index], humidMap[index]);
-        const Landform *lf2 = lf1; // Use same for all 3
-        const Landform *lf3 = lf1;
+            landformNoise[index], tempMap[index], humidMap[index]);
+        const Landform *lf2 = landformRegistry.Select(
+            landformNeighbor[index], tempMap[index], humidMap[index]);
+        const Landform *lf3 = landformRegistry.Select(
+            landformNeighbor3[index], tempMap[index], humidMap[index]);
 
         int surfaceHeight = column.getHeight(lx, lz);
         float pNoise = provinceNoise[index];
@@ -598,13 +593,9 @@ int WorldGenerator::GetHeight(int x, int z) {
   float t = noiseManager.GetTemperature(x, z);
   float h = noiseManager.GetHumidity(x, z);
 
-  int cellScale = std::max(1, (int)(1.0f / config.landformScale));
-  int cellX = x / cellScale;
-  int cellZ = z / cellScale;
-
-  const Landform *lf1 = landformRegistry.Select(cellX, cellZ, t, h);
-  const Landform *lf2 = lf1;
-  const Landform *lf3 = lf1;
+  const Landform *lf1 = landformRegistry.Select(hash1, t, h);
+  const Landform *lf2 = landformRegistry.Select(hash2, t, h);
+  const Landform *lf3 = landformRegistry.Select(hash3, t, h);
 
   float baseHeight = 64.0f + upheaval * 20.0f;
   float detail = noiseManager.GetTerrainDetail(x, z);
