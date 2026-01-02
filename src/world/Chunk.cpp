@@ -363,10 +363,17 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                   int ny = ly + nY;
                   int nz = lz + nZ;
                   if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 &&
-                      ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE)
-                    // Need to check isOpaque()
-                    // Can access blocks directly
-                    return blocks[nx][ny][nz].isOpaque();
+                      ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
+                    ChunkBlock cb = blocks[nx][ny][nz];
+                    if (cb.isOpaque())
+                      return true;
+                    // Special case: Layered Blocks act as opaque for AO to cast
+                    // contact shadows
+                    if (cb.block->getRenderShape() ==
+                        Block::RenderShape::LAYERED)
+                      return true;
+                    return false;
+                  }
 
                   int ni = -1;
                   int nnx = nx, nny = ny, nnz = nz;
@@ -396,7 +403,13 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
 
                   if (!isDiagonal && ni != -1) {
                     if (auto n = getNeighbor(ni)) {
-                      return n->getBlock(nnx, nny, nnz).isOpaque();
+                      ChunkBlock cb = n->getBlock(nnx, nny, nnz);
+                      if (cb.isOpaque())
+                        return true;
+                      if (cb.block->getRenderShape() ==
+                          Block::RenderShape::LAYERED)
+                        return true;
+                      return false;
                     }
                   }
 
@@ -1033,16 +1046,45 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 ? transparentVertices
                 : opaqueVertices;
 
+        // Helper for AO checks (Pass 2)
+        auto getOpaque = [&](int dx, int dy, int dz) -> bool {
+          int nx = x + dx;
+          int ny = y + dy;
+          int nz = z + dz;
+          if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE &&
+              nz >= 0 && nz < CHUNK_SIZE) {
+            return blocks[nx][ny][nz].isOpaque();
+          } else if (world) {
+            return world->getBlock(gx + dx, gy + dy, gz + dz).isOpaque();
+          }
+          return false;
+        };
+
+        // AO levels: 0 (darkest) to 3 (brightest). Return 0..3 int.
+        auto calcAO = [&](int s1x, int s1y, int s1z, int s2x, int s2y, int s2z,
+                          int cx, int cy, int cz) -> int {
+          bool s1 = getOpaque(s1x, s1y, s1z);
+          bool s2 = getOpaque(s2x, s2y, s2z);
+          bool c = getOpaque(cx, cy, cz);
+          if (s1 && s2)
+            return 3; // Corner fully occluded -> 3 (Darkest)
+          // 0 occluders -> 0 (Brightest)
+          // 1 occluder -> 1
+          // 2 occluders -> 2
+          // 3 occluders -> 3
+          return (s1 + s2 + c);
+        };
+
         auto pushVert = [&](float vx, float vy, float vz, float u, float v,
                             float uOrigin, float vOrigin, float aoVal = 0.0f,
-                            float l1Override = -1.0f,
-                            float l2Override = -1.0f) {
+                            float l1Override = -1.0f, float l2Override = -1.0f,
+                            float shade = 1.0f) {
           targetVerts.push_back(vx);
           targetVerts.push_back(vy);
           targetVerts.push_back(vz);
-          targetVerts.push_back(r);
-          targetVerts.push_back(g);
-          targetVerts.push_back(b);
+          targetVerts.push_back(r * shade);
+          targetVerts.push_back(g * shade);
+          targetVerts.push_back(b * shade);
           targetVerts.push_back(alpha);
           targetVerts.push_back(u);
           targetVerts.push_back(v);
@@ -1126,50 +1168,55 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                    shape == Block::RenderShape::LAYERED) {
           // Helper to add a quad
           auto addFaceQuad = [&](int face, float xMin, float yMin, float zMin,
-                                 float xMax, float yMax, float zMax) {
-            // Occlusion Check (Simple)
-            // If face is flush with block boundary, check neighbor.
-            int nx = x, ny = y, nz = z;
-            bool checkNeighbor = false;
+                                 float xMax, float yMax, float zMax,
+                                 float aoTL = 0.0f, float aoTR = 0.0f,
+                                 float aoBR = 0.0f, float aoBL = 0.0f) {
+            int dx = 0, dy = 0, dz = 0;
+            if (face == 0)
+              dz = 1; // Z+
+            else if (face == 1)
+              dz = -1; // Z-
+            else if (face == 2)
+              dx = -1; // X-
+            else if (face == 3)
+              dx = 1; // X+
+            else if (face == 4)
+              dy = 1; // Y+
+            else if (face == 5)
+              dy = -1; // Y-
 
-            if (face == 4 && std::abs(yMax - 1.0f) < 0.001f) {
-              ny++;
-              checkNeighbor = true;
-            } // Top
-            if (face == 5 && std::abs(yMin - 0.0f) < 0.001f) {
-              ny--;
-              checkNeighbor = true;
-            } // Bottom
-            if (face == 0 && std::abs(zMax - 1.0f) < 0.001f) {
-              nz++;
-              checkNeighbor = true;
-            } // Front
-            if (face == 1 && std::abs(zMin - 0.0f) < 0.001f) {
-              nz--;
-              checkNeighbor = true;
-            } // Back
-            if (face == 3 && std::abs(xMax - 1.0f) < 0.001f) {
-              nx++;
-              checkNeighbor = true;
-            } // Right
-            if (face == 2 && std::abs(xMin - 0.0f) < 0.001f) {
-              nx--;
-              checkNeighbor = true;
-            } // Left
+            // Sample Light from Neighbor
+            int nx = x + dx;
+            int ny = y + dy;
+            int nz = z + dz;
+            uint8_t s = 0, b = 0;
 
-            if (checkNeighbor) {
-              if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE &&
-                  nz >= 0 && nz < CHUNK_SIZE) {
-                if (blocks[nx][ny][nz].isOpaque())
-                  return;
-              } else if (world) {
-                int ngx = chunkPosition.x * CHUNK_SIZE + nx;
-                int ngy = chunkPosition.y * CHUNK_SIZE + ny;
-                int ngz = chunkPosition.z * CHUNK_SIZE + nz;
-                if (world->getBlock(ngx, ngy, ngz).isOpaque())
-                  return;
-              }
+            // Opacity/Occlusion Check & Light Fetch
+            // If neighbor is Opaque, we might not render?
+            // Actually, for partial blocks (Slbs, Layers), we usually render
+            // unless completely covered.
+            // But we assume if we are calling addFaceQuad, we WANT to render.
+            // So we just fetch light.
+            if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE &&
+                nz >= 0 && nz < CHUNK_SIZE) {
+              s = blocks[nx][ny][nz].skyLight;
+              b = blocks[nx][ny][nz].blockLight;
+            } else if (world) {
+              int gnx = chunkPosition.x * CHUNK_SIZE + nx;
+              int gny = chunkPosition.y * CHUNK_SIZE + ny;
+              int gnz = chunkPosition.z * CHUNK_SIZE + nz;
+              s = world->getSkyLight(gnx, gny, gnz);
+              b = world->getBlockLight(gnx, gny, gnz);
             }
+            // Fallback: If no world/bounds, use current block light (better
+            // than 0)
+            else {
+              s = cb.skyLight;
+              b = cb.blockLight;
+            }
+
+            float l1 = pow((float)s / 15.0f, 0.8f);
+            float l2 = pow((float)b / 15.0f, 0.8f);
 
             float uBase, vBase;
             cb.block->getTextureUV(face, uBase, vBase, gx, gy, gz, cb.metadata);
@@ -1177,22 +1224,19 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             float w = (face <= 1 || face >= 4) ? (xMax - xMin) : (zMax - zMin);
             float h = (face >= 4) ? (zMax - zMin) : (yMax - yMin);
 
-            // UV Bounds (Local 0..1)
-            // For Sides, we want the bottom part of texture if it's a bottom
-            // slab? Actually, for SLAB_BOTTOM, y is 0..0.5. If we map 0..0.5
-            // to 0..0.5V, it renders bottom half of texture. Correct. If we
-            // map 0..0.5 to 0..1V, it stretches. We want bottom half of
-            // texture for bottom slab. So if face is Side (0,1,2,3), V range
-            // should generally match Y range relative to full block? Yes,
-            // standard MC mapping: world coordinate modulo or block relative.
-            // Simplest: V range = Y range.
-
             float u0 = 0.0f, v0 = 0.0f;
             float u1 = w, v1 = h;
 
+            // Face Dimming Logic (Matches Standard addFace)
+            float shade = 1.0f;
+            if (face == 4)
+              shade = 1.0f; // Top
+            else if (face == 5)
+              shade = 0.6f; // Bottom
+            else
+              shade = 0.8f; // Sides (All)
+
             // Adjustment for Sides of Slab
-            // If Side Face, V should correspond to Y within the block.
-            // yMin is relative to block bottom (0..1).
             if (face <= 3) {
               v0 = yMin; // e.g. 0.0
               v1 = yMax; // e.g. 0.5
@@ -1200,54 +1244,91 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
 
             // Draw
             // 0=Z+, 1=Z-, 2=X-, 3=X+, 4=Y+, 5=Y-
+            // Pass shade explicitly to pushVert
             if (face == 0) { // Z+ (Variable Z) -> Usually zMax
-              pushVert(fx + xMin, fy + yMin, fz + zMax, u0, v0, uBase, vBase);
-              pushVert(fx + xMax, fy + yMin, fz + zMax, u1, v0, uBase, vBase);
-              pushVert(fx + xMax, fy + yMax, fz + zMax, u1, v1, uBase, vBase);
+              pushVert(fx + xMin, fy + yMin, fz + zMax, u0, v0, uBase, vBase,
+                       aoBL, l1, l2, shade);
+              pushVert(fx + xMax, fy + yMin, fz + zMax, u1, v0, uBase, vBase,
+                       aoBR, l1, l2, shade);
+              pushVert(fx + xMax, fy + yMax, fz + zMax, u1, v1, uBase, vBase,
+                       aoTR, l1, l2, shade);
 
-              pushVert(fx + xMin, fy + yMin, fz + zMax, u0, v0, uBase, vBase);
-              pushVert(fx + xMax, fy + yMax, fz + zMax, u1, v1, uBase, vBase);
-              pushVert(fx + xMin, fy + yMax, fz + zMax, u0, v1, uBase, vBase);
+              pushVert(fx + xMin, fy + yMin, fz + zMax, u0, v0, uBase, vBase,
+                       aoBL, l1, l2, shade);
+              pushVert(fx + xMax, fy + yMax, fz + zMax, u1, v1, uBase, vBase,
+                       aoTR, l1, l2, shade);
+              pushVert(fx + xMin, fy + yMax, fz + zMax, u0, v1, uBase, vBase,
+                       aoTL, l1, l2, shade);
             } else if (face == 1) { // Z-
-              pushVert(fx + xMax, fy + yMin, fz + zMin, u0, v0, uBase, vBase);
-              pushVert(fx + xMin, fy + yMin, fz + zMin, u1, v0, uBase, vBase);
-              pushVert(fx + xMin, fy + yMax, fz + zMin, u1, v1, uBase, vBase);
+              pushVert(fx + xMax, fy + yMin, fz + zMin, u0, v0, uBase, vBase,
+                       aoBR, l1, l2, shade);
+              pushVert(fx + xMin, fy + yMin, fz + zMin, u1, v0, uBase, vBase,
+                       aoBL, l1, l2, shade);
+              pushVert(fx + xMin, fy + yMax, fz + zMin, u1, v1, uBase, vBase,
+                       aoTL, l1, l2, shade);
 
-              pushVert(fx + xMax, fy + yMin, fz + zMin, u0, v0, uBase, vBase);
-              pushVert(fx + xMin, fy + yMax, fz + zMin, u1, v1, uBase, vBase);
-              pushVert(fx + xMax, fy + yMax, fz + zMin, u0, v1, uBase, vBase);
+              pushVert(fx + xMax, fy + yMin, fz + zMin, u0, v0, uBase, vBase,
+                       aoBR, l1, l2, shade);
+              pushVert(fx + xMin, fy + yMax, fz + zMin, u1, v1, uBase, vBase,
+                       aoTL, l1, l2, shade);
+              pushVert(fx + xMax, fy + yMax, fz + zMin, u0, v1, uBase, vBase,
+                       aoTR, l1, l2, shade);
             } else if (face == 2) { // X-
-              pushVert(fx + xMin, fy + yMin, fz + zMin, u0, v0, uBase, vBase);
-              pushVert(fx + xMin, fy + yMin, fz + zMax, u1, v0, uBase, vBase);
-              pushVert(fx + xMin, fy + yMax, fz + zMax, u1, v1, uBase, vBase);
+              pushVert(fx + xMin, fy + yMin, fz + zMin, u0, v0, uBase, vBase,
+                       aoBL, l1, l2, shade);
+              pushVert(fx + xMin, fy + yMin, fz + zMax, u1, v0, uBase, vBase,
+                       aoBR, l1, l2, shade);
+              pushVert(fx + xMin, fy + yMax, fz + zMax, u1, v1, uBase, vBase,
+                       aoTR, l1, l2, shade);
 
-              pushVert(fx + xMin, fy + yMin, fz + zMin, u0, v0, uBase, vBase);
-              pushVert(fx + xMin, fy + yMax, fz + zMax, u1, v1, uBase, vBase);
-              pushVert(fx + xMin, fy + yMax, fz + zMin, u0, v1, uBase, vBase);
+              pushVert(fx + xMin, fy + yMin, fz + zMin, u0, v0, uBase, vBase,
+                       aoBL, l1, l2, shade);
+              pushVert(fx + xMin, fy + yMax, fz + zMax, u1, v1, uBase, vBase,
+                       aoTR, l1, l2, shade);
+              pushVert(fx + xMin, fy + yMax, fz + zMin, u0, v1, uBase, vBase,
+                       aoTL, l1, l2, shade);
             } else if (face == 3) { // X+
-              pushVert(fx + xMax, fy + yMin, fz + zMax, u0, v0, uBase, vBase);
-              pushVert(fx + xMax, fy + yMin, fz + zMin, u1, v0, uBase, vBase);
-              pushVert(fx + xMax, fy + yMax, fz + zMin, u1, v1, uBase, vBase);
+              pushVert(fx + xMax, fy + yMin, fz + zMax, u0, v0, uBase, vBase,
+                       aoBL, l1, l2, shade);
+              pushVert(fx + xMax, fy + yMin, fz + zMin, u1, v0, uBase, vBase,
+                       aoBR, l1, l2, shade);
+              pushVert(fx + xMax, fy + yMax, fz + zMin, u1, v1, uBase, vBase,
+                       aoTR, l1, l2, shade);
 
-              pushVert(fx + xMax, fy + yMin, fz + zMax, u0, v0, uBase, vBase);
-              pushVert(fx + xMax, fy + yMax, fz + zMin, u1, v1, uBase, vBase);
-              pushVert(fx + xMax, fy + yMax, fz + zMax, u0, v1, uBase, vBase);
+              pushVert(fx + xMax, fy + yMin, fz + zMax, u0, v0, uBase, vBase,
+                       aoBL, l1, l2, shade);
+              pushVert(fx + xMax, fy + yMax, fz + zMin, u1, v1, uBase, vBase,
+                       aoTR, l1, l2, shade);
+              pushVert(fx + xMax, fy + yMax, fz + zMax, u0, v1, uBase, vBase,
+                       aoTL, l1, l2, shade);
             } else if (face == 4) { // Y+
-              pushVert(fx + xMin, fy + yMax, fz + zMax, 0, 0, uBase, vBase);
-              pushVert(fx + xMax, fy + yMax, fz + zMax, 1, 0, uBase, vBase);
-              pushVert(fx + xMax, fy + yMax, fz + zMin, 1, 1, uBase, vBase);
+              pushVert(fx + xMin, fy + yMax, fz + zMax, 0, 0, uBase, vBase,
+                       aoBL, l1, l2, shade);
+              pushVert(fx + xMax, fy + yMax, fz + zMax, 1, 0, uBase, vBase,
+                       aoBR, l1, l2, shade);
+              pushVert(fx + xMax, fy + yMax, fz + zMin, 1, 1, uBase, vBase,
+                       aoTR, l1, l2, shade);
 
-              pushVert(fx + xMin, fy + yMax, fz + zMax, 0, 0, uBase, vBase);
-              pushVert(fx + xMax, fy + yMax, fz + zMin, 1, 1, uBase, vBase);
-              pushVert(fx + xMin, fy + yMax, fz + zMin, 0, 1, uBase, vBase);
+              pushVert(fx + xMin, fy + yMax, fz + zMax, 0, 0, uBase, vBase,
+                       aoBL, l1, l2, shade);
+              pushVert(fx + xMax, fy + yMax, fz + zMin, 1, 1, uBase, vBase,
+                       aoTR, l1, l2, shade);
+              pushVert(fx + xMin, fy + yMax, fz + zMin, 0, 1, uBase, vBase,
+                       aoTL, l1, l2, shade);
             } else if (face == 5) { // Y-
-              pushVert(fx + xMin, fy + yMin, fz + zMin, 0, 0, uBase, vBase);
-              pushVert(fx + xMax, fy + yMin, fz + zMin, 1, 0, uBase, vBase);
-              pushVert(fx + xMax, fy + yMin, fz + zMax, 1, 1, uBase, vBase);
+              pushVert(fx + xMin, fy + yMin, fz + zMin, 0, 0, uBase, vBase,
+                       aoTL, l1, l2, shade);
+              pushVert(fx + xMax, fy + yMin, fz + zMin, 1, 0, uBase, vBase,
+                       aoTR, l1, l2, shade);
+              pushVert(fx + xMax, fy + yMin, fz + zMax, 1, 1, uBase, vBase,
+                       aoBR, l1, l2, shade);
 
-              pushVert(fx + xMin, fy + yMin, fz + zMin, 0, 0, uBase, vBase);
-              pushVert(fx + xMax, fy + yMin, fz + zMax, 1, 1, uBase, vBase);
-              pushVert(fx + xMin, fy + yMin, fz + zMax, 0, 1, uBase, vBase);
+              pushVert(fx + xMin, fy + yMin, fz + zMin, 0, 0, uBase, vBase,
+                       aoTL, l1, l2, shade);
+              pushVert(fx + xMax, fy + yMin, fz + zMax, 1, 1, uBase, vBase,
+                       aoBR, l1, l2, shade);
+              pushVert(fx + xMin, fy + yMin, fz + zMax, 0, 1, uBase, vBase,
+                       aoBL, l1, l2, shade);
             }
           };
 
@@ -1256,11 +1337,215 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             float blockHeight = cb.block->getBlockHeight(cb.metadata);
 
             // Render all 6 faces with adjusted height
-            addFaceQuad(0, 0, 0, 0, 1, blockHeight, 1); // Z+ (Front)
-            addFaceQuad(1, 0, 0, 0, 1, blockHeight, 1); // Z- (Back)
-            addFaceQuad(2, 0, 0, 0, 1, blockHeight, 1); // X- (Left)
-            addFaceQuad(3, 0, 0, 0, 1, blockHeight, 1); // X+ (Right)
-            addFaceQuad(4, 0, 0, 0, 1, blockHeight, 1); // Y+ (Top)
+            // Calculate AO for Top Face (Face 4: Y+) only
+            // Neighbors are checked at the SAME y-level because partial blocks
+            // are occluded by full blocks next to them
+            // AO Calculation: calcAO(Side1, Side2, Corner)
+            // Neighbors are checked at the SAME y-level
+
+            // AO Calculation: calcAO(Side1, Side2, Corner)
+            // Neighbors for Top Face:
+            // If block is full height (> 0.9), check y+1 (Standard block
+            // behavior, no shadow from flush neighbors) If block is partial
+            // height, check y=0 (Shadow from adjacent taller blocks)
+            int topY = (blockHeight > 0.9f) ? 1 : 0;
+
+            // TL: xMin, zMin -> Neighbors (-1, topY, 0), (0, topY, -1), Corner
+            // (-1, topY, -1)
+            int aoTL = calcAO(-1, topY, 0, 0, topY, -1, -1, topY, -1);
+
+            // TR: xMax, zMin -> Neighbors (1, topY, 0), (0, topY, -1), Corner
+            // (1, topY, -1)
+            int aoTR = calcAO(1, topY, 0, 0, topY, -1, 1, topY, -1);
+
+            // BR: xMax, zMax -> Neighbors (1, topY, 0), (0, topY, 1), Corner
+            // (1, topY, 1)
+            int aoBR = calcAO(1, topY, 0, 0, topY, 1, 1, topY, 1);
+
+            // BL: xMin, zMax -> Neighbors (-1, topY, 0), (0, topY, 1), Corner
+            // (-1, topY, 1)
+            int aoBL = calcAO(-1, topY, 0, 0, topY, 1, -1, topY, 1);
+
+            // Side AO Helper
+            auto getSideAO = [&](int face) -> std::tuple<int, int, int, int> {
+              // Return TL, TR, BR, BL order? addFaceQuad takes TL, TR, BR, BL?
+              // addFaceQuad(..., aoTL, aoTR, aoBR, aoBL)
+              // We need to calculate for the specific face.
+              // Bottom Vertices check y-1. Top Vertices check y+1.
+
+              int tl = 0, tr = 0, br = 0, bl = 0;
+
+              if (face == 0) { // Z+ (Front) -> Air at z+1
+                // Top Left: Lateral Left(-1, 0, 1), Vertical Up(0, 1, 1),
+                // Corner(-1, 1, 1)
+                tl = calcAO(-1, 0, 1, 0, 1, 1, -1, 1, 1);
+
+                // Top Right: Lateral Right(1, 0, 1), Vertical Up(0, 1, 1),
+                // Corner(1, 1, 1)
+                tr = calcAO(1, 0, 1, 0, 1, 1, 1, 1, 1);
+
+                // Bottom Right: Lateral Right(1, 0, 1), Vertical Down(0, -1,
+                // 1), Corner(1, -1, 1)
+                br = calcAO(1, 0, 1, 0, -1, 1, 1, -1, 1);
+
+                // Bottom Left: Lateral Left(-1, 0, 1), Vertical Down(0, -1, 1),
+                // Corner(-1, -1, 1)
+                bl = calcAO(-1, 0, 1, 0, -1, 1, -1, -1, 1);
+                return {tl, tr, br, bl};
+
+              } else if (face == 1) { // Z- (Back) -> Air at z-1
+                // BR: Lateral Right(1, 0, -1), Vertical Down(0, -1, -1),
+                // Corner(1, -1, -1)
+                int brVal = calcAO(1, 0, -1, 0, -1, -1, 1, -1, -1);
+
+                // BL: Lateral Left(-1, 0, -1), Vertical Down(0, -1, -1),
+                // Corner(-1, -1, -1)
+                int blVal = calcAO(-1, 0, -1, 0, -1, -1, -1, -1, -1);
+
+                // TL: Lateral Left(-1, 0, -1), Vertical Up(0, 1, -1),
+                // Corner(-1, 1, -1)
+                int tlVal = calcAO(-1, 0, -1, 0, 1, -1, -1, 1, -1);
+
+                // TR: Lateral Right(1, 0, -1), Vertical Up(0, 1, -1), Corner(1,
+                // 1, -1)
+                int trVal = calcAO(1, 0, -1, 0, 1, -1, 1, 1, -1);
+
+                return {tlVal, trVal, brVal, blVal};
+
+              } else if (face == 2) { // X- (Left) -> Air at x-1
+                // BL Checks:
+                // Side1: (-1, 0, -1). (Back neighbor at same level).
+                // Side2: (-1, -1, 0). (Down neighbor).
+                // Corner: (-1, -1, -1).
+                int blVal = calcAO(-1, 0, -1, -1, -1, 0, -1, -1, -1);
+
+                // BR (Front-Bottom):
+                // Side1: (-1, 0, 1). (Front neighbor at same level).
+                // Side2: (-1, -1, 0). (Down neighbor).
+                // Corner: (-1, -1, 1).
+                int brVal = calcAO(-1, 0, 1, -1, -1, 0, -1, -1, 1);
+
+                // TR (Front-Top):
+                // Side1: (-1, 0, 1). (Front neighbor at same level).
+                // Side2: (-1, 1, 0). (Up neighbor).
+                // Corner: (-1, 1, 1).
+                int trVal = calcAO(-1, 0, 1, -1, 1, 0, -1, 1, 1);
+
+                // TL (Back-Top):
+                // Side1: (-1, 0, -1). (Back neighbor at same level).
+                // Side2: (-1, 1, 0). (Up neighbor).
+                // Corner: (-1, 1, -1).
+                int tlVal = calcAO(-1, 0, -1, -1, 1, 0, -1, 1, -1);
+
+                return {tlVal, trVal, brVal, blVal};
+
+              } else if (face == 3) { // X+ (Right) -> Air at x+1
+                // BL (Front-Bottom):
+                // Side1: (1, 0, 1). (Front neighbor at same level).
+                // Side2: (1, -1, 0). (Down neighbor).
+                // Corner: (1, -1, 1).
+                int blVal = calcAO(1, 0, 1, 1, -1, 0, 1, -1, 1);
+
+                // BR (Back-Bottom):
+                // Side1: (1, 0, -1). (Back neighbor at same level).
+                // Side2: (1, -1, 0). (Down neighbor).
+                // Corner: (1, -1, -1).
+                int brVal = calcAO(1, 0, -1, 1, -1, 0, 1, -1, -1);
+
+                // TR (Back-Top):
+                // Side1: (1, 0, -1). (Back neighbor at same level).
+                // Side2: (1, 1, 0). (Up neighbor).
+                // Corner: (1, 1, -1).
+                int trVal = calcAO(1, 0, -1, 1, 1, 0, 1, 1, -1);
+
+                // TL (Front-Top):
+                // Side1: (1, 0, 1). (Front neighbor at same level).
+                // Side2: (1, 1, 0). (Up neighbor).
+                // Corner: (1, 1, 1).
+                int tlVal = calcAO(1, 0, 1, 1, 1, 0, 1, 1, 1);
+
+                return {tlVal, trVal, brVal, blVal};
+              }
+              return {0, 0, 0, 0};
+            };
+
+            // Map 0..3 to 0.0..1.0? No, pushVert takes float aoVal?
+            // Standard MC uses 0.2 increments or similar. Chunk.cpp passes int
+            // to pushVert? Wait, pushVert implementation (line 1036) takes
+            // float aoVal = 0.0f Let's see how others use it. In standard
+            // greedy mesh, ao is passed as uint8_t 0-255? No, line 977 passes
+            // current.ao[0] which is uint8_t 0-3? pushVert implementation:
+            // vertices.push_back(ao);
+            // It just pushes the float.
+            // So if I pass 0, 1, 2, 3... shader handles it?
+            // Let's assume passed as float 0.0, 1.0, 2.0, 3.0.
+
+            auto [s0tl, s0tr, s0br, s0bl] = getSideAO(0);
+            addFaceQuad(0, 0, 0, 0, 1, blockHeight, 1, s0tl, s0tr, s0br,
+                        s0bl); // Z+ (Front)
+
+            auto [s1tl, s1tr, s1br, s1bl] = getSideAO(1);
+            addFaceQuad(1, 0, 0, 0, 1, blockHeight, 1, s1tl, s1tr, s1br,
+                        s1bl); // Z- (Back)
+
+            auto [s2tl, s2tr, s2br, s2bl] = getSideAO(2);
+            addFaceQuad(2, 0, 0, 0, 1, blockHeight, 1, s2tl, s2tr, s2br,
+                        s2bl); // X- (Left)
+
+            auto [s3tl, s3tr, s3br, s3bl] = getSideAO(3);
+            addFaceQuad(3, 0, 0, 0, 1, blockHeight, 1, s3tl, s3tr, s3br,
+                        s3bl); // X+ (Right)
+
+            // Top Face with explicit AO
+            // addFaceQuad(4...) doesn't take AO. I need to call pushVert
+            // directly or use a new helper. Or I can update addFaceQuad to take
+            // optional AO array. Let's use pushVert manually for Top Face to be
+            // safe and explicit.
+
+            // Texture UVs for Top
+            // Texture UVs for Top
+            float uBase, vBase;
+            cb.block->getTextureUV(4, uBase, vBase, gx, gy, gz, cb.metadata);
+
+            // Get neighbors light above (y+1) for Top Face
+            // Using world if available.
+            uint8_t topS = 0, topB = 0;
+            if (world) {
+              int gnx = gx;
+              int gny = gy + 1; // Top
+              int gnz = gz;
+              topS = world->getSkyLight(gnx, gny, gnz);
+              topB = world->getBlockLight(gnx, gny, gnz);
+            } else {
+              // Fallback: Use current block light
+              topS = cb.skyLight;
+              topB = cb.blockLight;
+            }
+            float l1Top = pow((float)topS / 15.0f, 0.8f);
+            float l2Top = pow((float)topB / 15.0f, 0.8f);
+
+            // Standard Quad winding: BL, BR, TR, TL? Or 0, 1, 2, 2, 3, 0?
+            // From addFaceQuad logic:
+            // pushVert(xMin, yMax, zMax, 0, 0...) -> BL
+            // pushVert(xMax, yMax, zMax, 1, 0...) -> BR
+            // pushVert(xMax, yMax, zMin, 1, 1...) -> TR
+            // ...
+            // Let's replicate logic for Face 4 (Y+)
+            // Shade = 1.0f for Top
+            pushVert(fx + 0, fy + blockHeight, fz + 1, 0, 0, uBase, vBase,
+                     (float)aoBL, l1Top, l2Top, 1.0f);
+            pushVert(fx + 1, fy + blockHeight, fz + 1, 1, 0, uBase, vBase,
+                     (float)aoBR, l1Top, l2Top, 1.0f);
+            pushVert(fx + 1, fy + blockHeight, fz + 0, 1, 1, uBase, vBase,
+                     (float)aoTR, l1Top, l2Top, 1.0f);
+
+            pushVert(fx + 0, fy + blockHeight, fz + 1, 0, 0, uBase, vBase,
+                     (float)aoBL, l1Top, l2Top, 1.0f);
+            pushVert(fx + 1, fy + blockHeight, fz + 0, 1, 1, uBase, vBase,
+                     (float)aoTR, l1Top, l2Top, 1.0f);
+            pushVert(fx + 0, fy + blockHeight, fz + 0, 0, 1, uBase, vBase,
+                     (float)aoTL, l1Top, l2Top, 1.0f);
+
             addFaceQuad(5, 0, 0, 0, 1, blockHeight, 1); // Y- (Bottom)
           } else {
             // SLAB_BOTTOM or STAIRS logic
@@ -1351,19 +1636,157 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 int gnx = chunkPosition.x * CHUNK_SIZE + nx;
                 int gny = chunkPosition.y * CHUNK_SIZE + ny;
                 int gnz = chunkPosition.z * CHUNK_SIZE + nz;
-                ChunkBlock wb = world->getBlock(gnx, gny, gnz);
-                maxSky = std::max(maxSky, wb.skyLight);
-                maxBlock = std::max(maxBlock, wb.blockLight);
+                uint8_t sky = world->getSkyLight(gnx, gny, gnz);
+                uint8_t bl = world->getBlockLight(gnx, gny, gnz);
+                // Adjust for opacity if inside block?
+                // Standard addFace gets neighbor light.
+                maxSky = std::max(maxSky, sky);
+                maxBlock = std::max(maxBlock, bl);
               }
             };
 
-            // Check 6 neighbors
-            checkMax(x + 1, y, z);
-            checkMax(x - 1, y, z);
-            checkMax(x, y + 1, z);
-            checkMax(x, y - 1, z);
-            checkMax(x, y, z + 1);
-            checkMax(x, y, z - 1);
+            // Check neighbors for light (simplified: check 6 neighbors?
+            // Better: Check the neighbor responsible for the face)
+            // But we are in a loop for faces? No, this is for Model/Shape.
+            // Let's modify addFaceQuad to take light overrides or calculate
+            // them.
+
+            // Re-defining addFaceQuad to sample light
+            auto addFaceQuad = [&](int face, float xMin, float yMin, float zMin,
+                                   float xMax, float yMax, float zMax) {
+              int dx = 0, dy = 0, dz = 0;
+              if (face == 0)
+                dz = 1; // Z+
+              else if (face == 1)
+                dz = -1; // Z-
+              else if (face == 2)
+                dx = -1; // X-
+              else if (face == 3)
+                dx = 1; // X+
+              else if (face == 4)
+                dy = 1; // Y+
+              else if (face == 5)
+                dy = -1; // Y-
+
+              int nx = x + dx;
+              int ny = y + dy;
+              int nz = z + dz;
+
+              uint8_t s = 0, b = 0;
+              if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE &&
+                  nz >= 0 && nz < CHUNK_SIZE) {
+                s = blocks[nx][ny][nz].skyLight;
+                b = blocks[nx][ny][nz].blockLight;
+              } else if (world) {
+                int gx = chunkPosition.x * CHUNK_SIZE + nx;
+                int gy = chunkPosition.y * CHUNK_SIZE + ny;
+                int gz = chunkPosition.z * CHUNK_SIZE + nz;
+                s = world->getSkyLight(gx, gy, gz);
+                b = world->getBlockLight(gx, gy, gz);
+              }
+
+              float l1 = pow((float)s / 15.0f, 0.8f);
+              float l2 = pow((float)b / 15.0f, 0.8f);
+
+              float uBase = 0.0f, vBase = 0.0f;
+              float w = zMax - zMin; // Default for Side X
+              float h = yMax - yMin;
+              if (face <= 1)
+                w = xMax - xMin; // Side Z
+              else if (face >= 4) {
+                w = xMax - xMin;
+                h = zMax - zMin;
+              } // Top/Bottom
+
+              cb.block->getTextureUV(
+                  face, uBase, vBase, chunkPosition.x * CHUNK_SIZE + x,
+                  chunkPosition.y * CHUNK_SIZE + y,
+                  chunkPosition.z * CHUNK_SIZE + z, cb.metadata, 0);
+
+              // Face Dimming Logic
+              float shade = 1.0f;
+              if (face == 4)
+                shade = 1.0f; // Top
+              else if (face == 5)
+                shade = 0.6f; // Bottom
+              else
+                shade = 0.8f; // Sides (All) - Matches addFace
+
+              // Draw
+              auto pV = [&](float vx, float vy, float vz, float u, float v,
+                            float ao) {
+                pushVert(fx + vx, fy + vy, fz + vz, u, v, uBase, vBase, ao, l1,
+                         l2, shade);
+              };
+
+              // U,V mapping helpers
+              // Sides: V matches Y. U matches X or Z.
+              // Top/Bottom: U matches X, V matches Z.
+
+              // Simplification: Standard full-face mapping adapted to partial
+              // If face is 0 (Z+), u=x, v=y.
+              float u0 = 0.0f, v0 = 0.0f;
+              float u1 = 1.0f, v1 = 1.0f;
+
+              // Partial logic
+              if (face <= 3) {
+                // Side faces
+                v0 = yMin;
+                v1 = yMax;
+                if (face == 0 || face == 1) { // Z faces -> X varies
+                  if (face == 0) {
+                    u0 = xMin;
+                    u1 = xMax;
+                  } else {
+                    u0 = xMax;
+                    u1 = xMin;
+                  } // Inverted for Back face? Check logic
+                    // Actually addFace logic:
+                  // Face 0 (Z+): (fx, fy, fz+1) to (fx+1, fy+1, fz+1). U: 0->1
+                } else { // X faces -> Z varies
+                  if (face == 3) {
+                    u0 = 1.0f - zMax;
+                    u1 = 1.0f - zMin;
+                  } // X+
+                  else {
+                    u0 = zMin;
+                    u1 = zMax;
+                  } // X-
+                }
+              } else {
+                // Top/Bottom
+                u0 = xMin;
+                u1 = xMax;
+                v0 = zMin;
+                v1 = zMax;
+              }
+
+              // AO sampling currently only for Top Face (4) in caller?
+              // The caller calculates aoTL etc for Face 4.
+              // For other faces, defaulting to 0.0 (Bright).
+              // We should probably implement AO for sides too, but user only
+              // complained about Top/General diff. Top face uses passed AO
+              // values? No, addFaceQuad doesn't take AO args. We need to fix
+              // this. My previous edit removed the MANUAL pushVertS for face 4!
+              // Wait, I am replacing the OLD addFaceQuad.
+              // AND I need to respect the manual loop I wrote earlier?
+              // The manual loop for LAYERED (line 1280+) called pushVert.
+              // It did NOT use addFaceQuad.
+              // Ah! The `LAYERED` block logic was checking `faceDir` loop 976?
+              // No. `Pass 2` iterates `mask` and does `if (shape == LAYERED)`.
+              // Inside that, it does `addFaceQuad` for sides?
+              // Let's check lines 1350 roughly.
+
+              // I need to be careful not to break the manual top face AO I
+              // added. My previous manual top face code: if (face == 4) { ...
+              // pushVert(...) ... }
+
+              // The `addFaceQuad` I am editing is defined at line ~1157.
+              // It is used by `SLAB_BOTTOM`, `STAIRS`, etc.
+              // `LAYERED` uses `addFaceQuad` for SIDES?
+
+              // Let's look at `LAYERED` implementation again (lines ~1360).
+            };
 
             for (const auto &elem : model->elements) {
               glm::vec3 minP = elem.from;
