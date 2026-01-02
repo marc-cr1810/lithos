@@ -2015,13 +2015,16 @@ bool Chunk::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist,
         z < CHUNK_SIZE) {
       if (blocks[x][y][z].isSelectable()) {
         // Check if raycast position is within actual block bounds
-        float blockHeight =
-            blocks[x][y][z].block->getBlockHeight(blocks[x][y][z].metadata);
-        float blockMinY = (float)y;
-        float blockMaxY = (float)y + blockHeight;
+        // Check bounds using AABB
+        glm::vec3 blockMin, blockMax;
+        blocks[x][y][z].block->getAABB(blocks[x][y][z].metadata, blockMin,
+                                       blockMax);
+
+        // Calculate local position within the block (0..1 range)
+        float localY = pos.y - (float)y;
 
         // Only hit if ray position is within the block's actual vertical bounds
-        if (pos.y >= blockMinY && pos.y <= blockMaxY) {
+        if (localY >= blockMin.y && localY <= blockMax.y) {
           outputPos = glm::ivec3(x, y, z);
           outputPrePos =
               glm::ivec3((int)floor(lastPos.x), (int)floor(lastPos.y),

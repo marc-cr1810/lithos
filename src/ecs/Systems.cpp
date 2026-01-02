@@ -136,21 +136,18 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
             if (!cb.isSolid())
               continue;
 
-            // Get actual block height
-            float blockHeight = cb.block->getBlockHeight(cb.metadata);
+            // Get actual block AABB
+            glm::vec3 blockMin, blockMax;
+            cb.block->getAABB(cb.metadata, blockMin, blockMax);
 
-            // Define block bounds based on actual height
-            float blockMinX = (float)x;
-            float blockMinY = (float)y;
-            float blockMinZ = (float)z;
-            float blockMaxX = (float)x + 1.0f;
-            float blockMaxY = (float)y + blockHeight;
-            float blockMaxZ = (float)z + 1.0f;
+            // Convert to world coordinates
+            blockMin += glm::vec3(x, y, z);
+            blockMax += glm::vec3(x, y, z);
 
-            // AABB collision check with actual block bounds
-            bool collides = (minX < blockMaxX && maxX > blockMinX) &&
-                            (minY < blockMaxY && maxY > blockMinY) &&
-                            (minZ < blockMaxZ && maxZ > blockMinZ);
+            // AABB collision check
+            bool collides = (minX < blockMax.x && maxX > blockMin.x) &&
+                            (minY < blockMax.y && maxY > blockMin.y) &&
+                            (minZ < blockMax.z && maxZ > blockMin.z);
 
             if (collides)
               return true;
@@ -188,17 +185,39 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
         int blockY = (int)floor(feetY - 0.1f);
 
         // Find the actual height of the block we're standing on
-        int blockX = (int)floor(transform.position.x);
-        int blockZ = (int)floor(transform.position.z);
-        ChunkBlock groundBlock = world.getBlock(blockX, blockY, blockZ);
-        float blockHeight =
-            groundBlock.block->getBlockHeight(groundBlock.metadata);
+        // Scan for highest block under player footprint (radius 0.3)
+        float maxBlockTop = -999.0f;
+        float r = 0.3f;
+        int minBX = (int)floor(transform.position.x - r);
+        int maxBX = (int)floor(transform.position.x + r);
+        int minBZ = (int)floor(transform.position.z - r);
+        int maxBZ = (int)floor(transform.position.z + r);
 
-        // Snap to top of the actual block surface
-        transform.position.y = (float)blockY + blockHeight + eyeHeight;
+        bool foundSupport = false;
 
-        vel.velocity.y = 0.0f;
-        input.isGrounded = true;
+        for (int bx = minBX; bx <= maxBX; ++bx) {
+          for (int bz = minBZ; bz <= maxBZ; ++bz) {
+            ChunkBlock cb = world.getBlock(bx, blockY, bz);
+            if (cb.isSolid()) {
+              glm::vec3 bMin, bMax;
+              cb.block->getAABB(cb.metadata, bMin, bMax);
+              float topY = (float)blockY + bMax.y;
+
+              // Snap if within step height (0.6f) to prevent wall climbing
+              if (topY > maxBlockTop && topY <= feetY + 0.6f) {
+                maxBlockTop = topY;
+                foundSupport = true;
+              }
+            }
+          }
+        }
+
+        if (foundSupport) {
+          // Snap to top of the highest supporting block
+          transform.position.y = maxBlockTop + eyeHeight;
+          vel.velocity.y = 0.0f;
+          input.isGrounded = true;
+        }
       } else if (vel.velocity.y > 0) {
         // Jumping up into ceiling - Snap down
         while (checkCollision(transform.position)) {
@@ -221,13 +240,37 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
           float feetY = transform.position.y - eyeHeight;
           int blockY = (int)floor(feetY - 0.1f);
 
-          int blockX = (int)floor(transform.position.x);
-          int blockZ = (int)floor(transform.position.z);
-          ChunkBlock groundBlock = world.getBlock(blockX, blockY, blockZ);
-          float blockHeight =
-              groundBlock.block->getBlockHeight(groundBlock.metadata);
+          // Scan for highest block under player footprint (radius 0.3) to
+          // prevent sinking/snapping
+          float maxBlockTop = -999.0f;
+          float r = 0.3f;
+          int minBX = (int)floor(transform.position.x - r);
+          int maxBX = (int)floor(transform.position.x + r);
+          int minBZ = (int)floor(transform.position.z - r);
+          int maxBZ = (int)floor(transform.position.z + r);
 
-          transform.position.y = (float)blockY + blockHeight + eyeHeight;
+          bool foundSupport = false;
+
+          for (int bx = minBX; bx <= maxBX; ++bx) {
+            for (int bz = minBZ; bz <= maxBZ; ++bz) {
+              ChunkBlock cb = world.getBlock(bx, blockY, bz);
+              if (cb.isSolid()) {
+                glm::vec3 bMin, bMax;
+                cb.block->getAABB(cb.metadata, bMin, bMax);
+                float topY = (float)blockY + bMax.y;
+
+                // Snap if within step height (0.6f)
+                if (topY > maxBlockTop && topY <= feetY + 0.6f) {
+                  maxBlockTop = topY;
+                  foundSupport = true;
+                }
+              }
+            }
+          }
+
+          if (foundSupport) {
+            transform.position.y = maxBlockTop + eyeHeight;
+          }
         } else {
           if (input.isGrounded && vel.velocity.y <= 0) {
             // Walked off ledge?

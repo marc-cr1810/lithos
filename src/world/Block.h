@@ -283,6 +283,15 @@ public:
   // full blocks)
   virtual float getBlockHeight(uint8_t metadata) const { return 1.0f; }
 
+  // Get axis-aligned bounding box for this block (min/max relative to block
+  // position) Default is full cube (0,0,0) to (1,1,1) but uses getBlockHeight
+  // for Y-max
+  virtual void getAABB(uint8_t metadata, glm::vec3 &outMin,
+                       glm::vec3 &outMax) const {
+    outMin = glm::vec3(0.0f, 0.0f, 0.0f);
+    outMax = glm::vec3(1.0f, getBlockHeight(metadata), 1.0f);
+  }
+
   // Events
   virtual void onPlace(World &world, int x, int y, int z) const {}
   virtual void onNeighborChange(World &world, int x, int y, int z, int nx,
