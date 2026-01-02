@@ -18,8 +18,6 @@ WorldGenerator::WorldGenerator(const WorldGenConfig &config)
       strataRegistry(RockStrataRegistry::Get()) {
   // VS Style Sea Level: ~43% of world height
   this->config.seaLevel = (int)(config.worldHeight * 0.4313725490196078);
-  LOG_INFO("WorldGenerator: Calculated Sea Level: {} (World Height: {})",
-           this->config.seaLevel, config.worldHeight);
 
   // Data assets should be loaded globally in Application::Init
   // LandformRegistry::Get().LoadFromJson("assets/worldgen/landforms.json");
@@ -194,41 +192,58 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
       // --- 3D Density Search ---
       int surfaceY = 0;
 
-      // Optimization: coarse search or just top-down
-      // We search from Top down.
-      // To prevent floating islands invalidating the "HeightMap" concept (which
-      // assumes solid below), we might need to be careful. But for now, finding
-      // the HIGHEST solid block is correct for "Sunlight" / HeightMap.
+      // Optimization: Coarse Search
+      // Step size for initial search
+      const int coarseStep = 4;
 
-      for (int y = config.worldHeight - 1; y > 0; y--) {
-        // 1. Get Landform Thresholds at shifted Y
-        // We apply upheaval to Y here.
-        // If Y=100 and Upheaval=20, we sample threshold at Y=120 (effectively
-        // pushing terrain down? No). If Upheaval is Positive, we want Higher
-        // Terrain. Threshold(Y) usually decreases with Y. (1 at bottom, -1 at
-        // top). If we want mountain (Limit is higher), we should sample a LOWER
-        // Y's threshold. So sampleY = y - upheaval. Example: Real Y=100.
-        // Upheaval=20. Sample Y=80. Threshold(80) > Threshold(100). More likely
-        // solid. Correct.
+      // Start from top, step down by coarseStep
+      for (int y = config.worldHeight - 1; y > 0; y -= coarseStep) {
+        // 1. Check potential Solidity at this coarse Y
 
-        int sampleY = (int)(y - upheavalYShift);
+        // Helper to calculate density at specific Y
+        auto getDensity = [&](int sampleY) -> float {
+          // Apply Upheaval
+          int shiftedY = (int)(sampleY - (upVal * 40.0f));
 
-        float th1 = lf1.GetDensityThreshold(sampleY);
-        float th2 = lf2.GetDensityThreshold(sampleY);
-        float th3 = lf3.GetDensityThreshold(sampleY);
+          float th1 = lf1.GetDensityThreshold(shiftedY);
+          float th2 = lf2.GetDensityThreshold(shiftedY);
+          float th3 = lf3.GetDensityThreshold(shiftedY);
 
-        float threshold = th1 * w1 + th2 * w2 + th3 * w3;
+          float th = th1 * w1 + th2 * w2 + th3 * w3;
 
-        // 2. Get 3D Noise (The "Wiggle")
-        // We can use the 3D noise from manager.
-        // Note: Calling this per block is slow-ish.
-        float noise3d = noiseManager.GetTerrainNoise3D(wx, y, wz);
+          // Optimization: If threshold is low enough that noise can't verify
+          // it, skip? Assuming noise is [-1, 1]. If th < -1.2, result is
+          // certainly < -0.2 (Air). But we can just compute it.
 
-        // 3. Density Check
-        // Density = Noise + Threshold.
-        if (noise3d + threshold > 0) {
-          surfaceY = y;
-          break;
+          float n = noiseManager.GetTerrainNoise3D(wx, sampleY, wz);
+          return n + th;
+        };
+
+        float density = getDensity(y);
+
+        if (density > 0) { // Found solid (or close to it)
+          // We found a solid block at 'y'.
+          // The surface is likely between 'y' and 'y + coarseStep'.
+          // We need to check upwards from y to find the *first* solid block
+          // from top (highest solid). Actually we are searching *downwards*. If
+          // 'y' is solid, the transition from Air -> Solid happened above. So
+          // we check y+1, y+2, y+3... upwards? Or rather, we know y+coarseStep
+          // was Air (from previous iteration). So we check range [y +
+          // coarseStep - 1] down to [y].
+
+          int topSearch = std::min(config.worldHeight - 1, y + coarseStep - 1);
+
+          bool foundPrecise = false;
+          for (int preciseY = topSearch; preciseY >= y; preciseY--) {
+            if (getDensity(preciseY) > 0) {
+              surfaceY = preciseY;
+              foundPrecise = true;
+              break;
+            }
+          }
+
+          if (foundPrecise)
+            break;
         }
       }
 
@@ -236,7 +251,14 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
       if (surfaceY < 5)
         surfaceY = 5; // Bedrock
       if (surfaceY > 255)
-        surfaceY = 255;
+        surfaceY = 255; // Clamped to 255 for Column storage? Wait/Check column
+                        // height storage.
+
+      // Debug SurfaceY
+      if (lx == 8 && lz == 8 &&
+          index == 0) { // Log once per column gen batch or similar
+        LOG_INFO("GenColumn: surfaceY at ({}, {}) = {}", wx, wz, surfaceY);
+      }
 
       column.setHeight(lx, lz, surfaceY);
       // We use Biome A properties for blocks (could blend properties too but

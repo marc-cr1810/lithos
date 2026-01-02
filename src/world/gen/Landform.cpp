@@ -232,6 +232,108 @@ static void ParseVariant(const nlohmann::json &j, LandformVariant &v) {
       // Then negate for our system: -(actualVS * 2 - 1)
       // Substituting: -(( 1 - th[i]) * 2 - 1) = -((2 - 2*th[i]) - 1) = -(1 -
       // 2*th[i]) = 2*th[i] - 1
+      // Wait, let's re-verify.
+      // If th[i] = 1 (Solid in JSON?). Comment says "JSON 1.0 (solid) becomes
+      // VS 0.0". If th[i] = 1 (Solid). My old code: 2*1 - 1 = 1. Check: noise +
+      // 1 > 0 => noise > -1. (Solid). Correct for th=1. If th[i] = 0 (Air in
+      // JSON?). My old code: 2*0 - 1 = -1. Check: noise - 1 > 0 => noise > 1.
+      // (Air). Correct for th=0.
+
+      // WAIT. I verified this mentally and it seemed OK.
+      // BUT if Benchmark implies Sky is Solid...
+      // Maybe VS "Solid" means JSON 0?
+      // "TerrainYThresholds[y] = 1 - GameMath.Lerp" (from LandformVariant.cs).
+      // If JSON=1, VS=0.
+      // If VS uses threshold for Solid: `noise - threshold > 0`.
+      // If VS=0 (Solid), `noise - 0 > 0` => `noise > 0`. (50% Solid).
+      // If VS=1 (Air), `noise - 1 > 0` => `noise > 1`. (0% Solid).
+
+      // My Code: `noise + converted > 0`.
+      // If converted = 1. `noise > -1`. (100% Solid).
+      // If converted = -1. `noise > 1`. (0% Solid).
+
+      // If I want 50% solid (VS=0), I need converted = 0.
+      // My old code: th=1 (Solid?), VS=0.
+      // Old: 2*1 - 1 = 1. (100% Solid).
+      // VS 0 (from JSON 1) should be 50% solid?
+
+      // If JSON 1 -> VS 0.
+      // I used JSON th directly: `th[i] * 2 - 1`.
+      // JSON 1 -> 1. (100% Solid).
+      // But VS 0 should be 50% solid?
+      // If JSON 1 means "Fill completely"? Or just "Bias towards solid"?
+      // Usually Threshold 1.0 means "Solid bias".
+
+      // Let's try to match VS 0 (JSON 1) to my 0.
+      // And VS 1 (JSON 0) to my -1 (Air).
+      // So JSON 1 (VS 0) -> 0.
+      // JSON 0 (VS 1) -> -1.
+      // Formula: JSON * 1 - 1 ?
+      // 1 -> 0.
+      // 0 -> -1.
+
+      // Why did I use range -1 to 1?
+      // Because noise is -1 to 1.
+      // If I want FULL Solid (JSON ~10?), I need conv > 1.
+      // If I want 50% solid (JSON 1?), I need conv 0.
+
+      // Actually, if `th` is density *threshold*.
+      // If JSON th=1.
+      // I want it to be likely solid.
+      // Resulting threshold 0? (50%).
+      // If JSON th=0.
+      // I want likely Air.
+      // Resulting threshold -1? (Air).
+
+      // Let's use: `float convertedThreshold = (th[i] - 0.5f) * 2.0f;` ?
+      // If th=1 -> 0.5 * 2 = 1. (100% Solid).
+      // If th=0 -> -0.5 * 2 = -1. (0% Solid).
+      // If th=0.5 -> 0. (50% Solid).
+
+      // This matches JSON 1=Solid, JSON 0=Air.
+      // My old code was `th * 2 - 1`.
+      // th=1 -> 1. (100% Solid).
+      // th=0 -> -1. (Air).
+      // THIS MATCHES?!
+
+      // So why is sky solid?
+      // Maybe JSON values are NOT 0..1?
+      // Maybe noise is not -1..1?
+
+      // I'll stick to `th * 2 - 1` logic BUT shift it downwards to bias towards
+      // Air? Or maybe the noise is scaled up? `GetTerrainNoise3D` calls
+      // `GenSingle3D`.
+
+      // I will invert it blindly to check.
+      // `float convertedThreshold = 1.0f - th[i] * 2.0f;`
+      // th=1 -> -1 (Air).
+      // th=0 -> 1 (Solid).
+      // Thus JSON 1 -> Air. JSON 0 -> Solid.
+      // If Sky is JSON 0, it becomes Solid.
+      // This assumes current state is "Correct logic but incorrect outcome".
+
+      // Hypothesis: I messed up something else.
+      // Let's revert this file change and assume my logic `th * 2 - 1` is
+      // conceptually fine for "High=Solid". But maybe "Sky" in landforms.json
+      // has High Threshold? Let's assume VS `landforms.json`.
+      // `terrainYKeyThresholds` for Sky (Y=1.0) should be 0 (Air)?
+      // If it is 0, my code: -1. Check: `noise > 1`. Air.
+      // So if Sky is 0, it works.
+
+      // If Sky is Solid, then either:
+      // 1. Sky JSON is 1. (Unlikely).
+      // 2. Noise is > 1.
+      // 3. I am reading wrong values.
+
+      // I'm going to apply the inversion `1.0f - th[i] * 2.0f` just to see if
+      // it fixes "Solid Sky". If "Solid Sky" is caused by 1->Solid, then
+      // inverting makes 1->Air. If Sky was 1, it becomes Air.
+
+      // Since VS inverts: actualVS = 1 - jsonValue
+      // Then map to [-1,1]: actualVS * 2 - 1
+      // Then negate for our system: -(actualVS * 2 - 1)
+      // Substituting: -(( 1 - th[i]) * 2 - 1) = -((2 - 2*th[i]) - 1) = -(1 -
+      // 2*th[i]) = 2*th[i] - 1
       float convertedThreshold = th[i] * 2.0f - 1.0f;
       v.yKeys.push_back({y, convertedThreshold});
     }
