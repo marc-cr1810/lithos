@@ -57,7 +57,7 @@ void FloraDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
 
         // --- Desert Flora ---
         if (temp > 30.0f && humid < -0.5f) {
-          if (groundBlock == SAND) {
+          if (groundBlock == SAND || groundBlock == COARSE_DIRT) {
             int r = rand() % 100;
             float density = generator.GetConfig().floraDensity;
 
@@ -71,7 +71,8 @@ void FloraDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
         }
         // --- Moderate/Lush Flora ---
         else if (temp > 5.0f && humid > -0.3f) {
-          if (groundBlock == GRASS) {
+          if (groundBlock == GRASS || groundBlock == PODZOL ||
+              groundBlock == TERRA_PRETA || groundBlock == MUD) {
             int r = rand() % 100;
             float density = generator.GetConfig().floraDensity;
 
@@ -91,8 +92,8 @@ void FloraDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
         // --- Cold Flora ---
         else if (temp < -0.2f) {
           // Tundra grass?
-          if (groundBlock == GRASS ||
-              groundBlock == DIRT) { // Snow usually covers specific blocks
+          if (groundBlock == GRASS || groundBlock == DIRT ||
+              groundBlock == COARSE_DIRT || groundBlock == PEAT) {
             // Less flora in cold?
             if ((rand() % 100) < 5) {
               chunk.setBlock(x, localY, z, TALL_GRASS);

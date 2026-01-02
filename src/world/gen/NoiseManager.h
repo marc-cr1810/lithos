@@ -29,6 +29,8 @@ public:
   float GetBushNoise(int x, int z) const; // Restored
   float GetBeachNoise(int x, int z) const;
   float GetTerrainDetail(int x, int z) const;
+  float GetSurfacePatchNoise(int x,
+                             int z) const; // New: For gravel/sand patches
   float GetTerrainOctave(float x, float z, int octave) const; // New
   float GetLandformNeighborNoise(int x, int z) const;         // 2nd closest
   float GetLandformNeighbor3Noise(int x, int z) const;        // 3rd closest
@@ -135,4 +137,5 @@ private:
 
   FastNoise::SmartNode<> cave3DNode;
   FastNoise::SmartNode<> caveEntranceNode;
+  FastNoise::SmartNode<> surfacePatchNode; // Simplex
 };

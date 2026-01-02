@@ -360,6 +360,14 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
         BlockRegistry::getInstance().getBlock(BlockType::GRAVEL);
     Block *grassBlock = BlockRegistry::getInstance().getBlock(BlockType::GRASS);
     Block *dirtBlock = BlockRegistry::getInstance().getBlock(BlockType::DIRT);
+    Block *mudBlock = BlockRegistry::getInstance().getBlock(BlockType::MUD);
+    Block *podzolBlock =
+        BlockRegistry::getInstance().getBlock(BlockType::PODZOL);
+    Block *coarseDirtBlock =
+        BlockRegistry::getInstance().getBlock(BlockType::COARSE_DIRT);
+    Block *terraPretaBlock =
+        BlockRegistry::getInstance().getBlock(BlockType::TERRA_PRETA);
+    Block *peatBlock = BlockRegistry::getInstance().getBlock(BlockType::PEAT);
 
     // Lambda to get density (Similar to GenerateColumn but for specific y)
 
@@ -534,18 +542,38 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
               chunk.blocks[lx][localSurfaceY][lz].metadata = 0;
             } else {
               // Land
-              chunk.blocks[lx][localSurfaceY][lz].block = grassBlock;
+              // Use Dynamic Surface Block
+              BlockType surfaceType =
+                  GetSurfaceBlock(wx, surfaceHeight, wz, &column);
+              Block *surfaceBlock =
+                  BlockRegistry::getInstance().getBlock(surfaceType);
+
+              chunk.blocks[lx][localSurfaceY][lz].block = surfaceBlock;
               chunk.blocks[lx][localSurfaceY][lz].metadata = 0;
+
+              // Determine Sub-surface block (default dirt)
+              Block *subBlock = dirtBlock;
+              if (surfaceType == BlockType::SAND)
+                subBlock = sandBlock; // Or Sandstone?
+              else if (surfaceType == BlockType::GRAVEL)
+                subBlock = gravelBlock;
+              else if (surfaceType == BlockType::MUD)
+                subBlock = mudBlock;
+              else if (surfaceType == BlockType::COARSE_DIRT)
+                subBlock = coarseDirtBlock;
+              else if (surfaceType == BlockType::PEAT)
+                subBlock = peatBlock;
+
               if (localSurfaceY > 0) {
-                chunk.blocks[lx][localSurfaceY - 1][lz].block = dirtBlock;
+                chunk.blocks[lx][localSurfaceY - 1][lz].block = subBlock;
                 chunk.blocks[lx][localSurfaceY - 1][lz].metadata = 0;
               }
               if (localSurfaceY > 1) {
-                chunk.blocks[lx][localSurfaceY - 2][lz].block = dirtBlock;
+                chunk.blocks[lx][localSurfaceY - 2][lz].block = subBlock;
                 chunk.blocks[lx][localSurfaceY - 2][lz].metadata = 0;
               }
               if (localSurfaceY > 2) {
-                chunk.blocks[lx][localSurfaceY - 3][lz].block = dirtBlock;
+                chunk.blocks[lx][localSurfaceY - 3][lz].block = subBlock;
                 chunk.blocks[lx][localSurfaceY - 3][lz].metadata = 0;
               }
             }
@@ -691,6 +719,45 @@ std::string WorldGenerator::GetLandformNameAt(int x, int z) {
 
 BlockType WorldGenerator::GetSurfaceBlock(int x, int y, int z,
                                           const ChunkColumn *column) {
+  float temp = noiseManager.GetTemperature(x, z);
+  float humid = noiseManager.GetHumidity(x, z);
+  float patch = noiseManager.GetSurfacePatchNoise(x, z);
+
+  // Patch Overrides (Micro-biomes)
+  if (patch > 0.60f)
+    return BlockType::GRAVEL;
+  if (patch < -0.70f)
+    return BlockType::COARSE_DIRT;
+
+  // Biome Logic
+  // Hot
+  if (temp > 22.0f) {
+    if (humid < 0.25f)
+      return BlockType::SAND; // Desert
+    if (humid > 0.6f)
+      return BlockType::TERRA_PRETA; // Jungle
+  }
+
+  // Swamp / Bog
+  if (humid > 0.75f) {
+    if (temp > 5.0f)
+      return BlockType::MUD; // Swamp
+    else
+      return BlockType::PEAT; // Cold Bog
+  }
+
+  // Cold
+  if (temp < 5.0f) {
+    if (humid < 0.2f)
+      return BlockType::COARSE_DIRT; // Tundra
+  }
+
+  // Forest Soils
+  if (humid > 0.4f && temp > 10.0f) {
+    if (patch < -0.2f)
+      return BlockType::PODZOL;
+  }
+
   return BlockType::GRASS;
 }
 

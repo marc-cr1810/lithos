@@ -74,7 +74,10 @@ enum BlockType {
   GNEISS = 56,
   SCHIST = 57,
   RHYOLITE = 58,
-  GOLD_ORE = 59
+  GOLD_ORE = 59,
+  COARSE_DIRT = 60,
+  TERRA_PRETA = 61,
+  PEAT = 62
 };
 
 class World; // Forward declaration

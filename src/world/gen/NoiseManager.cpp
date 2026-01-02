@@ -168,6 +168,10 @@ void NoiseManager::Initialize() {
   // 8. Cave Entrance Noise
   auto caveEntrance = FastNoise::New<FastNoise::Perlin>();
   caveEntranceNode = caveEntrance;
+
+  // 9. Surface Patch Noise
+  auto surfacePatch = FastNoise::New<FastNoise::Simplex>();
+  surfacePatchNode = surfacePatch;
 }
 
 // --------------------------------------------------------
@@ -244,6 +248,12 @@ float NoiseManager::GetTerrainDetail(int x, int z) const {
   return terrainDetailNode->GenSingle2D((float)x * config.terrainDetailScale,
                                         (float)z * config.terrainDetailScale,
                                         seed);
+}
+
+float NoiseManager::GetSurfacePatchNoise(int x, int z) const {
+  return surfacePatchNode->GenSingle2D((float)x * config.surfacePatchScale,
+                                       (float)z * config.surfacePatchScale,
+                                       seed + 20);
 }
 
 // Samples a specific terrain octave with default frequency scaling

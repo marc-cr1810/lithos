@@ -360,6 +360,21 @@ BlockRegistry::BlockRegistry() {
   gneiss->setTexture("gneiss");
   registerBlock(gneiss);
 
+  Block *coarseDirt = new SolidBlock(BlockType::COARSE_DIRT, "Coarse Dirt");
+  coarseDirt->setResourceId("lithos:coarse_dirt");
+  coarseDirt->setTexture("coarse_dirt");
+  registerBlock(coarseDirt);
+
+  Block *terraPreta = new SolidBlock(BlockType::TERRA_PRETA, "Terra Preta");
+  terraPreta->setResourceId("lithos:terra_preta");
+  terraPreta->setTexture("terra_preta");
+  registerBlock(terraPreta);
+
+  Block *peat = new SolidBlock(BlockType::PEAT, "Peat");
+  peat->setResourceId("lithos:peat");
+  peat->setTexture("peat");
+  registerBlock(peat);
+
   // Dynamic Model Loading
   for (auto &pair : blocks) {
     Block *block = pair.second;

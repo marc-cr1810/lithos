@@ -214,6 +214,14 @@ void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
         continue;
       }
 
+      // Valid Soil Sets
+      bool isFertile = (surfaceBlock == GRASS || surfaceBlock == DIRT ||
+                        surfaceBlock == PODZOL || surfaceBlock == TERRA_PRETA ||
+                        surfaceBlock == MUD);
+      bool isSandy =
+          (surfaceBlock == SAND ||
+           surfaceBlock == COARSE_DIRT); // Coarse dirt as 'arid' soil
+
       // Get Noise Data
       float temp = column.temperatureMap[lx][lz];
       float humid = column.humidityMap[lx][lz];
@@ -223,7 +231,7 @@ void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
 
       // 1. Cactus (Desert: Hot & Dry)
       // High Temp (> 30C), Low Humidity
-      if (temp > 30.0f && humid < -0.5f) {
+      if (temp > 30.0f && humid < -0.5f && isSandy) {
         if (GetPosRand(gx, gz, seed, 300) <
             generator.GetConfig().cactusDensity) {
           GenerateCactus(chunk, gx, height, gz, seed);
@@ -231,17 +239,24 @@ void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
       }
 
       // 2. Trees (Need Forest Noise + suitable Temp/Humid)
-      if (forest > 0.2f) {
+      if (forest > 0.2f && isFertile) {
 
         // Pine (Cold < 5C)
+        // Also allow on SNOW if we had it, but usually surface is soil then
+        // covered
         if (temp < 5.0f) {
-          if (GetPosRand(gx, gz, seed, 400) <
-              generator.GetConfig().pineDensity) {
-            GeneratePine(chunk, gx, height, gz, seed);
+          // Allow on Coarse Dirt for Tundra trees
+          if (surfaceBlock == COARSE_DIRT || isFertile) {
+            if (GetPosRand(gx, gz, seed, 400) <
+                generator.GetConfig().pineDensity) {
+              GeneratePine(chunk, gx, height, gz, seed);
+            }
           }
         }
         // Oak (Moderate: 5C to 35C)
         else if (temp >= 5.0f && temp < 35.0f && humid > -0.3f) {
+          // Jungle Logic? If Terra Preta, maybe denser?
+          // For now just standard Oak on all fertile soils
           if (GetPosRand(gx, gz, seed, 500) <
               generator.GetConfig().oakDensity) {
             GenerateOak(chunk, gx, height, gz, seed);

@@ -77,6 +77,7 @@ struct WorldGenConfig {
   float bushScale = 0.08f;           // For bush placement
   float beachScale = 0.01f;          // For beach placement
   float strataScale = 0.005f;        // For rock strata layers
+  float surfacePatchScale = 0.04f;   // For gravel/sand patches
 
   WorldGenConfig() {
     // Initialize with default values seen in WorldGenerator.cpp
