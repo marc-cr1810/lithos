@@ -32,147 +32,121 @@ BlockType RockStrataRegistry::GetStrataBlock(int x, int y, int z, int surfaceY,
                                              float provinceNoise,
                                              float strataNoise,
                                              float distortion, int seed) {
-  const GeologicProvince *prov = GetProvince(provinceNoise);
-  if (!prov) {
-    // std::cout << "Null Province!" << std::endl;
+  if (provinces.empty())
     return BlockType::STONE;
-  }
-  // std::cout << "Prov: " << prov->name << std::endl;
 
-  // Distortion: Bend the layers!
-  // distortion is typically -1 to 1 (noise).
-  // We scale it to have significant vertical impact (e.g. +/- 40 blocks)
-  // But wait, the caller might pass scaled distortion.
-  // Let's assume distortion is the raw noise value or pre-scaled?
-  // Caller (WorldGen) has 'upheaval' which is used for height shift.
-  // If we utilize the SAME upheaval, the strata will follow the terrain bumps,
-  // which is good. But we might want INDEPENDENT folding. For now, let's just
-  // apply it directly to Y.
+  // Map noise (-1 to 1) to continuous index
+  float t = (provinceNoise + 1.0f) * 0.5f;    // 0..1
+  float scaledT = t * (provinces.size() - 1); // 0 .. N-1
+  size_t index1 = (size_t)scaledT;
+  size_t index2 = index1 + 1;
+  if (index2 >= provinces.size())
+    index2 = provinces.size() - 1;
+  float blend = scaledT - index1; // 0..1
 
-  // Warp the Y coordinate used for layer lookup
-  // If we move up (higher Y), we should see deeper layers?
-  // If Y=10 and warp=+10, we look up layer at Y=20.
-  // This effectively pushes the strata DOWN at that location.
-  // Wait, if layer is at Depth 10.
-  // if Y=60 (Surface). Depth=0.
-  // Y lookup should be relative to surface?
-  // The original code used: currentDepth = surfaceY - y;
-  // This means strata follows the terrain surface perfectly parallel.
-  // To make it look like REAL geology (independent of surface erosion),
-  // we should look up based on ABOSLUTE Y, not Depth from Surface.
-  // VS uses Absolute Y with Upheaval.
+  const GeologicProvince *prov1 = &provinces[index1];
+  const GeologicProvince *prov2 = &provinces[index2];
 
-  // NEW LOGIC: Absolute Y Mapping + Distortion
-  // But we must ensure the top layer matches the surface block type roughly?
-  // No, real geology doesn't guarantee top layer is sandstone. It could be
-  // granite if eroded. HOWEVER, Lithos expects Top Soil (Grass/Dirt) to be
-  // placed by WorldGen separately. This function places the ROCK below.
+  // Blend Thickness Caps
+  auto lerp = [](int a, int b, float f) { return (int)(a + (b - a) * f); };
 
-  // Let's try Absolute Y Strata.
-  // 0 = Bedrock. 320 = Sky.
-  // Layers stack from bottom up? Or top down from some "Simulated Max Height"?
-  // Let's stack from Bottom Up (Igneous -> Metamorphic -> Sedimentary).
-  // distortedY = y + distortion * 50.0f; // Scale distortion
+  int surfCap = lerp(prov1->sedMaxThickness, prov2->sedMaxThickness, blend);
+  int metaCap = lerp(prov1->metaMaxThickness, prov2->metaMaxThickness, blend);
+  int ignCap = lerp(prov1->ignMaxThickness, prov2->ignMaxThickness, blend);
 
-  // But wait, if we switch to Absolute Y, we break the "Sedimentary Basin" feel
-  // where it fills valleys. VS Hybrid approach: Some layers follow surface,
-  // some are absolute? Let's stick to "Depth from Surface" but modulate the
-  // Depth calculation. distortedDepth = (surfaceY - y) + distortion * 40.0f; If
-  // distortion is positive, depth increases -> we see deeper layers
-  // (erosion/uplift). If distortion is negative, depth decreases -> we see top
-  // layers (depression).
-
-  float distortionScale = 60.0f;
+  // Distortion
+  float distortionScale = 30.0f; // Reduced from 60.0f to reduce extreme folding
   int distortedDepth = (surfaceY - y) + (int)(distortion * distortionScale);
-
-  // If distortedDepth < 0, it means we are "above" the simulated strata stack.
-  // This can happen if upheaval pushes the strata so far down that we are
-  // checking high up? Or rather, if we are exposed. We clamp to 0 (Top Layer).
   if (distortedDepth < 0)
     distortedDepth = 0;
 
-  // Modulation: Use the coherent strataNoise passed from WorldGenerator.
-  auto getNoise = [&](int id) {
-    float n = (strataNoise + 1.0f) * 0.5f;
-    return n;
-  };
-
   int depthAccumulator = 0;
 
-  // 1. Sedimentary (Top)
-  for (size_t i = 0; i < prov->sedimentary.size(); ++i) {
-    const auto &layer = prov->sedimentary[i];
-    float noise = (strataNoise + 1.0f) * 0.5f;
+  // Select Dominant Province for Layer List
+  const GeologicProvince *dominantProv = (blend < 0.5f) ? prov1 : prov2;
 
+  // 1. Sedimentary (Top)
+  int sedThicknessUsed = 0;
+  for (size_t i = 0; i < dominantProv->sedimentary.size(); ++i) {
+    if (sedThicknessUsed >= surfCap)
+      break;
+
+    const auto &layer = dominantProv->sedimentary[i];
+    float noise = (strataNoise + 1.0f) * 0.5f;
     int thickness =
         layer.baseThickness + (int)(noise * layer.thicknessVariation);
+
+    int available = surfCap - sedThicknessUsed;
+    if (thickness > available)
+      thickness = available;
+    if (thickness <= 0)
+      break;
 
     if (distortedDepth >= depthAccumulator &&
         distortedDepth < depthAccumulator + thickness) {
       return layer.block;
     }
     depthAccumulator += thickness;
+    sedThicknessUsed += thickness;
   }
 
   // 2. Metamorphic (Middle)
-  for (size_t i = 0; i < prov->metamorphic.size(); ++i) {
-    const auto &layer = prov->metamorphic[i];
+  int metaThicknessUsed = 0;
+  for (size_t i = 0; i < dominantProv->metamorphic.size(); ++i) {
+    if (metaThicknessUsed >= metaCap)
+      break;
+
+    const auto &layer = dominantProv->metamorphic[i];
     float noise = (strataNoise + 1.0f) * 0.5f;
     int thickness =
         layer.baseThickness + (int)(noise * layer.thicknessVariation);
+
+    int available = metaCap - metaThicknessUsed;
+    if (thickness > available)
+      thickness = available;
+    if (thickness <= 0)
+      break;
 
     if (distortedDepth >= depthAccumulator &&
         distortedDepth < depthAccumulator + thickness) {
       return layer.block;
     }
     depthAccumulator += thickness;
+    metaThicknessUsed += thickness;
   }
 
-  // 3. Igneous / Volcanic (Bottom up? Check deeper?)
-  // If we fell through here, we are *below* the sedimentary/metamorphic stack.
-  // The "distortedDepth" is how far we are *below the surface*.
-  // Sed/Meta stack has a total thickness.
-
-  // Total thickness of top layers
+  // 3. Igneous
   int topStackThickness = depthAccumulator;
-
-  // We are at depth "distortedDepth".
-  // relative depth in igneous = distortedDepth - topStackThickness.
   int igneousDepth = distortedDepth - topStackThickness;
 
   if (igneousDepth < 0)
-    return BlockType::STONE; // Should not trigger if logic above is correct
+    return BlockType::STONE;
 
-  // Traverse Igneous layers (Top Down relative to start of Igneous?)
-  // rockstrata.json says "BottomUp" for some, "TopDown" for others.
-  // Converting "BottomUp" to layer logic means: Thickness 100 means it occupies
-  // 0..100? Let's simplified assumption: Igneous layers stack Top-Down *from
-  // the bottom of Metamorphic*.
+  int ignThicknessUsed = 0;
+  for (size_t i = 0; i < dominantProv->igneous.size(); ++i) {
+    if (ignThicknessUsed >= ignCap)
+      return BlockType::STONE;
 
-  for (size_t i = 0; i < prov->igneous.size(); ++i) {
-    const auto &layer = prov->igneous[i];
+    const auto &layer = dominantProv->igneous[i];
     float noise = (strataNoise + 1.0f) * 0.5f;
-
-    // Some igneous layers might be huge (Unitu) or small (dykes).
-    // rockstrata.json: "lithos:basalt" (Igneous) amp=[10,5...] -> thickness
-    // ~17. "lithos:granite" amp=[2.9...] -> thickness ~5. Wait, Granite is
-    // usually the *Base*. It should ideally be Infinite. If rockstrata.json
-    // gives it finite thickness, what's below? Maybe the last layer should be
-    // infinite? Or we loop?
-
     int thickness =
         layer.baseThickness + (int)(noise * layer.thicknessVariation);
+
+    // If this is the last layer, should we allow it to be infinite?
+    // VS logic suggests some are infinite, but with caps, we might want to cap
+    // it. If we want Bedrock/Mantle at bottom, capping implies something below.
+    // Let's strict cap.
 
     if (igneousDepth < thickness) {
       return layer.block;
     }
     igneousDepth -= thickness;
+    ignThicknessUsed += thickness;
   }
 
-  // Fallback to the LAST igneous layer if we go deeper?
-  // Or just STONE.
-  if (!prov->igneous.empty()) {
-    return prov->igneous.back().block;
+  // Fallback to last igneous if we are still within cap but out of layers?
+  if (!dominantProv->igneous.empty() && ignThicknessUsed < ignCap) {
+    return dominantProv->igneous.back().block;
   }
 
   return BlockType::STONE;
@@ -287,22 +261,37 @@ void RockStrataRegistry::LoadProvinces(const std::string &path) {
 
       if (j.contains("rockstrata")) {
         const auto &rs = j["rockstrata"];
-        if (rs.contains("Sedimentary") &&
-            rs["Sedimentary"].value("maxThickness", 100) == 0)
+        if (rs.contains("Sedimentary")) {
+          p.sedMaxThickness = rs["Sedimentary"].value("maxThickness", 255);
+          if (p.sedMaxThickness == 0)
+            allowSed = false;
+        } else {
           allowSed = false;
-        if (rs.contains("Metamorphic") &&
-            rs["Metamorphic"].value("maxThickness", 100) == 0)
+        }
+
+        if (rs.contains("Metamorphic")) {
+          p.metaMaxThickness = rs["Metamorphic"].value("maxThickness", 255);
+          if (p.metaMaxThickness == 0)
+            allowMeta = false;
+        } else {
           allowMeta = false;
-        if (rs.contains("Igneous") &&
-            rs["Igneous"].value("maxThickness", 255) == 0)
+        }
+
+        if (rs.contains("Igneous")) {
+          p.ignMaxThickness = rs["Igneous"].value("maxThickness", 255);
+          if (p.ignMaxThickness == 0)
+            allowIgn = false;
+        } else {
           allowIgn = false;
-        if (rs.contains("Volcanic") &&
-            rs["Volcanic"].value("maxThickness", 100) == 0)
+        }
+
+        if (rs.contains("Volcanic")) {
+          p.volcMaxThickness = rs["Volcanic"].value("maxThickness", 255);
+          if (p.volcMaxThickness == 0)
+            allowVolc = false;
+        } else {
           allowVolc = false;
-        // If Volcanic entry missing, assume false? VS config usually explicit.
-        // geologicprovinces.json has "Volcanic" in some, "Igneous" in all.
-        if (!rs.contains("Volcanic"))
-          allowVolc = false;
+        }
       }
 
       if (allowSed)

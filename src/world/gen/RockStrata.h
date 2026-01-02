@@ -17,6 +17,12 @@ struct GeologicProvince {
   std::vector<StrataLayer> metamorphic;
   std::vector<StrataLayer> igneous;  // Multiple igneous layers supported
   std::vector<StrataLayer> volcanic; // Volcanic layers
+
+  // Thickness Caps for Blending
+  int sedMaxThickness = 255;
+  int metaMaxThickness = 255;
+  int ignMaxThickness = 255;
+  int volcMaxThickness = 255;
 };
 
 class RockStrataRegistry {

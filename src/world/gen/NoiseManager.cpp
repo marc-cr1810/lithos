@@ -107,9 +107,15 @@ void NoiseManager::Initialize() {
   terrainDetailNode = detailFractal;
 
   // 3. Geologic Province
-  auto geologicSource = FastNoise::New<FastNoise::CellularValue>();
-  geologicSource->SetDistanceFunction(FastNoise::DistanceFunction::Manhattan);
-  geologicSource->SetJitterModifier(2.0f);
+  // 3. Geologic Province (Used for determining rock strata blending)
+  // Changed from CellularValue (hard edges) to Simplex (gradients) to allow
+  // smooth blending.
+  auto geologicSource = FastNoise::New<FastNoise::Simplex>();
+  // auto geologicFractal = FastNoise::New<FastNoise::FractalFBm>(); //
+  // Optional: Fractal for more detail?
+  // geologicFractal->SetSource(geologicSource);
+  // geologicFractal->SetOctaveCount(2);
+  // geologicNode = geologicFractal;
   geologicNode = geologicSource;
 
   // 4. Climate
