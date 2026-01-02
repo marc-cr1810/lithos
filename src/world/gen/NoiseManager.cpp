@@ -7,45 +7,55 @@ NoiseManager::NoiseManager(const WorldGenConfig &config)
 }
 
 void NoiseManager::Initialize() {
-  // Helper to apply the SHARED landform warp chain
-  auto applyLandformWarp = [&](auto source) {
-    auto detail = FastNoise::New<FastNoise::DomainWarpGradient>();
-    detail->SetSource(source);
-    detail->SetWarpAmplitude(0.2f);
-    detail->SetWarpFrequency(2.0f); // 2.0 is the sweet spot
-
-    auto large = FastNoise::New<FastNoise::DomainWarpGradient>();
-    large->SetSource(detail);
-    large->SetWarpAmplitude(1.5f);
-    large->SetWarpFrequency(0.5f);
-    return large;
-  };
-
-  // 1. Upheaval: Massive scale, influences base height consistency
+  // 0. Upheaval (Large scale height modification)
   auto upheaval = FastNoise::New<FastNoise::Simplex>();
   auto upheavalFractal = FastNoise::New<FastNoise::FractalFBm>();
   upheavalFractal->SetSource(upheaval);
   upheavalFractal->SetOctaveCount(2);
   upheavalFractal->SetGain(0.5f);
   upheavalFractal->SetLacunarity(2.0f);
+  // upheavalFractal->SetFrequency(
+  //     0.5f); // Use frequency logic if needed, or default // Removed
   upheavalNode = upheavalFractal;
 
+  // 1. Setup Warp Noise (Explicit Simplex Fractal)
+  // Replicating the "Large -> Detail" effect with 2 octaves or just a strong
+  // fractal
+  auto warpSource = FastNoise::New<FastNoise::Simplex>();
+
+  auto warpFractal = FastNoise::New<FastNoise::FractalFBm>();
+  warpFractal->SetSource(warpSource);
+  warpFractal->SetOctaveCount(3);
+  warpFractal->SetGain(0.5f);
+  warpFractal->SetLacunarity(2.0f);
+
+  // We will use this single warp node for both X and Y (with seed offset)
+  // to ensure coupled but independent warping of coordinates.
+  warpXNode = warpFractal;
+  warpYNode = warpFractal; // Alias for clarity, same logic
+
   // 2. Landform: Cellular/Voronoi for distinct regions
+  // UNWARPED nodes - we will feed them warped coordinates manually.
+
   // 2a. Landform Noise (Cell ID)
   auto landformSource = FastNoise::New<FastNoise::CellularValue>();
   landformSource->SetDistanceFunction(
       FastNoise::DistanceFunction::EuclideanSquared);
   landformSource->SetJitterModifier(1.0f);
-  landformNode = applyLandformWarp(landformSource);
+  landformNode = landformSource;
 
   // 2b. Landform Edge (F2 - F1)
+  // We calculate this manually from F1 and F2 dists usually, but FastNoise has
+  // optimized node. HOWEVER, we need "Index0Sub1" which is Distance 1 -
+  // Distance 0? FastNoise Enum: Index0Sub1 = (F1 - F0). Wait, F0 is closest. F1
+  // is 2nd closest. So result is positive.
   auto edgeSource = FastNoise::New<FastNoise::CellularDistance>();
   edgeSource->SetDistanceFunction(
       FastNoise::DistanceFunction::EuclideanSquared);
   edgeSource->SetReturnType(
       FastNoise::CellularDistance::ReturnType::Index0Sub1);
   edgeSource->SetJitterModifier(1.0f);
-  landformEdgeNode = applyLandformWarp(edgeSource);
+  landformEdgeNode = edgeSource;
 
   // 2c. Landform Neighbor (2nd Closest Cell Value)
   auto neighborSource = FastNoise::New<FastNoise::CellularValue>();
@@ -53,7 +63,7 @@ void NoiseManager::Initialize() {
       FastNoise::DistanceFunction::EuclideanSquared);
   neighborSource->SetValueIndex(1); // Get 2nd closest
   neighborSource->SetJitterModifier(1.0f);
-  landformNodeNeighbor = applyLandformWarp(neighborSource);
+  landformNodeNeighbor = neighborSource;
 
   // 2d. Landform Neighbor 3 (3rd Closest Cell Value)
   auto neighbor3Source = FastNoise::New<FastNoise::CellularValue>();
@@ -61,29 +71,31 @@ void NoiseManager::Initialize() {
       FastNoise::DistanceFunction::EuclideanSquared);
   neighbor3Source->SetValueIndex(2); // Get 3rd closest
   neighbor3Source->SetJitterModifier(1.0f);
-  landformNodeNeighbor3 = applyLandformWarp(neighbor3Source);
+  landformNodeNeighbor3 = neighbor3Source;
 
   // 2e. Landform Distances (F1, F2, F3)
   auto f1Source = FastNoise::New<FastNoise::CellularDistance>();
   f1Source->SetDistanceFunction(FastNoise::DistanceFunction::EuclideanSquared);
-  f1Source->SetDistanceIndex0(0);
+  f1Source->SetDistanceIndex0(0); // Closest
   f1Source->SetReturnType(FastNoise::CellularDistance::ReturnType::Index0);
   f1Source->SetJitterModifier(1.0f);
-  landformF1Node = applyLandformWarp(f1Source);
+  landformF1Node = f1Source;
 
   auto f2Source = FastNoise::New<FastNoise::CellularDistance>();
   f2Source->SetDistanceFunction(FastNoise::DistanceFunction::EuclideanSquared);
-  f2Source->SetDistanceIndex0(1);
+  f2Source->SetDistanceIndex0(1); // 2nd Closest
   f2Source->SetReturnType(FastNoise::CellularDistance::ReturnType::Index0);
   f2Source->SetJitterModifier(1.0f);
-  landformF2Node = applyLandformWarp(f2Source);
+  landformF2Node = f2Source;
 
   auto f3Source = FastNoise::New<FastNoise::CellularDistance>();
   f3Source->SetDistanceFunction(FastNoise::DistanceFunction::EuclideanSquared);
-  f3Source->SetDistanceIndex0(2);
+  f3Source->SetDistanceIndex0(2); // 3rd Closest
   f3Source->SetReturnType(FastNoise::CellularDistance::ReturnType::Index0);
   f3Source->SetJitterModifier(1.0f);
-  landformF3Node = applyLandformWarp(f3Source);
+  landformF3Node = f3Source;
+
+  // ... (Rest of init)
 
   // New: Terrain Detail (High frequency FRACTAL for height variance)
   auto detailSource = FastNoise::New<FastNoise::Simplex>();
@@ -94,16 +106,11 @@ void NoiseManager::Initialize() {
   detailFractal->SetLacunarity(2.0f);
   terrainDetailNode = detailFractal;
 
-  // 3. Geologic Province (Voronoi with jagged edges - NO warp for sharp
-  // boundaries)
+  // 3. Geologic Province
   auto geologicSource = FastNoise::New<FastNoise::CellularValue>();
-  geologicSource->SetDistanceFunction(
-      FastNoise::DistanceFunction::Manhattan); // Manhattan creates jagged
-                                               // boundaries
-  geologicSource->SetJitterModifier(
-      2.0f); // High jitter for irregular, jagged cells
-  geologicNode =
-      geologicSource; // Direct assignment - no warping for jagged edges
+  geologicSource->SetDistanceFunction(FastNoise::DistanceFunction::Manhattan);
+  geologicSource->SetJitterModifier(2.0f);
+  geologicNode = geologicSource;
 
   // 4. Climate
   auto temp = FastNoise::New<FastNoise::Perlin>();
@@ -126,7 +133,7 @@ void NoiseManager::Initialize() {
   forestNode = forestFractal;
 
   auto bushFractal = FastNoise::New<FastNoise::FractalFBm>();
-  bushFractal->SetSource(forest); // Use same base
+  bushFractal->SetSource(forest);
   bushFractal->SetOctaveCount(4);
   bushNode = bushFractal;
 
@@ -136,9 +143,7 @@ void NoiseManager::Initialize() {
   beachFractal->SetOctaveCount(3);
   beachNode = beachFractal;
 
-  // 8. Continentalness Removed
-
-  // 6. Strata (Smoother layers)
+  // 6. Strata
   auto strataSource = FastNoise::New<FastNoise::Simplex>();
   auto strataFractal = FastNoise::New<FastNoise::FractalFBm>();
   strataFractal->SetSource(strataSource);
@@ -147,14 +152,14 @@ void NoiseManager::Initialize() {
   strataFractal->SetLacunarity(2.0f);
   strataNode = strataFractal;
 
-  // 7. Cave Noise (3D Cheese)
+  // 7. Cave Noise
   auto caveSimplex = FastNoise::New<FastNoise::Simplex>();
   auto caveFractal = FastNoise::New<FastNoise::FractalFBm>();
   caveFractal->SetSource(caveSimplex);
   caveFractal->SetOctaveCount(3);
   cave3DNode = caveFractal;
 
-  // 8. Cave Entrance Noise (2D)
+  // 8. Cave Entrance Noise
   auto caveEntrance = FastNoise::New<FastNoise::Perlin>();
   caveEntranceNode = caveEntrance;
 }
@@ -168,22 +173,41 @@ float NoiseManager::GetUpheaval(int x, int z) const {
   return upheavalNode->GenSingle2D((float)x, (float)z, seed);
 }
 
+// Helper for warp
+// Matches GenLandformComposite
+void NoiseManager::GetWarpedCoord(float x, float z, float &wx,
+                                  float &wz) const {
+  float X = x * config.landformScale;
+  float Z = z * config.landformScale;
+
+  float nx = warpXNode->GenSingle2D(X, Z, seed);
+  float nz = warpYNode->GenSingle2D(X, Z, seed + 1337);
+
+  float amp = 1.5f;
+  wx = X + nx * amp;
+  wz = Z + nz * amp;
+}
+
 float NoiseManager::GetLandformNoise(int x, int z) const {
-  return landformNode->GenSingle2D((float)x * config.landformScale,
-                                   (float)z * config.landformScale, seed);
+  float wx, wz;
+  GetWarpedCoord((float)x, (float)z, wx, wz);
+  return landformNode->GenSingle2D(wx, wz, seed);
 }
 
 float NoiseManager::GetLandformEdgeNoise(int x, int z) const {
-  return landformEdgeNode->GenSingle2D((float)x * config.landformScale,
-                                       (float)z * config.landformScale, seed);
+  float wx, wz;
+  GetWarpedCoord((float)x, (float)z, wx, wz);
+  return landformEdgeNode->GenSingle2D(wx, wz, seed);
 }
 
 float NoiseManager::GetLandformNeighborNoise(int x, int z) const {
-  return landformNodeNeighbor->GenSingle2D(
-      (float)x * config.landformScale, (float)z * config.landformScale, seed);
+  float wx, wz;
+  GetWarpedCoord((float)x, (float)z, wx, wz);
+  return landformNodeNeighbor->GenSingle2D(wx, wz, seed);
 }
 
 float NoiseManager::GetGeologicNoise(int x, int z) const {
+  // Geologic is unwarped (Manhattan)
   return geologicNode->GenSingle2D((float)x * config.geologicScale,
                                    (float)z * config.geologicScale, seed);
 }
@@ -220,17 +244,22 @@ float NoiseManager::GetTerrainDetail(int x, int z) const {
 }
 
 float NoiseManager::GetLandformNeighbor3Noise(int x, int z) const {
-  return landformNodeNeighbor3->GenSingle2D(
-      (float)x * config.landformScale, (float)z * config.landformScale, seed);
+  float wx, wz;
+  GetWarpedCoord((float)x, (float)z, wx, wz);
+  return landformNodeNeighbor3->GenSingle2D(wx, wz, seed);
 }
 
 void NoiseManager::GetLandformDistances(int x, int z, float &f1, float &f2,
                                         float &f3) const {
-  float X = (float)x * config.landformScale;
-  float Z = (float)z * config.landformScale;
-  f1 = landformF1Node->GenSingle2D(X, Z, seed);
-  f2 = landformF2Node->GenSingle2D(X, Z, seed);
-  f3 = landformF3Node->GenSingle2D(X, Z, seed);
+  float wx, wz;
+  GetWarpedCoord((float)x, (float)z, wx, wz);
+  f1 = landformF1Node->GenSingle2D(wx, wz, seed);
+  f2 = landformF2Node->GenSingle2D(wx, wz, seed);
+  f3 = landformF3Node->GenSingle2D(wx, wz, seed);
+}
+
+float NoiseManager::GetStrata(int x, int z) const {
+  return strataNode->GenSingle2D((float)x, (float)z, seed + 12);
 }
 
 // Fixed GetCave3D to manually apply frequency scaling
@@ -255,16 +284,67 @@ void NoiseManager::GenUpheaval(float *output, int startX, int startZ, int width,
                                  config.upheavalScale, seed);
 }
 
-void NoiseManager::GenLandform(float *output, int startX, int startZ, int width,
-                               int height) const {
-  landformNode->GenUniformGrid2D(output, startX, startZ, width, height,
-                                 config.landformScale, seed);
-}
+void NoiseManager::GenLandformComposite(float *landformOut, float *neighborOut,
+                                        float *neighbor3Out, float *f1Out,
+                                        float *f2Out, float *f3Out,
+                                        float *edgeOut, int startX, int startZ,
+                                        int width, int height) const {
+  // 1. Generate Coordinates
+  std::vector<float> xPos(width * height);
+  std::vector<float> yPos(width * height);
 
-void NoiseManager::GenLandformNeighbor(float *output, int startX, int startZ,
-                                       int width, int height) const {
-  landformNodeNeighbor->GenUniformGrid2D(output, startX, startZ, width, height,
-                                         config.landformScale, seed);
+  // Generate Warp Fields (Independent Domain Warp)
+  // X Warp
+  warpXNode->GenUniformGrid2D(xPos.data(), startX, startZ, width, height,
+                              config.landformScale, seed);
+  // Y Warp (different seed)
+  warpYNode->GenUniformGrid2D(yPos.data(), startX, startZ, width, height,
+                              config.landformScale, seed + 1337);
+
+  float warpAmp = 1.5f; // Matches "Large" warp
+  // Apply warp to positions
+  // Note: GenUniformGrid2D fills xPos with Noise values. We need to ADD them to
+  // coordinate.
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      int idx = y * width + x;
+      float wx = (static_cast<float>(startX + x) * config.landformScale);
+      float wz = (static_cast<float>(startZ + y) * config.landformScale);
+
+      // xPos[idx] and yPos[idx] currently hold the NOISE value (-1..1)
+      float offsetX = xPos[idx] * warpAmp;
+      float offsetZ = yPos[idx] * warpAmp;
+
+      // Update the buffer to hold the Warped Coordinate
+      xPos[idx] = wx + offsetX;
+      yPos[idx] = wz + offsetZ;
+    }
+  }
+
+  // 2. Sample Unwarped Cellular Nodes using Warped Coordinates
+  if (landformOut)
+    landformNode->GenPositionArray2D(landformOut, width * height, xPos.data(),
+                                     yPos.data(), 0.0f, 0.0f, seed);
+  if (neighborOut)
+    landformNodeNeighbor->GenPositionArray2D(neighborOut, width * height,
+                                             xPos.data(), yPos.data(), 0.0f,
+                                             0.0f, seed);
+  if (neighbor3Out)
+    landformNodeNeighbor3->GenPositionArray2D(neighbor3Out, width * height,
+                                              xPos.data(), yPos.data(), 0.0f,
+                                              0.0f, seed);
+  if (f1Out)
+    landformF1Node->GenPositionArray2D(f1Out, width * height, xPos.data(),
+                                       yPos.data(), 0.0f, 0.0f, seed);
+  if (f2Out)
+    landformF2Node->GenPositionArray2D(f2Out, width * height, xPos.data(),
+                                       yPos.data(), 0.0f, 0.0f, seed);
+  if (f3Out)
+    landformF3Node->GenPositionArray2D(f3Out, width * height, xPos.data(),
+                                       yPos.data(), 0.0f, 0.0f, seed);
+  if (edgeOut)
+    landformEdgeNode->GenPositionArray2D(edgeOut, width * height, xPos.data(),
+                                         yPos.data(), 0.0f, 0.0f, seed);
 }
 
 void NoiseManager::GenGeologic(float *output, int startX, int startZ, int width,
@@ -284,12 +364,9 @@ void NoiseManager::GenClimate(float *tempOut, float *humidOut, int startX,
   for (int i = 0; i < width * height; ++i) {
     // Temp: Map [-1, 1] to [-30, 60]
     tempOut[i] = (tempOut[i] + 1.0f) * 0.5f * 90.0f - 30.0f;
-    // Humidity: Map [-1, 1] to [-1, 1] (already there, but for explicitness)
-    // humidOut[i] = humidOut[i];
   }
 }
 
-// Fixed GenVegetation to use correct scales
 void NoiseManager::GenVegetation(float *forestOut, float *bushOut, int startX,
                                  int startZ, int width, int height) const {
   forestNode->GenUniformGrid2D(forestOut, startX, startZ, width, height,
@@ -306,39 +383,14 @@ void NoiseManager::GenBeach(float *output, int startX, int startZ, int width,
 
 void NoiseManager::GenTerrainDetail(float *output, int startX, int startZ,
                                     int width, int height) const {
-  // Detail uses its own configurable scale (default is landformScale * 4)
   terrainDetailNode->GenUniformGrid2D(output, startX, startZ, width, height,
                                       config.terrainDetailScale, seed + 10);
 }
 
-void NoiseManager::GenLandformNeighbor3(float *output, int startX, int startZ,
-                                        int width, int height) const {
-  landformNodeNeighbor3->GenUniformGrid2D(output, startX, startZ, width, height,
-                                          config.landformScale, seed);
-}
-
-void NoiseManager::GenLandformDistances(float *f1, float *f2, float *f3,
-                                        int startX, int startZ, int width,
-                                        int height) const {
-  landformF1Node->GenUniformGrid2D(f1, startX, startZ, width, height,
-                                   config.landformScale, seed);
-  landformF2Node->GenUniformGrid2D(f2, startX, startZ, width, height,
-                                   config.landformScale, seed);
-  landformF3Node->GenUniformGrid2D(f3, startX, startZ, width, height,
-                                   config.landformScale, seed);
-}
-
 void NoiseManager::GenStrata(float *output, int startX, int startZ, int width,
                              int height) const {
-  // Low frequency for smooth strata (0.005)
-  strataNode->GenUniformGrid2D(output, startX, startZ, width, height, 0.005f,
-                               seed + 12);
-}
-
-void NoiseManager::GenLandformEdge(float *output, int startX, int startZ,
-                                   int width, int height) const {
-  landformEdgeNode->GenUniformGrid2D(output, startX, startZ, width, height,
-                                     config.landformScale, seed);
+  strataNode->GenUniformGrid2D(output, startX, startZ, width, height,
+                               config.strataScale, seed + 12);
 }
 
 void NoiseManager::GenCave3D(float *output, int startX, int startY, int startZ,
@@ -358,6 +410,7 @@ void NoiseManager::GenCaveEntrance(float *output, int startX, int startZ,
                                      0.012f, seed);
 }
 
+// Preview generation for UI (centered on a point)
 void NoiseManager::GetPreview(NoiseType type, float *output, int width,
                               int height, int centerX, int centerZ) const {
   int startX = centerX - width / 2;
@@ -371,10 +424,12 @@ void NoiseManager::GetPreview(NoiseType type, float *output, int width,
     GenUpheaval(tempData.data(), startX, startZ, width, height);
     break;
   case NoiseType::Landform:
-    GenLandform(tempData.data(), startX, startZ, width, height);
+    GenLandformComposite(tempData.data(), nullptr, nullptr, nullptr, nullptr,
+                         nullptr, nullptr, startX, startZ, width, height);
     break;
   case NoiseType::LandformEdge:
-    GenLandformEdge(output, centerX, centerZ, width, height);
+    GenLandformComposite(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+                         output, centerX, centerZ, width, height);
     break;
   case NoiseType::Geologic:
     GenGeologic(output, centerX, centerZ, width, height);
@@ -393,7 +448,8 @@ void NoiseManager::GetPreview(NoiseType type, float *output, int width,
                                 config.climateScale, seed + 2);
     break;
   case NoiseType::LandformNeighbor:
-    GenLandformNeighbor(output, centerX, centerZ, width, height);
+    GenLandformComposite(nullptr, output, nullptr, nullptr, nullptr, nullptr,
+                         nullptr, centerX, centerZ, width, height);
     break;
   case NoiseType::TerrainDetail:
     GenTerrainDetail(tempData.data(), startX, startZ, width, height);
@@ -417,7 +473,8 @@ void NoiseManager::GetPreview(NoiseType type, float *output, int width,
     GenStrata(tempData.data(), startX, startZ, width, height);
     break;
   case NoiseType::LandformNeighbor3:
-    GenLandformNeighbor3(output, startX, startZ, width, height);
+    GenLandformComposite(nullptr, nullptr, output, nullptr, nullptr, nullptr,
+                         nullptr, startX, startZ, width, height);
     break;
   }
 

@@ -67,26 +67,17 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
     noiseManager.GenUpheaval(upheaval.data(), startX, startZ, CHUNK_SIZE,
                              CHUNK_SIZE);
   }
+
+  // Combined Landform Generation (Warped & Consistent)
   {
-    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Noise_Landform", m_ProfilingEnabled);
-    noiseManager.GenLandform(landformNoise.data(), startX, startZ, CHUNK_SIZE,
-                             CHUNK_SIZE);
-  }
-  {
-    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Noise_LandformNeighbor",
+    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Noise_LandformCombined",
                               m_ProfilingEnabled);
-    noiseManager.GenLandformNeighbor(landformNeighbor.data(), startX, startZ,
-                                     CHUNK_SIZE, CHUNK_SIZE);
-    noiseManager.GenLandformNeighbor3(landformNeighbor3.data(), startX, startZ,
-                                      CHUNK_SIZE, CHUNK_SIZE);
+    noiseManager.GenLandformComposite(
+        landformNoise.data(), landformNeighbor.data(), landformNeighbor3.data(),
+        landformF1.data(), landformF2.data(), landformF3.data(),
+        edgeNoise.data(), startX, startZ, CHUNK_SIZE, CHUNK_SIZE);
   }
-  {
-    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Noise_LandformDistances",
-                              m_ProfilingEnabled);
-    noiseManager.GenLandformDistances(landformF1.data(), landformF2.data(),
-                                      landformF3.data(), startX, startZ,
-                                      CHUNK_SIZE, CHUNK_SIZE);
-  }
+
   {
     PROFILE_SCOPE_CONDITIONAL("ChunkGen_Noise_Geologic", m_ProfilingEnabled);
     noiseManager.GenGeologic(provinceNoise.data(), startX, startZ, CHUNK_SIZE,
@@ -117,12 +108,6 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
     PROFILE_SCOPE_CONDITIONAL("ChunkGen_Noise_Beach", m_ProfilingEnabled);
     noiseManager.GenBeach(beachMap.data(), startX, startZ, CHUNK_SIZE,
                           CHUNK_SIZE);
-  }
-  {
-    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Noise_LandformEdge",
-                              m_ProfilingEnabled);
-    noiseManager.GenLandformEdge(edgeNoise.data(), startX, startZ, CHUNK_SIZE,
-                                 CHUNK_SIZE);
   }
 
   // 2. Process Columns

@@ -41,12 +41,13 @@ public:
   // output must be size width * height
   void GenUpheaval(float *output, int startX, int startZ, int width,
                    int height) const;
-  void GenLandformNeighbor(float *output, int startX, int startZ, int width,
-                           int height) const; // New: 2nd closest biome ID
-  void GenLandform(float *output, int startX, int startZ, int width,
-                   int height) const;
-  void GenLandformEdge(float *output, int startX, int startZ, int width,
-                       int height) const; // New
+
+  // Combined Landform Generator (Guarantees warp consistency)
+  void GenLandformComposite(float *landformOut, float *neighborOut,
+                            float *neighbor3Out, float *f1Out, float *f2Out,
+                            float *f3Out, float *edgeOut, int startX,
+                            int startZ, int width, int height) const;
+
   void GenGeologic(float *output, int startX, int startZ, int width,
                    int height) const;
   void GenClimate(float *tempOut, float *humidOut, int startX, int startZ,
@@ -56,11 +57,8 @@ public:
   void GenBeach(float *output, int startX, int startZ, int width,
                 int height) const;
   void GenTerrainDetail(float *output, int startX, int startZ, int width,
-                        int height) const; // New
-  void GenLandformNeighbor3(float *output, int startX, int startZ, int width,
-                            int height) const; // 3rd closest biome ID
-  void GenLandformDistances(float *f1, float *f2, float *f3, int startX,
-                            int startZ, int width, int height) const;
+                        int height) const;
+
   void GenStrata(float *output, int startX, int startZ, int width,
                  int height) const; // New: Smoother strata layers
 
@@ -98,9 +96,18 @@ private:
 
   // SmartNodes for noise graph
   FastNoise::SmartNode<> upheavalNode;
-  FastNoise::SmartNode<> landformNode;
-  FastNoise::SmartNode<> landformEdgeNode;
-  FastNoise::SmartNode<> landformNodeNeighbor; // New (Index 1)
+  // Landform: Unwarped base nodes (Warp applied manually in Composite)
+  FastNoise::SmartNode<> landformNode;          // CellularValue(0)
+  FastNoise::SmartNode<> landformNodeNeighbor;  // CellularValue(1)
+  FastNoise::SmartNode<> landformNodeNeighbor3; // CellularValue(2)
+  FastNoise::SmartNode<>
+      landformEdgeNode; // CellularDistance(Index0Sub1)?? No, calc manually? Or
+                        // keep node. FastNoise doesn't support Index0Sub1
+                        // easily via GenPositionArray? Use Node.
+  FastNoise::SmartNode<> landformF1Node; // CellularDistance(0)
+  FastNoise::SmartNode<> landformF2Node; // CellularDistance(1)
+  FastNoise::SmartNode<> landformF3Node; // CellularDistance(2)
+
   FastNoise::SmartNode<> geologicNode;
   FastNoise::SmartNode<> tempNode;
   FastNoise::SmartNode<> humidNode;
@@ -108,11 +115,15 @@ private:
   FastNoise::SmartNode<> bushNode;
   FastNoise::SmartNode<> beachNode;
   FastNoise::SmartNode<> terrainDetailNode;
-  FastNoise::SmartNode<> strataNode; // New
-  FastNoise::SmartNode<> landformNodeNeighbor3;
-  FastNoise::SmartNode<> landformF1Node;
-  FastNoise::SmartNode<> landformF2Node;
-  FastNoise::SmartNode<> landformF3Node;
+  FastNoise::SmartNode<> strataNode;
+
+  // Warp Noise Nodes
+  FastNoise::SmartNode<> warpXNode;
+  FastNoise::SmartNode<> warpYNode;
+
+  // Helper for warp consistency
+  void GetWarpedCoord(float x, float z, float &wx, float &wz) const;
+
   FastNoise::SmartNode<> cave3DNode;
   FastNoise::SmartNode<> caveEntranceNode;
 };

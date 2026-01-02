@@ -75,9 +75,11 @@ struct WorldGenConfig {
   float forestScale = 0.05f;         // For tree placement
   float bushScale = 0.08f;           // For bush placement
   float beachScale = 0.01f;          // For beach placement
+  float strataScale = 0.005f;        // For rock strata layers
 
   WorldGenConfig() {
     // Initialize with default values seen in WorldGenerator.cpp
+
     landformOverrides["oceans"] = {
         35.0f,
         40.0f,
@@ -157,7 +159,8 @@ inline void to_json(json &j, const WorldGenConfig &c) {
            {"terrainDetailScale", c.terrainDetailScale},
            {"forestScale", c.forestScale},
            {"bushScale", c.bushScale},
-           {"beachScale", c.beachScale}};
+           {"beachScale", c.beachScale},
+           {"strataScale", c.strataScale}};
 }
 
 inline void from_json(const json &j, WorldGenConfig &c) {
@@ -214,4 +217,6 @@ inline void from_json(const json &j, WorldGenConfig &c) {
     j.at("bushScale").get_to(c.bushScale);
   if (j.contains("beachScale"))
     j.at("beachScale").get_to(c.beachScale);
+  if (j.contains("strataScale"))
+    j.at("strataScale").get_to(c.strataScale);
 }
