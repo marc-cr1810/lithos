@@ -250,7 +250,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                   bool isLiquid =
                       (b.block->getId() == WATER || b.block->getId() == LAVA);
                   bool isLeaves = (b.block->getId() == LEAVES ||
-                                   b.block->getId() == PINE_LEAVES);
+                                   b.block->getId() == SPRUCE_LEAVES);
 
                   if (isLiquid && faceDir == 4) {
                     // Only occlude if neighbor is also Liquid (same type)
@@ -307,7 +307,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                     bool isLiquid =
                         (b.block->getId() == WATER || b.block->getId() == LAVA);
                     bool isLeaves = (b.block->getId() == LEAVES ||
-                                     b.block->getId() == PINE_LEAVES);
+                                     b.block->getId() == SPRUCE_LEAVES);
 
                     if (isLiquid && faceDir == 4) {
                       if (nb.block == b.block)
@@ -1814,7 +1814,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
 
                 // Global Rotation for Logs
                 if (cb.block->getId() == WOOD ||
-                    cb.block->getId() == PINE_WOOD) {
+                    cb.block->getId() == SPRUCE_LOG) {
                   if (cb.metadata == 1) { // X-Axis
                     // Rotate 90 deg around Z axis
                     // Center is 0.5, 0.5, 0.5
@@ -1929,22 +1929,82 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 float localU2 = faceProp.uv[2];
                 float localV2 = 1.0f - faceProp.uv[3];
 
-                std::pair<float, float> lights = getFaceLight(faceIdx);
-                float l1 = lights.first, l2 = lights.second;
+                // Check for Log Rotation UV Adjustment
+                bool rotateUV = false;
+                if (cb.block->getId() == WOOD ||
+                    cb.block->getId() == SPRUCE_LOG) {
+                  if (cb.metadata == 1 || cb.metadata == 2) {
+                    // Rotate UVs for Bark Faces (0, 1, 2, 3) geometry-wise
+                    // Faces 4 and 5 are Rings (Ends), usually don't need
+                    // rotation
+                    if (faceIdx <= 3) {
+                      rotateUV = true;
+                    }
+                  }
+                }
 
-                pushVert(finalP0.x, finalP0.y, finalP0.z, localU1, localV2,
-                         uMin, vMin, 0.0f, l1, l2);
-                pushVert(finalP1.x, finalP1.y, finalP1.z, localU2, localV2,
-                         uMin, vMin, 0.0f, l1, l2);
-                pushVert(finalP2.x, finalP2.y, finalP2.z, localU2, localV1,
-                         uMin, vMin, 0.0f, l1, l2);
+                if (rotateUV) {
+                  auto rot = [](float &u, float &v) {
+                    float nu = 0.5f + (v - 0.5f);
+                    float nv = 0.5f - (u - 0.5f);
+                    u = nu;
+                    v = nv;
+                  };
+                  // We have U1, V2 for P0. U2, V2 for P1. U2, V1 for P2. U1, V1
+                  // for P3. Actually we define range [U1, U2] x [V2, V1]? No,
+                  // faceProp.uv is just 2 corners? Usually U1=0, V1=1 (Top),
+                  // U2=1, V2=0 (Bot)? If we rotate the abstract rectangle? No,
+                  // we should rotate the 4 coordinate pairs used in pushVert.
+                  // P0_UV: (localU1, localV2)
+                  // P1_UV: (localU2, localV2)
+                  // P2_UV: (localU2, localV1)
+                  // P3_UV: (localU1, localV1)
 
-                pushVert(finalP0.x, finalP0.y, finalP0.z, localU1, localV2,
-                         uMin, vMin, 0.0f, l1, l2);
-                pushVert(finalP2.x, finalP2.y, finalP2.z, localU2, localV1,
-                         uMin, vMin, 0.0f, l1, l2);
-                pushVert(finalP3.x, finalP3.y, finalP3.z, localU1, localV1,
-                         uMin, vMin, 0.0f, l1, l2);
+                  float u_p0 = localU1, v_p0 = localV2;
+                  float u_p1 = localU2, v_p1 = localV2;
+                  float u_p2 = localU2, v_p2 = localV1;
+                  float u_p3 = localU1, v_p3 = localV1;
+
+                  rot(u_p0, v_p0);
+                  rot(u_p1, v_p1);
+                  rot(u_p2, v_p2);
+                  rot(u_p3, v_p3);
+
+                  // Push Vertices with ROTATED UVs
+                  std::pair<float, float> lights = getFaceLight(faceIdx);
+                  float l1 = lights.first, l2 = lights.second;
+
+                  pushVert(finalP0.x, finalP0.y, finalP0.z, u_p0, v_p0, uMin,
+                           vMin, 0.0f, l1, l2);
+                  pushVert(finalP1.x, finalP1.y, finalP1.z, u_p1, v_p1, uMin,
+                           vMin, 0.0f, l1, l2);
+                  pushVert(finalP2.x, finalP2.y, finalP2.z, u_p2, v_p2, uMin,
+                           vMin, 0.0f, l1, l2);
+
+                  pushVert(finalP0.x, finalP0.y, finalP0.z, u_p0, v_p0, uMin,
+                           vMin, 0.0f, l1, l2);
+                  pushVert(finalP2.x, finalP2.y, finalP2.z, u_p2, v_p2, uMin,
+                           vMin, 0.0f, l1, l2);
+                  pushVert(finalP3.x, finalP3.y, finalP3.z, u_p3, v_p3, uMin,
+                           vMin, 0.0f, l1, l2);
+                } else {
+                  std::pair<float, float> lights = getFaceLight(faceIdx);
+                  float l1 = lights.first, l2 = lights.second;
+
+                  pushVert(finalP0.x, finalP0.y, finalP0.z, localU1, localV2,
+                           uMin, vMin, 0.0f, l1, l2);
+                  pushVert(finalP1.x, finalP1.y, finalP1.z, localU2, localV2,
+                           uMin, vMin, 0.0f, l1, l2);
+                  pushVert(finalP2.x, finalP2.y, finalP2.z, localU2, localV1,
+                           uMin, vMin, 0.0f, l1, l2);
+
+                  pushVert(finalP0.x, finalP0.y, finalP0.z, localU1, localV2,
+                           uMin, vMin, 0.0f, l1, l2);
+                  pushVert(finalP2.x, finalP2.y, finalP2.z, localU2, localV1,
+                           uMin, vMin, 0.0f, l1, l2);
+                  pushVert(finalP3.x, finalP3.y, finalP3.z, localU1, localV1,
+                           uMin, vMin, 0.0f, l1, l2);
+                }
               }
             }
           }
@@ -2288,6 +2348,23 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
         // Standard minecraft water flow texture usually has lines going
         // vertically? If vertical lines = Z axis? Need to experiment or
         // check defaults. Let's assume standard UV orientation.
+      }
+    }
+  } else if (block->getId() == WOOD || block->getId() == SPRUCE_LOG ||
+             block->getId() == ACACIA_LOG || block->getId() == BIRCH_LOG ||
+             block->getId() == DARK_OAK_LOG || block->getId() == JUNGLE_LOG ||
+             block->getId() == MANGROVE_LOG || block->getId() == PALE_OAK_LOG) {
+
+    // Log Rotation
+    if (metadata == 1) { // X-Axis
+      if (faceDir == 0 || faceDir == 1 || faceDir == 4 || faceDir == 5) {
+        rAngle = 1.5708f; // 90 degrees
+      }
+    } else if (metadata == 2) { // Z-Axis
+      // Only rotate sides (X-faces). Top/Bottom (Y-faces) are already Z-aligned
+      // by default.
+      if (faceDir == 2 || faceDir == 3) {
+        rAngle = 1.5708f; // 90 degrees
       }
     }
   }

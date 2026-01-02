@@ -35,7 +35,7 @@ public:
       r = 1.0f;
       g = 1.0f;
       b = 1.0f;
-    } else if (id == BlockType::PINE_WOOD) {
+    } else if (id == BlockType::SPRUCE_LOG) {
       // Original tinted pine wood.
       // We have spruce_log.png. We should use it directly.
       r = 1.0f;

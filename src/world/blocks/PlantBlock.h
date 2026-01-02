@@ -7,7 +7,9 @@ class PlantBlock : public Block {
 public:
   PlantBlock(uint8_t id, const std::string &name) : Block(id, name) {}
   bool isSolid() const override {
-    if (id == BlockType::LEAVES || id == BlockType::PINE_LEAVES)
+    if (id == BlockType::LEAVES || id == BlockType::SPRUCE_LEAVES ||
+        id == BlockType::ACACIA_LEAVES || id == BlockType::BIRCH_LEAVES ||
+        id == BlockType::DARK_OAK_LEAVES || id == BlockType::JUNGLE_LEAVES)
       return true;
     return false;
   }
@@ -28,10 +30,26 @@ public:
       r = 0.2f;
       g = 0.8f;
       b = 0.2f;
-    } else if (id == BlockType::PINE_LEAVES) {
+    } else if (id == BlockType::SPRUCE_LEAVES) {
       r = 0.1f;
       g = 0.4f;
       b = 0.2f;
+    } else if (id == BlockType::BIRCH_LEAVES) {
+      r = 0.3f;
+      g = 0.65f;
+      b = 0.3f;
+    } else if (id == BlockType::JUNGLE_LEAVES) {
+      r = 0.2f;
+      g = 0.9f;
+      b = 0.2f;
+    } else if (id == BlockType::ACACIA_LEAVES) {
+      r = 0.4f;
+      g = 0.7f;
+      b = 0.2f;
+    } else if (id == BlockType::DARK_OAK_LEAVES) {
+      r = 0.1f;
+      g = 0.35f;
+      b = 0.1f;
     } else if (id == BlockType::TALL_GRASS) {
       r = 0.2f;
       g = 0.8f;

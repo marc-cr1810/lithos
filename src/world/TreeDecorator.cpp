@@ -77,7 +77,7 @@ static void GenerateOak(Chunk &chunk, int gx, int gy, int gz, int seed) {
   }
 }
 
-static void GeneratePine(Chunk &chunk, int gx, int gy, int gz, int seed) {
+static void GenerateSpruce(Chunk &chunk, int gx, int gy, int gz, int seed) {
   int height = 6 + (GetPosRand(gx, gz, seed, 2) % 4); // 6-9
   World *world = chunk.getWorld();
   glm::ivec3 cp = chunk.chunkPosition * CHUNK_SIZE;
@@ -86,14 +86,14 @@ static void GeneratePine(Chunk &chunk, int gx, int gy, int gz, int seed) {
   for (int h = 1; h <= height; ++h) {
     int wy = gy + h;
     if (world) {
-      world->setBlock(gx, wy, gz, PINE_WOOD);
+      world->setBlock(gx, wy, gz, SPRUCE_LOG);
     } else {
       int lx = gx - cp.x;
       int ly = wy - cp.y;
       int lz = gz - cp.z;
       if (lx >= 0 && lx < CHUNK_SIZE && ly >= 0 && ly < CHUNK_SIZE && lz >= 0 &&
           lz < CHUNK_SIZE) {
-        chunk.setBlock(lx, ly, lz, PINE_WOOD);
+        chunk.setBlock(lx, ly, lz, SPRUCE_LOG);
       }
     }
   }
@@ -125,7 +125,7 @@ static void GeneratePine(Chunk &chunk, int gx, int gy, int gz, int seed) {
           BlockType existing =
               (BlockType)world->getBlock(lx_g, ly_g, lz_g).getType();
           if (existing == AIR)
-            world->setBlock(lx_g, ly_g, lz_g, PINE_LEAVES);
+            world->setBlock(lx_g, ly_g, lz_g, SPRUCE_LEAVES);
         } else {
           int lx = lx_g - cp.x;
           int lz = lz_g - cp.z;
@@ -133,7 +133,7 @@ static void GeneratePine(Chunk &chunk, int gx, int gy, int gz, int seed) {
           if (lx >= 0 && lx < CHUNK_SIZE && ly_local >= 0 &&
               ly_local < CHUNK_SIZE && lz >= 0 && lz < CHUNK_SIZE) {
             if (chunk.getBlock(lx, ly_local, lz).getType() == AIR)
-              chunk.setBlock(lx, ly_local, lz, PINE_LEAVES);
+              chunk.setBlock(lx, ly_local, lz, SPRUCE_LEAVES);
           }
         }
       }
@@ -249,7 +249,7 @@ void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
           if (surfaceBlock == COARSE_DIRT || isFertile) {
             if (GetPosRand(gx, gz, seed, 400) <
                 generator.GetConfig().pineDensity) {
-              GeneratePine(chunk, gx, height, gz, seed);
+              GenerateSpruce(chunk, gx, height, gz, seed);
             }
           }
         }

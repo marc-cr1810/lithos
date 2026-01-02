@@ -319,7 +319,12 @@ void GameState::HandleInput(Application *app) {
             int placementMeta = m_SelectedBlockMetadata;
 
             // Directional Logs Logic
-            if (m_SelectedBlock == WOOD || m_SelectedBlock == PINE_WOOD) {
+            if (m_SelectedBlock == WOOD || m_SelectedBlock == SPRUCE_LOG ||
+                m_SelectedBlock == ACACIA_LOG || m_SelectedBlock == BIRCH_LOG ||
+                m_SelectedBlock == DARK_OAK_LOG ||
+                m_SelectedBlock == JUNGLE_LOG ||
+                m_SelectedBlock == MANGROVE_LOG ||
+                m_SelectedBlock == PALE_OAK_LOG) {
               int dx = m_PrePos.x - m_HitPos.x;
               int dy = m_PrePos.y - m_HitPos.y;
               int dz = m_PrePos.z - m_HitPos.z;
@@ -781,23 +786,66 @@ void GameState::RenderUI(Application *app) {
       ImGui::BeginChild("Scrolling");
 
       int buttonsPerRow = 8;
-      int blocks[] = {DIRT,           GRASS,       STONE,
-                      WOOD,           LEAVES,      COAL_ORE,
-                      IRON_ORE,       GLOWSTONE,   WATER,
-                      LAVA,           SAND,        GRAVEL,
-                      SNOW,           ICE,         CACTUS,
-                      PINE_WOOD,      PINE_LEAVES, TALL_GRASS,
-                      DEAD_BUSH,      ROSE,        DRY_SHORT_GRASS,
-                      DRY_TALL_GRASS, OBSIDIAN,    COBBLESTONE,
-                      WOOD_PLANKS,    SNOW_LAYER,  ANTHRACITE,
-                      BAUXITE,        CHALK,       CHERT,
-                      CLAY,           CLAYSTONE,   CONGLOMERATE,
-                      GREEN_MARBLE,   HALITE,      KIMBERLITE,
-                      LIMESTONE,      MANTLE,      PERIDOTITE,
-                      PHYLLITE,       PINK_MARBLE, SCORIA,
-                      SHALE,          SLATE,       SUEVITE,
-                      WHITE_MARBLE,   SCHIST,      RHYOLITE,
-                      GOLD_ORE,       GNEISS};
+      int blocks[] = {DIRT,
+                      GRASS,
+                      STONE,
+                      WOOD,
+                      LEAVES,
+                      COAL_ORE,
+                      IRON_ORE,
+                      GLOWSTONE,
+                      WATER,
+                      LAVA,
+                      SAND,
+                      GRAVEL,
+                      SNOW,
+                      ICE,
+                      CACTUS,
+                      SPRUCE_LOG,
+                      SPRUCE_LEAVES,
+                      TALL_GRASS,
+                      ACACIA_LOG,
+                      ACACIA_LEAVES,
+                      BIRCH_LOG,
+                      BIRCH_LEAVES,
+                      DARK_OAK_LOG,
+                      DARK_OAK_LEAVES,
+                      JUNGLE_LOG,
+                      JUNGLE_LEAVES,
+                      MANGROVE_LOG,
+                      PALE_OAK_LOG,
+                      DEAD_BUSH,
+                      ROSE,
+                      DRY_SHORT_GRASS,
+                      DRY_TALL_GRASS,
+                      OBSIDIAN,
+                      COBBLESTONE,
+                      WOOD_PLANKS,
+                      SNOW_LAYER,
+                      ANTHRACITE,
+                      BAUXITE,
+                      CHALK,
+                      CHERT,
+                      CLAY,
+                      CLAYSTONE,
+                      CONGLOMERATE,
+                      GREEN_MARBLE,
+                      HALITE,
+                      KIMBERLITE,
+                      LIMESTONE,
+                      MANTLE,
+                      PERIDOTITE,
+                      PHYLLITE,
+                      PINK_MARBLE,
+                      SCORIA,
+                      SHALE,
+                      SLATE,
+                      SUEVITE,
+                      WHITE_MARBLE,
+                      SCHIST,
+                      RHYOLITE,
+                      GOLD_ORE,
+                      GNEISS};
       int numBlocks = sizeof(blocks) / sizeof(blocks[0]);
 
       for (int i = 0; i < numBlocks; ++i) {

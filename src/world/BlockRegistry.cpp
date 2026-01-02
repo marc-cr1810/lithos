@@ -126,18 +126,19 @@ BlockRegistry::BlockRegistry() {
   cactus->setOpaque(false);
   registerBlock(cactus);
 
-  Block *pine = new LogBlock(BlockType::PINE_WOOD, "Spruce Log");
-  pine->setResourceId("lithos:spruce_log");
-  pine->setTexture("spruce_log");
-  pine->setTexture(4, "spruce_log_top");
-  pine->setTexture(5, "spruce_log_top");
+  Block *spruceLog = new LogBlock(BlockType::SPRUCE_LOG, "Spruce Log");
+  spruceLog->setResourceId("lithos:spruce_log");
+  spruceLog->setTexture("spruce_log");
+  spruceLog->setTexture(4, "spruce_log_top");
+  spruceLog->setTexture(5, "spruce_log_top");
   // Model loading will handle the rest if file exists
-  registerBlock(pine);
+  registerBlock(spruceLog);
 
-  Block *pineLeaves = new PlantBlock(BlockType::PINE_LEAVES, "Spruce Leaves");
-  pineLeaves->setResourceId("lithos:spruce_leaves");
-  pineLeaves->setTexture("spruce_leaves");
-  registerBlock(pineLeaves);
+  Block *spruceLeaves =
+      new PlantBlock(BlockType::SPRUCE_LEAVES, "Spruce Leaves");
+  spruceLeaves->setResourceId("lithos:spruce_leaves");
+  spruceLeaves->setTexture("spruce_leaves");
+  registerBlock(spruceLeaves);
 
   Block *tallGrass = new PlantBlock(BlockType::TALL_GRASS, "Tall Grass");
   tallGrass->setResourceId("lithos:tall_grass");
@@ -217,6 +218,73 @@ BlockRegistry::BlockRegistry() {
   granite->setResourceId("lithos:granite");
   granite->setTexture("granite");
   registerBlock(granite);
+
+  // New Logs
+  Block *acaciaLog = new LogBlock(BlockType::ACACIA_LOG, "Acacia Log");
+  acaciaLog->setResourceId("lithos:acacia_log");
+  acaciaLog->setTexture("acacia_log");
+  acaciaLog->setTexture(4, "acacia_log_top");
+  acaciaLog->setTexture(5, "acacia_log_top");
+  registerBlock(acaciaLog);
+
+  Block *birchLog = new LogBlock(BlockType::BIRCH_LOG, "Birch Log");
+  birchLog->setResourceId("lithos:birch_log");
+  birchLog->setTexture("birch_log");
+  birchLog->setTexture(4, "birch_log_top");
+  birchLog->setTexture(5, "birch_log_top");
+  registerBlock(birchLog);
+
+  Block *darkOakLog = new LogBlock(BlockType::DARK_OAK_LOG, "Dark Oak Log");
+  darkOakLog->setResourceId("lithos:dark_oak_log");
+  darkOakLog->setTexture("dark_oak_log");
+  darkOakLog->setTexture(4, "dark_oak_log_top");
+  darkOakLog->setTexture(5, "dark_oak_log_top");
+  registerBlock(darkOakLog);
+
+  Block *jungleLog = new LogBlock(BlockType::JUNGLE_LOG, "Jungle Log");
+  jungleLog->setResourceId("lithos:jungle_log");
+  jungleLog->setTexture("jungle_log");
+  jungleLog->setTexture(4, "jungle_log_top");
+  jungleLog->setTexture(5, "jungle_log_top");
+  registerBlock(jungleLog);
+
+  Block *mangroveLog = new LogBlock(BlockType::MANGROVE_LOG, "Mangrove Log");
+  mangroveLog->setResourceId("lithos:mangrove_log");
+  mangroveLog->setTexture("mangrove_log");
+  mangroveLog->setTexture(4, "mangrove_log_top");
+  mangroveLog->setTexture(5, "mangrove_log_top");
+  registerBlock(mangroveLog);
+
+  Block *paleOakLog = new LogBlock(BlockType::PALE_OAK_LOG, "Pale Oak Log");
+  paleOakLog->setResourceId("lithos:pale_oak_log");
+  paleOakLog->setTexture("pale_oak_log");
+  paleOakLog->setTexture(4, "pale_oak_log_top");
+  paleOakLog->setTexture(5, "pale_oak_log_top");
+  registerBlock(paleOakLog);
+
+  // New Leaves
+  Block *acaciaLeaves =
+      new PlantBlock(BlockType::ACACIA_LEAVES, "Acacia Leaves");
+  acaciaLeaves->setResourceId("lithos:acacia_leaves");
+  acaciaLeaves->setTexture("acacia_leaves");
+  registerBlock(acaciaLeaves);
+
+  Block *birchLeaves = new PlantBlock(BlockType::BIRCH_LEAVES, "Birch Leaves");
+  birchLeaves->setResourceId("lithos:birch_leaves");
+  birchLeaves->setTexture("birch_leaves");
+  registerBlock(birchLeaves);
+
+  Block *darkOakLeaves =
+      new PlantBlock(BlockType::DARK_OAK_LEAVES, "Dark Oak Leaves");
+  darkOakLeaves->setResourceId("lithos:dark_oak_leaves");
+  darkOakLeaves->setTexture("dark_oak_leaves");
+  registerBlock(darkOakLeaves);
+
+  Block *jungleLeaves =
+      new PlantBlock(BlockType::JUNGLE_LEAVES, "Jungle Leaves");
+  jungleLeaves->setResourceId("lithos:jungle_leaves");
+  jungleLeaves->setTexture("jungle_leaves");
+  registerBlock(jungleLeaves);
 
   Block *mud = new SolidBlock(BlockType::MUD, "Mud");
   mud->setResourceId("lithos:mud");
