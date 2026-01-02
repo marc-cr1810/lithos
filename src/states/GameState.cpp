@@ -265,30 +265,60 @@ void GameState::HandleInput(Application *app) {
       bool currentRightMouse =
           glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
       if (currentRightMouse && !lastRightMouse && !mouseCaptured) {
-        // Prevent placing block inside player (AABB check)
-        float playerWidth = 0.6f;
-        float playerHeight = 1.8f;
-        glm::vec3 pMin =
-            app->GetCamera().Position - glm::vec3(0.0f, 1.6f, 0.0f) -
-            glm::vec3(playerWidth / 2.0f, 0.0f, playerWidth / 2.0f);
-        glm::vec3 pMax =
-            pMin + glm::vec3(playerWidth, playerHeight, playerWidth);
+        // Check if we're placing a layered block on the same type
+        Block *placingBlock =
+            BlockRegistry::getInstance().getBlock(m_SelectedBlock);
 
-        glm::vec3 bMin((float)m_PrePos.x, (float)m_PrePos.y, (float)m_PrePos.z);
-        glm::vec3 bMax = bMin + glm::vec3(1.0f);
+        bool didStack = false;
+        // Check the block we're hitting (not the empty space)
+        if (m_Hit &&
+            placingBlock->getRenderShape() == Block::RenderShape::LAYERED) {
+          ChunkBlock hitBlock =
+              app->GetWorld()->getBlock(m_HitPos.x, m_HitPos.y, m_HitPos.z);
 
-        bool collision = (pMin.x <= bMax.x && pMax.x >= bMin.x) &&
-                         (pMin.y <= bMax.y && pMax.y >= bMin.y) &&
-                         (pMin.z <= bMax.z && pMax.z >= bMin.z);
+          if (hitBlock.getType() == m_SelectedBlock) {
+            // Same layered block type - try to stack
+            uint8_t currentMetadata = hitBlock.metadata;
 
-        if (!collision || !BlockRegistry::getInstance()
-                               .getBlock(m_SelectedBlock)
-                               ->isSolid()) {
-          app->GetWorld()->setBlock(m_PrePos.x, m_PrePos.y, m_PrePos.z,
-                                    m_SelectedBlock);
-          if (m_SelectedBlockMetadata > 0) {
-            app->GetWorld()->setMetadata(m_PrePos.x, m_PrePos.y, m_PrePos.z,
-                                         m_SelectedBlockMetadata);
+            // Check if we can add another layer (max is 7 for 8 layers)
+            if (currentMetadata < 7) {
+              // Increment the layer count
+              app->GetWorld()->setMetadata(m_HitPos.x, m_HitPos.y, m_HitPos.z,
+                                           currentMetadata + 1);
+              didStack = true;
+            }
+            // If already at max (metadata 7), fall through to normal placement
+          }
+        }
+
+        if (!didStack) {
+          // Normal placement logic
+          // Prevent placing block inside player (AABB check)
+          float playerWidth = 0.6f;
+          float playerHeight = 1.8f;
+          glm::vec3 pMin =
+              app->GetCamera().Position - glm::vec3(0.0f, 1.6f, 0.0f) -
+              glm::vec3(playerWidth / 2.0f, 0.0f, playerWidth / 2.0f);
+          glm::vec3 pMax =
+              pMin + glm::vec3(playerWidth, playerHeight, playerWidth);
+
+          glm::vec3 bMin((float)m_PrePos.x, (float)m_PrePos.y,
+                         (float)m_PrePos.z);
+          glm::vec3 bMax = bMin + glm::vec3(1.0f);
+
+          bool collision = (pMin.x <= bMax.x && pMax.x >= bMin.x) &&
+                           (pMin.y <= bMax.y && pMax.y >= bMin.y) &&
+                           (pMin.z <= bMax.z && pMax.z >= bMin.z);
+
+          if (!collision || !BlockRegistry::getInstance()
+                                 .getBlock(m_SelectedBlock)
+                                 ->isSolid()) {
+            app->GetWorld()->setBlock(m_PrePos.x, m_PrePos.y, m_PrePos.z,
+                                      m_SelectedBlock);
+            if (m_SelectedBlockMetadata > 0) {
+              app->GetWorld()->setMetadata(m_PrePos.x, m_PrePos.y, m_PrePos.z,
+                                           m_SelectedBlockMetadata);
+            }
           }
         }
       }
@@ -647,6 +677,35 @@ void GameState::RenderUI(Application *app) {
       ImGui::Text("Landform: %s", landformName.c_str());
     }
     ImGui::End();
+
+    // Block Info HUD - Shows what block we're looking at
+    if (m_Hit) {
+      ChunkBlock hitBlock =
+          app->GetWorld()->getBlock(m_HitPos.x, m_HitPos.y, m_HitPos.z);
+      std::string blockName = BlockIdToName(hitBlock.getType());
+
+      // Position at top center
+      ImVec2 centerPos = ImVec2(viewport->Pos.x + viewport->Size.x / 2.0f,
+                                viewport->Pos.y + 10);
+      ImGui::SetNextWindowPos(centerPos, ImGuiCond_Always, ImVec2(0.5f, 0.0f));
+      ImGui::SetNextWindowBgAlpha(0.7f);
+
+      ImGuiWindowFlags blockInfoFlags =
+          ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+          ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize |
+          ImGuiWindowFlags_NoSavedSettings |
+          ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+
+      if (ImGui::Begin("BlockInfo", nullptr, blockInfoFlags)) {
+        ImGui::Text("%s", blockName.c_str());
+        if (hitBlock.metadata > 0) {
+          ImGui::SameLine();
+          ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "[%d]",
+                             hitBlock.metadata);
+        }
+      }
+      ImGui::End();
+    }
   }
 
   if (m_IsPaused) {
@@ -698,23 +757,23 @@ void GameState::RenderUI(Application *app) {
       ImGui::BeginChild("Scrolling");
 
       int buttonsPerRow = 8;
-      int blocks[] = {DIRT,           GRASS,        STONE,
-                      WOOD,           LEAVES,       COAL_ORE,
-                      IRON_ORE,       GLOWSTONE,    WATER,
-                      LAVA,           SAND,         GRAVEL,
-                      SNOW,           ICE,          CACTUS,
-                      PINE_WOOD,      PINE_LEAVES,  TALL_GRASS,
-                      DEAD_BUSH,      ROSE,         DRY_SHORT_GRASS,
-                      DRY_TALL_GRASS, OBSIDIAN,     COBBLESTONE,
-                      WOOD_PLANKS,    ANTHRACITE,   BAUXITE,
-                      CHALK,          CHERT,        CLAY,
-                      CLAYSTONE,      CONGLOMERATE, GREEN_MARBLE,
-                      HALITE,         KIMBERLITE,   LIMESTONE,
-                      MANTLE,         PERIDOTITE,   PHYLLITE,
-                      PINK_MARBLE,    SCORIA,       SHALE,
-                      SLATE,          SUEVITE,      WHITE_MARBLE,
-                      SCHIST,         RHYOLITE,     GOLD_ORE,
-                      GNEISS};
+      int blocks[] = {DIRT,           GRASS,       STONE,
+                      WOOD,           LEAVES,      COAL_ORE,
+                      IRON_ORE,       GLOWSTONE,   WATER,
+                      LAVA,           SAND,        GRAVEL,
+                      SNOW,           ICE,         CACTUS,
+                      PINE_WOOD,      PINE_LEAVES, TALL_GRASS,
+                      DEAD_BUSH,      ROSE,        DRY_SHORT_GRASS,
+                      DRY_TALL_GRASS, OBSIDIAN,    COBBLESTONE,
+                      WOOD_PLANKS,    SNOW_LAYER,  ANTHRACITE,
+                      BAUXITE,        CHALK,       CHERT,
+                      CLAY,           CLAYSTONE,   CONGLOMERATE,
+                      GREEN_MARBLE,   HALITE,      KIMBERLITE,
+                      LIMESTONE,      MANTLE,      PERIDOTITE,
+                      PHYLLITE,       PINK_MARBLE, SCORIA,
+                      SHALE,          SLATE,       SUEVITE,
+                      WHITE_MARBLE,   SCHIST,      RHYOLITE,
+                      GOLD_ORE,       GNEISS};
       int numBlocks = sizeof(blocks) / sizeof(blocks[0]);
 
       for (int i = 0; i < numBlocks; ++i) {
@@ -849,7 +908,7 @@ void GameState::RenderUI(Application *app) {
       if (m_Hit) {
         ChunkBlock cb =
             app->GetWorld()->getBlock(m_HitPos.x, m_HitPos.y, m_HitPos.z);
-        ImGui::Text("Hit Block: %s (%d)", BlockIdToName(cb.getType()),
+        ImGui::Text("Hit Block: %s (%d)", BlockIdToName(cb.getType()).c_str(),
                     cb.getType());
         ImGui::Text("Hit Pos: %d, %d, %d", m_HitPos.x, m_HitPos.y, m_HitPos.z);
         ImGui::Text("Pre Pos: %d, %d, %d", m_PrePos.x, m_PrePos.y, m_PrePos.z);

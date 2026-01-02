@@ -1,6 +1,7 @@
 #include "Block.h"
 #include "blocks/AirBlock.h"
 #include "blocks/FallingBlock.h"
+#include "blocks/LayeredBlock.h"
 #include "blocks/LightBlock.h"
 #include "blocks/LiquidBlock.h"
 #include "blocks/MetadataBlock.h"
@@ -374,6 +375,11 @@ BlockRegistry::BlockRegistry() {
   peat->setResourceId("lithos:peat");
   peat->setTexture("peat");
   registerBlock(peat);
+
+  Block *snowLayer = new LayeredBlock(BlockType::SNOW_LAYER, "Snow Layer", 8);
+  snowLayer->setResourceId("lithos:snow_layer");
+  snowLayer->setTexture("snow");
+  registerBlock(snowLayer);
 
   // Dynamic Model Loading
   for (auto &pair : blocks) {

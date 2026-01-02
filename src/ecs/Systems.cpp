@@ -132,7 +132,27 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
       for (int x = minBlockX; x <= maxBlockX; ++x) {
         for (int y = minBlockY; y <= maxBlockY; ++y) {
           for (int z = minBlockZ; z <= maxBlockZ; ++z) {
-            if (world.getBlock(x, y, z).isSolid())
+            ChunkBlock cb = world.getBlock(x, y, z);
+            if (!cb.isSolid())
+              continue;
+
+            // Get actual block height
+            float blockHeight = cb.block->getBlockHeight(cb.metadata);
+
+            // Define block bounds based on actual height
+            float blockMinX = (float)x;
+            float blockMinY = (float)y;
+            float blockMinZ = (float)z;
+            float blockMaxX = (float)x + 1.0f;
+            float blockMaxY = (float)y + blockHeight;
+            float blockMaxZ = (float)z + 1.0f;
+
+            // AABB collision check with actual block bounds
+            bool collides = (minX < blockMaxX && maxX > blockMinX) &&
+                            (minY < blockMaxY && maxY > blockMinY) &&
+                            (minZ < blockMaxZ && maxZ > blockMinZ);
+
+            if (collides)
               return true;
           }
         }
@@ -161,15 +181,21 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
     // --- PHASE 1: Resolve Y Collision ---
     if (!input.noclip && checkCollision(transform.position)) {
       if (vel.velocity.y < 0) {
-        // Falling down into floor - Snap up
+        // Falling down into floor - Snap up to actual block surface
         float eyeHeight = 1.6f;
         float feetY = transform.position.y - eyeHeight;
 
-        // Use offset to stabilize integer boundary
         int blockY = (int)floor(feetY - 0.1f);
 
-        // Snap to top of blockY:
-        transform.position.y = (float)(blockY + 1) + eyeHeight;
+        // Find the actual height of the block we're standing on
+        int blockX = (int)floor(transform.position.x);
+        int blockZ = (int)floor(transform.position.z);
+        ChunkBlock groundBlock = world.getBlock(blockX, blockY, blockZ);
+        float blockHeight =
+            groundBlock.block->getBlockHeight(groundBlock.metadata);
+
+        // Snap to top of the actual block surface
+        transform.position.y = (float)blockY + blockHeight + eyeHeight;
 
         vel.velocity.y = 0.0f;
         input.isGrounded = true;
@@ -190,16 +216,18 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
           input.isGrounded = true;
           vel.velocity.y = 0.0f;
 
-          // Precise snap to floor
+          // Snap to actual block surface to prevent sinking from gravity
           float eyeHeight = 1.6f;
           float feetY = transform.position.y - eyeHeight;
-
-          // Use offset to stabilize integer boundary logic
           int blockY = (int)floor(feetY - 0.1f);
 
-          // Snap only if significant deviance? Or always consistent?
-          // Consistency is key.
-          transform.position.y = (float)(blockY + 1) + eyeHeight;
+          int blockX = (int)floor(transform.position.x);
+          int blockZ = (int)floor(transform.position.z);
+          ChunkBlock groundBlock = world.getBlock(blockX, blockY, blockZ);
+          float blockHeight =
+              groundBlock.block->getBlockHeight(groundBlock.metadata);
+
+          transform.position.y = (float)blockY + blockHeight + eyeHeight;
         } else {
           if (input.isGrounded && vel.velocity.y <= 0) {
             // Walked off ledge?
@@ -357,18 +385,52 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
         // Now we just fall through to the collision check logic below!
       }
 
+      // Step-up assist: Try stepping up if hitting collision
+      const float maxStepHeight = 0.6f; // Can step up ~5 layers
+      bool didStepUp = false;
+
       // Check X
       glm::vec3 tryX = transform.position;
       tryX.x += finalMove.x;
-      if (!checkCollision(tryX))
+      if (checkCollision(tryX) && input.isGrounded) {
+        // Try stepping up
+        for (float step = 0.125f; step <= maxStepHeight; step += 0.125f) {
+          glm::vec3 stepX = tryX;
+          stepX.y += step;
+          if (!checkCollision(stepX)) {
+            transform.position.x = tryX.x;
+            transform.position.y = stepX.y;
+            didStepUp = true;
+            break;
+          }
+        }
+        if (!didStepUp) {
+          // Can't step up, don't move X
+        } else {
+          tryX.y = transform.position.y; // Use stepped-up Y for next check
+        }
+      } else if (!checkCollision(tryX)) {
         transform.position.x = tryX.x;
+      }
 
       // Check Z
       glm::vec3 tryZ = transform.position;
       tryZ.z += finalMove.z;
       tryZ.x = transform.position.x; // Use updated X
-      if (!checkCollision(tryZ))
+      if (checkCollision(tryZ) && input.isGrounded && !didStepUp) {
+        // Try stepping up
+        for (float step = 0.125f; step <= maxStepHeight; step += 0.125f) {
+          glm::vec3 stepZ = tryZ;
+          stepZ.y += step;
+          if (!checkCollision(stepZ)) {
+            transform.position.z = tryZ.z;
+            transform.position.y = stepZ.y;
+            break;
+          }
+        }
+      } else if (!checkCollision(tryZ)) {
         transform.position.z = tryZ.z;
+      }
     }
 
     // --- PHASE 4: Jump / Swim / Fly Vertical ---

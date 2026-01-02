@@ -77,7 +77,8 @@ enum BlockType {
   GOLD_ORE = 59,
   COARSE_DIRT = 60,
   TERRA_PRETA = 61,
-  PEAT = 62
+  PEAT = 62,
+  SNOW_LAYER = 63
 };
 
 class World; // Forward declaration
@@ -274,9 +275,13 @@ public:
   enum class RenderLayer { OPAQUE, CUTOUT, TRANSPARENT };
   virtual RenderLayer getRenderLayer() const { return RenderLayer::OPAQUE; }
 
-  enum class RenderShape { CUBE, CROSS, SLAB_BOTTOM, STAIRS, MODEL };
+  enum class RenderShape { CUBE, CROSS, SLAB_BOTTOM, STAIRS, MODEL, LAYERED };
   virtual RenderShape getRenderShape() const { return renderShape; }
   void setRenderShape(RenderShape shape) { renderShape = shape; }
+
+  // Get the height of the block (used for layered blocks, default is 1.0 for
+  // full blocks)
+  virtual float getBlockHeight(uint8_t metadata) const { return 1.0f; }
 
   // Events
   virtual void onPlace(World &world, int x, int y, int z) const {}

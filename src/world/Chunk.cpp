@@ -442,7 +442,8 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             if (shape == Block::RenderShape::CROSS ||
                 shape == Block::RenderShape::SLAB_BOTTOM ||
                 shape == Block::RenderShape::STAIRS ||
-                shape == Block::RenderShape::MODEL)
+                shape == Block::RenderShape::MODEL ||
+                shape == Block::RenderShape::LAYERED)
               continue;
 
             MaskInfo current = mask[u][v];
@@ -1117,12 +1118,12 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
           pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f, uMin, vMin);
           pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f, uMin, vMin);
           pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f, uMin, vMin);
-
           pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f, uMin, vMin);
           pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f, uMin, vMin);
           pushVert(p2_x2, fy + 1.0f, p2_z2, 1.0f, 1.0f, uMin, vMin);
         } else if (shape == Block::RenderShape::SLAB_BOTTOM ||
-                   shape == Block::RenderShape::STAIRS) {
+                   shape == Block::RenderShape::STAIRS ||
+                   shape == Block::RenderShape::LAYERED) {
           // Helper to add a quad
           auto addFaceQuad = [&](int face, float xMin, float yMin, float zMin,
                                  float xMax, float yMax, float zMax) {
@@ -1250,77 +1251,87 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             }
           };
 
-          // SLAB_BOTTOM Logic
-          // Base Slab (Always present for both SlabBottom and Stairs?)
-          // Stairs usually have a base slab (0..0.5) plus a top part.
-          // Yes.
+          if (shape == Block::RenderShape::LAYERED) {
+            // Layered blocks with variable height based on metadata
+            float blockHeight = cb.block->getBlockHeight(cb.metadata);
 
-          addFaceQuad(0, 0, 0, 0, 1, 0.5f, 1); // Z+
-          addFaceQuad(1, 0, 0, 0, 1, 0.5f, 1); // Z-
-          addFaceQuad(2, 0, 0, 0, 1, 0.5f, 1); // X-
-          addFaceQuad(3, 0, 0, 0, 1, 0.5f, 1); // X+
-          addFaceQuad(5, 0, 0, 0, 1, 0.5f, 1); // Y- (Bottom)
-
-          if (shape == Block::RenderShape::SLAB_BOTTOM) {
-            addFaceQuad(4, 0, 0, 0, 1, 0.5f, 1); // Y+ (Top of Slab)
+            // Render all 6 faces with adjusted height
+            addFaceQuad(0, 0, 0, 0, 1, blockHeight, 1); // Z+ (Front)
+            addFaceQuad(1, 0, 0, 0, 1, blockHeight, 1); // Z- (Back)
+            addFaceQuad(2, 0, 0, 0, 1, blockHeight, 1); // X- (Left)
+            addFaceQuad(3, 0, 0, 0, 1, blockHeight, 1); // X+ (Right)
+            addFaceQuad(4, 0, 0, 0, 1, blockHeight, 1); // Y+ (Top)
+            addFaceQuad(5, 0, 0, 0, 1, blockHeight, 1); // Y- (Bottom)
           } else {
-            // STAIRS
-            // Needs Top Half.
-            // Helper for Partial Box?
-            // Determine quadrant from metadata?
-            // Metadata 0: East (X+), 1: West (X-), 2: South (Z+), 3: North
-            // (Z-) Let's assume standard metadata.
+            // SLAB_BOTTOM or STAIRS logic
 
-            // Base is drawn. Now draw Top Part (0.5..1.0)
-            // Area depends on rotation.
-            float tX1 = 0, tZ1 = 0, tX2 = 1, tZ2 = 1;
+            addFaceQuad(0, 0, 0, 0, 1, 0.5f, 1); // Z+
+            addFaceQuad(1, 0, 0, 0, 1, 0.5f, 1); // Z-
+            addFaceQuad(2, 0, 0, 0, 1, 0.5f, 1); // X-
+            addFaceQuad(3, 0, 0, 0, 1, 0.5f, 1); // X+
+            addFaceQuad(5, 0, 0, 0, 1, 0.5f, 1); // Y- (Bottom)
 
-            // If East (Stairs go UP towards East/West? Or Face East?)
-            // "Stairs facing East" usually means Back is West, Front is East.
-            // The "Step" is on the West side? Or "Ascends" to East?
-            // Let's implement one and check.
-            // Assume Meta 0 = Ascend towards X+ (East).
-            // Blocks: Bottom full, Top Right (X > 0.5) is filled?
-
-            int meta = cb.metadata;
-            if (meta == 0) { // East (X+)
-              tX1 = 0.5f;
-              tX2 = 1.0f;           // Fill X+ half
-            } else if (meta == 1) { // West (X-)
-              tX1 = 0.0f;
-              tX2 = 0.5f;           // Fill X- half
-            } else if (meta == 2) { // South (Z+)
-              tZ1 = 0.5f;
-              tZ2 = 1.0f; // Fill Z+ half
-            } else {      // North (Z-)
-              tZ1 = 0.0f;
-              tZ2 = 0.5f; // Fill Z- half
-            }
-
-            // Top Box
-            // Y range: 0.5 to 1.0
-            addFaceQuad(0, tX1, 0.5f, tZ1, tX2, 1.0f, tZ2);
-            addFaceQuad(1, tX1, 0.5f, tZ1, tX2, 1.0f, tZ2);
-            addFaceQuad(2, tX1, 0.5f, tZ1, tX2, 1.0f, tZ2);
-            addFaceQuad(3, tX1, 0.5f, tZ1, tX2, 1.0f, tZ2);
-            addFaceQuad(4, tX1, 0.5f, tZ1, tX2, 1.0f, tZ2); // Top of Stairs
-            // Note: Bottom of Top Box (at 0.5) sits on Base Slab Top (at
-            // 0.5). Base Slab Top (at 0.5) was NOT drawn for Stair (I split
-            // the if above). But we need to draw the Exposed part of Base
-            // Slab Top!
-
-            // Base Slab Top (Exposed Part)
-            // It's the Inverse of Top Box X/Z rect.
-            // If East (Top is X>0.5), Exposed Base Top is X<0.5.
-            float bX1 = 0, bZ1 = 0, bX2 = 1, bZ2 = 1;
-            if (meta == 0) {
-              bX2 = 0.5f;
-            } else if (meta == 1) {
-              bX1 = 0.5f;
-            } else if (meta == 2) {
-              bZ2 = 0.5f;
+            if (shape == Block::RenderShape::SLAB_BOTTOM) {
+              addFaceQuad(4, 0, 0, 0, 1, 0.5f, 1); // Y+ (Top of Slab)
             } else {
-              addFaceQuad(4, bX1, 0, bZ1, bX2, 0.5f, bZ2); // Exposed Base Top
+              // STAIRS
+              // Needs Top Half.
+              // Helper for Partial Box?
+              // Determine quadrant from metadata?
+              // Metadata 0: East (X+), 1: West (X-), 2: South (Z+), 3: North
+              // (Z-) Let's assume standard metadata.
+
+              // Base is drawn. Now draw Top Part (0.5..1.0)
+              // Area depends on rotation.
+              float tX1 = 0, tZ1 = 0, tX2 = 1, tZ2 = 1;
+
+              // If East (Stairs go UP towards East/West? Or Face East?)
+              // "Stairs facing East" usually means Back is West, Front is East.
+              // The "Step" is on the West side? Or "Ascends" to East?
+              // Let's implement one and check.
+              // Assume Meta 0 = Ascend towards X+ (East).
+              // Blocks: Bottom full, Top Right (X > 0.5) is filled?
+
+              int meta = cb.metadata;
+              if (meta == 0) { // East (X+)
+                tX1 = 0.5f;
+                tX2 = 1.0f;           // Fill X+ half
+              } else if (meta == 1) { // West (X-)
+                tX1 = 0.0f;
+                tX2 = 0.5f;           // Fill X- half
+              } else if (meta == 2) { // South (Z+)
+                tZ1 = 0.5f;
+                tZ2 = 1.0f; // Fill Z+ half
+              } else {      // North (Z-)
+                tZ1 = 0.0f;
+                tZ2 = 0.5f; // Fill Z- half
+              }
+
+              // Top Box
+              // Y range: 0.5 to 1.0
+              addFaceQuad(0, tX1, 0.5f, tZ1, tX2, 1.0f, tZ2);
+              addFaceQuad(1, tX1, 0.5f, tZ1, tX2, 1.0f, tZ2);
+              addFaceQuad(2, tX1, 0.5f, tZ1, tX2, 1.0f, tZ2);
+              addFaceQuad(3, tX1, 0.5f, tZ1, tX2, 1.0f, tZ2);
+              addFaceQuad(4, tX1, 0.5f, tZ1, tX2, 1.0f, tZ2); // Top of Stairs
+              // Note: Bottom of Top Box (at 0.5) sits on Base Slab Top (at
+              // 0.5). Base Slab Top (at 0.5) was NOT drawn for Stair (I split
+              // the if above). But we need to draw the Exposed part of Base
+              // Slab Top!
+
+              // Base Slab Top (Exposed Part)
+              // It's the Inverse of Top Box X/Z rect.
+              // If East (Top is X>0.5), Exposed Base Top is X<0.5.
+              float bX1 = 0, bZ1 = 0, bX2 = 1, bZ2 = 1;
+              if (meta == 0) {
+                bX2 = 0.5f;
+              } else if (meta == 1) {
+                bX1 = 0.5f;
+              } else if (meta == 2) {
+                bZ2 = 0.5f;
+              } else {
+                addFaceQuad(4, bX1, 0, bZ1, bX2, 0.5f, bZ2); // Exposed Base Top
+              }
             }
           }
         } else if (shape == Block::RenderShape::MODEL) {
@@ -2003,10 +2014,20 @@ bool Chunk::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist,
     if (x >= 0 && x < CHUNK_SIZE && y >= 0 && y < CHUNK_SIZE && z >= 0 &&
         z < CHUNK_SIZE) {
       if (blocks[x][y][z].isSelectable()) {
-        outputPos = glm::ivec3(x, y, z);
-        outputPrePos = glm::ivec3((int)floor(lastPos.x), (int)floor(lastPos.y),
-                                  (int)floor(lastPos.z));
-        return true;
+        // Check if raycast position is within actual block bounds
+        float blockHeight =
+            blocks[x][y][z].block->getBlockHeight(blocks[x][y][z].metadata);
+        float blockMinY = (float)y;
+        float blockMaxY = (float)y + blockHeight;
+
+        // Only hit if ray position is within the block's actual vertical bounds
+        if (pos.y >= blockMinY && pos.y <= blockMaxY) {
+          outputPos = glm::ivec3(x, y, z);
+          outputPrePos =
+              glm::ivec3((int)floor(lastPos.x), (int)floor(lastPos.y),
+                         (int)floor(lastPos.z));
+          return true;
+        }
       }
     }
 
