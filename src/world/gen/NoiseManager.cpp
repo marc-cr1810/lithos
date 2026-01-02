@@ -176,7 +176,8 @@ void NoiseManager::Initialize() {
 
 float NoiseManager::GetUpheaval(int x, int z) const {
   // GenSingle2D returns value, usually -1 to 1 depending on source
-  return upheavalNode->GenSingle2D((float)x, (float)z, seed);
+  return upheavalNode->GenSingle2D((float)x * config.upheavalScale,
+                                   (float)z * config.upheavalScale, seed);
 }
 
 // Helper for warp
@@ -287,7 +288,8 @@ void NoiseManager::GetLandformDistances(int x, int z, float &f1, float &f2,
 }
 
 float NoiseManager::GetStrata(int x, int z) const {
-  return strataNode->GenSingle2D((float)x, (float)z, seed + 12);
+  return strataNode->GenSingle2D((float)x * config.strataScale,
+                                 (float)z * config.strataScale, seed + 12);
 }
 
 // Fixed GetCave3D to manually apply frequency scaling
@@ -322,12 +324,14 @@ void NoiseManager::GenLandformComposite(float *landformOut, float *neighborOut,
   std::vector<float> yPos(width * height);
 
   // Generate Warp Fields (Independent Domain Warp)
+  // Generate Warp Fields (Independent Domain Warp)
   // X Warp
+  // Use 0.5f frequency factor to match GetWarpedCoord!
   warpXNode->GenUniformGrid2D(xPos.data(), startX, startZ, width, height,
-                              config.landformScale, seed);
+                              config.landformScale * 0.5f, seed);
   // Y Warp (different seed)
   warpYNode->GenUniformGrid2D(yPos.data(), startX, startZ, width, height,
-                              config.landformScale, seed + 1337);
+                              config.landformScale * 0.5f, seed + 1337);
 
   float warpAmp = 1.5f; // Matches "Large" warp
   // Apply warp to positions

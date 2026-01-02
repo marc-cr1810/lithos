@@ -103,11 +103,7 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
     noiseManager.GenTerrainDetail(terrainDetail.data(), startX, startZ,
                                   CHUNK_SIZE, CHUNK_SIZE);
   }
-  {
-    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Noise_Strata", m_ProfilingEnabled);
-    noiseManager.GenStrata(strataNoise.data(), startX, startZ, CHUNK_SIZE,
-                           CHUNK_SIZE);
-  }
+
   {
     PROFILE_SCOPE_CONDITIONAL("ChunkGen_Noise_Vegetation", m_ProfilingEnabled);
     noiseManager.GenVegetation(forestMap.data(), bushMap.data(), startX, startZ,
@@ -149,7 +145,7 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
       const Landform *lf3 =
           landformRegistry.Select(landformNeighbor3[index], t, h);
 
-      float upVal = upheaval[index];
+      float upVal = noiseManager.GetUpheaval(wx, wz);
       // float baseHeight = 64.0f + upVal * 20.0f; // Upheaval handled in
       // density now? VS Upheaval shifts the threshold or the Y? VS: distY =
       // oceanicity + Compute... VS: StartSampleDisplacedYThreshold(posY + distY
@@ -328,16 +324,6 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
   int startY = cy * CHUNK_SIZE;
   int startZ = cz * CHUNK_SIZE;
 
-  // Regenerate Province Noise
-  static thread_local std::vector<float> provinceNoise(CHUNK_SIZE * CHUNK_SIZE);
-  noiseManager.GenGeologic(provinceNoise.data(), startX, startZ, CHUNK_SIZE,
-                           CHUNK_SIZE);
-
-  // Generate Strata Noise
-  static thread_local std::vector<float> strataNoise(CHUNK_SIZE * CHUNK_SIZE);
-  noiseManager.GenStrata(strataNoise.data(), startX, startZ, CHUNK_SIZE,
-                         CHUNK_SIZE);
-
   // Regenerate Landform Noise & Distances for Density Calculation
   // We need these to calculate weights per column
   static thread_local std::vector<float> landformNoise(CHUNK_SIZE * CHUNK_SIZE);
@@ -348,7 +334,6 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
   static thread_local std::vector<float> landformF1(CHUNK_SIZE * CHUNK_SIZE);
   static thread_local std::vector<float> landformF2(CHUNK_SIZE * CHUNK_SIZE);
   static thread_local std::vector<float> landformF3(CHUNK_SIZE * CHUNK_SIZE);
-  static thread_local std::vector<float> upheaval(CHUNK_SIZE * CHUNK_SIZE);
 
   // We also need temp/humid for selection
   static thread_local std::vector<float> tempMap(CHUNK_SIZE * CHUNK_SIZE);
@@ -359,8 +344,6 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
       landformF1.data(), landformF2.data(), landformF3.data(), nullptr, startX,
       startZ, CHUNK_SIZE, CHUNK_SIZE);
 
-  noiseManager.GenUpheaval(upheaval.data(), startX, startZ, CHUNK_SIZE,
-                           CHUNK_SIZE);
   noiseManager.GenClimate(tempMap.data(), humidMap.data(), startX, startZ,
                           CHUNK_SIZE, CHUNK_SIZE);
 
@@ -417,13 +400,16 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
             landformNeighbor3[index], tempMap[index], humidMap[index]);
 
         int surfaceHeight = column.getHeight(lx, lz);
-        float pNoise = provinceNoise[index];
-        float sNoise = strataNoise[index];
+
+        // Use direct sampling to ensure consistency with GetHeight and avoid
+        // array index/generation mismatches
+        float pNoise = noiseManager.GetGeologicNoise(wx, wz);
+        float sNoise = noiseManager.GetStrata(wx, wz);
+        float upVal = noiseManager.GetUpheaval(wx, wz);
 
         // Optimization: Pre-calculate density thresholds for this column slice
         // Only needed if we are below surface height
         float columnThresholds[CHUNK_SIZE];
-        float upVal = upheaval[index];
 
         // Determine how many blocks need density check
         // We only check density if wy <= surfaceHeight
@@ -496,8 +482,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
             // Block Placement Logic inside loop
             if (isSolid) {
               BlockType rockType = strataRegistry.GetStrataBlock(
-                  wx, wy, wz, surfaceHeight, pNoise, sNoise, upheaval[index],
-                  m_Seed);
+                  wx, wy, wz, surfaceHeight, pNoise, sNoise, upVal, m_Seed);
               chunk.blocks[lx][ly][lz].block =
                   BlockRegistry::getInstance().getBlock(rockType);
               chunk.blocks[lx][ly][lz].metadata = 0;
