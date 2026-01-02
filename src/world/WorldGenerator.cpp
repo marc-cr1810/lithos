@@ -32,9 +32,6 @@ WorldGenerator::WorldGenerator(const WorldGenConfig &config)
   decorators.push_back(new TreeDecorator());
   decorators.push_back(new FloraDecorator());
 
-  // Load Surface Config
-  blockLayerConfig.Load("assets/worldgen/blocklayers.json");
-
   // Decorators initialized above
 }
 
@@ -619,8 +616,9 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
               float fertility = humid;
               float yNormalized = (float)wy / (float)config.worldHeight;
 
-              uint8_t liquidId = blockLayerConfig.GetLiquidSurfaceBlockId(
-                  temp, humid, fertility, patch, yNormalized);
+              uint8_t liquidId =
+                  BlockLayerConfig::Get().GetLiquidSurfaceBlockId(
+                      temp, humid, fertility, patch, yNormalized);
 
               if (liquidId != BlockType::WATER) {
                 chunk.blocks[lx][ly][lz].block =
@@ -779,8 +777,8 @@ BlockType WorldGenerator::GetSurfaceBlock(int x, int y, int z,
   float yNormalized = (float)y / (float)config.worldHeight;
   yNormalized = std::max(0.0f, std::min(1.0f, yNormalized));
 
-  uint8_t id = blockLayerConfig.GetSurfaceBlockId(temp, humid, fertility, patch,
-                                                  yNormalized);
+  uint8_t id = BlockLayerConfig::Get().GetSurfaceBlockId(temp, humid, fertility,
+                                                         patch, yNormalized);
   return (BlockType)id;
 }
 

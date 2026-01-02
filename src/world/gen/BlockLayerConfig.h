@@ -28,6 +28,11 @@ struct BlockLayerRule {
 
 class BlockLayerConfig {
 public:
+  static BlockLayerConfig &Get() {
+    static BlockLayerConfig instance;
+    return instance;
+  }
+
   bool Load(const std::string &path);
   uint8_t GetSurfaceBlockId(float temp, float rain, float fertility,
                             float patchNoise, float yNormalized) const;
@@ -35,6 +40,7 @@ public:
                                   float patchNoise, float yNormalized) const;
 
 private:
+  BlockLayerConfig() = default;
   std::vector<BlockLayerRule> rules;
   std::vector<BlockLayerRule> liquidRules;
 };

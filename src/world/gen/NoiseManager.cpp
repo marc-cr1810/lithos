@@ -118,17 +118,21 @@ void NoiseManager::Initialize() {
   // geologicNode = geologicFractal;
   geologicNode = geologicSource;
 
-  // 4. Climate
-  auto temp = FastNoise::New<FastNoise::Perlin>();
+  // 4. Climate (Fractal for organic boundaries)
+  auto tempSource = FastNoise::New<FastNoise::Simplex>();
   auto tempFractal = FastNoise::New<FastNoise::FractalFBm>();
-  tempFractal->SetSource(temp);
-  tempFractal->SetOctaveCount(3);
+  tempFractal->SetSource(tempSource);
+  tempFractal->SetOctaveCount(5); // More octaves = more detail/jaggedness
+  tempFractal->SetGain(0.5f);
+  tempFractal->SetLacunarity(2.5f); // Higher = sharper transitions
   tempNode = tempFractal;
 
-  auto humid = FastNoise::New<FastNoise::Perlin>();
+  auto humidSource = FastNoise::New<FastNoise::Simplex>();
   auto humidFractal = FastNoise::New<FastNoise::FractalFBm>();
-  humidFractal->SetSource(humid);
-  humidFractal->SetOctaveCount(3);
+  humidFractal->SetSource(humidSource);
+  humidFractal->SetOctaveCount(5); // More octaves = more detail/jaggedness
+  humidFractal->SetGain(0.5f);
+  humidFractal->SetLacunarity(2.5f); // Higher = sharper transitions
   humidNode = humidFractal;
 
   // 5. Vegetation
@@ -234,8 +238,8 @@ float NoiseManager::GetTemperature(int x, int z) const {
   float wx, wz;
   GetWarpedCoord((float)x, (float)z, wx, wz, config.climateScale);
   float val = tempNode->GenSingle2D(wx, wz, seed + 1);
-  // Map [-1, 1] to [-30, 60] (typical biome ranges)
-  return (val + 1.0f) * 0.5f * 90.0f - 30.0f;
+  // Map [-1, 1] to [-40, 40] (colder bias for more ice)
+  return (val + 1.0f) * 0.5f * 80.0f - 40.0f;
 }
 
 float NoiseManager::GetHumidity(int x, int z) const {
