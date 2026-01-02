@@ -3,6 +3,7 @@
 
 #include "Block.h"
 #include "WorldGenConfig.h"
+#include "gen/BlockLayerConfig.h"
 #include "gen/Landform.h"
 #include "gen/NoiseManager.h"
 #include "gen/RockStrata.h"
@@ -46,6 +47,9 @@ public:
 
   // Access to new noise system
   const NoiseManager &GetNoiseManager() const { return noiseManager; }
+  BlockLayerConfig &GetBlockLayerConfig() { return blockLayerConfig; }
+
+  // Utilities
 
   // Utilities
   // Calculate Height from noise (moved from private/impl)
@@ -98,6 +102,7 @@ private:
 
   // New Systems
   NoiseManager noiseManager;
+  BlockLayerConfig blockLayerConfig;
   LandformRegistry &landformRegistry;
   RockStrataRegistry &strataRegistry;
 

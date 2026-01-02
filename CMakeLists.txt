@@ -171,6 +171,7 @@ add_executable(lithos
     src/world/gen/NoiseManager.cpp
     src/world/gen/Landform.cpp
     src/world/gen/RockStrata.cpp
+    src/world/gen/BlockLayerConfig.cpp
     src/ecs/Systems.cpp
     src/debug/Profiler.cpp
     src/debug/CrashHandler.cpp

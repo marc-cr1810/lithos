@@ -1,0 +1,104 @@
+{
+    "surfaceRules": [
+        {
+            "comment": "Snow Caps (High Altitude)",
+            "block": "lithos:snow",
+            "condition": {
+                "minY": 0.40625,
+                "minTemp": -50.0,
+                "maxTemp": 0.0
+            }
+        },
+        {
+            "comment": "Gravel Patches (High Patch Noise)",
+            "block": "lithos:gravel",
+            "condition": {
+                "minPatchNoise": 0.6
+            }
+        },
+        {
+            "comment": "Coarse Dirt Patches (Low Patch Noise)",
+            "block": "lithos:coarse_dirt",
+            "condition": {
+                "maxPatchNoise": -0.7
+            }
+        },
+        {
+            "comment": "Desert: Hot and Dry",
+            "block": "lithos:sand",
+            "condition": {
+                "minTemp": 22.0,
+                "maxRain": 0.25
+            }
+        },
+        {
+            "comment": "Jungle: High Fertility (Hot/Wet)",
+            "block": "lithos:terra_preta",
+            "condition": {
+                "minTemp": 22.0,
+                "minFertility": 0.6
+            }
+        },
+        {
+            "comment": "Swamp: Warm and Very Wet",
+            "block": "lithos:mud",
+            "condition": {
+                "minTemp": 5.0,
+                "minRain": 0.75
+            }
+        },
+        {
+            "comment": "Bog: Cold and Very Wet",
+            "block": "lithos:peat",
+            "condition": {
+                "maxTemp": 5.0,
+                "minRain": 0.75
+            }
+        },
+        {
+            "comment": "Tundra: Cold and Dry",
+            "block": "lithos:coarse_dirt",
+            "condition": {
+                "maxTemp": 5.0,
+                "maxRain": 0.2
+            }
+        },
+        {
+            "comment": "Pine Forest Podzol Patches",
+            "block": "lithos:podzol",
+            "condition": {
+                "minTemp": 10.0,
+                "minRain": 0.4,
+                "maxPatchNoise": -0.2
+            }
+        },
+        {
+            "comment": "Beach: Sand near Sea Level",
+            "block": "lithos:sand",
+            "condition": {
+                "minY": 0.19375,
+                "maxY": 0.20625,
+                "maxRain": 0.8
+            }
+        },
+        {
+            "comment": "Default Fallback",
+            "block": "lithos:grass",
+            "condition": {}
+        }
+    ],
+    "liquidSurfaceRules": [
+        {
+            "comment": "Freeze water in cold climates",
+            "block": "lithos:ice",
+            "condition": {
+                "maxTemp": -2.0
+            }
+        },
+        {
+            "comment": "Default water",
+            "block": "lithos:water",
+            "condition": {}
+        }
+    ]
+}

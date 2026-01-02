@@ -32,6 +32,9 @@ WorldGenerator::WorldGenerator(const WorldGenConfig &config)
   decorators.push_back(new TreeDecorator());
   decorators.push_back(new FloraDecorator());
 
+  // Load Surface Config
+  blockLayerConfig.Load("assets/worldgen/blocklayers.json");
+
   // Decorators initialized above
 }
 
@@ -583,6 +586,54 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
     }
   }
 
+  // 2.5. Liquid Surface Rules (Ice)
+  // After all water is placed, check top layer for freezing
+  {
+    PROFILE_SCOPE_CONDITIONAL("ChunkGen_LiquidSurface", m_ProfilingEnabled);
+    for (int lx = 0; lx < CHUNK_SIZE; lx++) {
+      for (int lz = 0; lz < CHUNK_SIZE; lz++) {
+        int wx = startX + lx;
+        int wz = startZ + lz;
+        int surfaceHeight = column.heightMap[lx][lz];
+
+        // Check if there's water at or near sea level
+        for (int ly = 0; ly < CHUNK_SIZE; ly++) {
+          int wy = startY + ly;
+
+          // Only process water at the top of water columns (surface)
+          if (chunk.blocks[lx][ly][lz].block->getId() == BlockType::WATER) {
+            // Check if this is the top water block (air or nothing above)
+            bool isTopWater = false;
+            if (ly == CHUNK_SIZE - 1) {
+              isTopWater = true; // Top of chunk
+            } else if (chunk.blocks[lx][ly + 1][lz].block->getId() ==
+                       BlockType::AIR) {
+              isTopWater = true; // Air above
+            }
+
+            if (isTopWater) {
+              // Query liquid surface rules
+              float temp = column.temperatureMap[lx][lz];
+              float humid = column.humidityMap[lx][lz];
+              float patch = noiseManager.GetSurfacePatchNoise(wx, wz);
+              float fertility = humid;
+              float yNormalized = (float)wy / (float)config.worldHeight;
+
+              uint8_t liquidId = blockLayerConfig.GetLiquidSurfaceBlockId(
+                  temp, humid, fertility, patch, yNormalized);
+
+              if (liquidId != BlockType::WATER) {
+                chunk.blocks[lx][ly][lz].block =
+                    BlockRegistry::getInstance().getBlock(liquidId);
+                chunk.blocks[lx][ly][lz].metadata = 0;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   // 3. Caves
   {
     PROFILE_SCOPE_CONDITIONAL("ChunkGen_Caves", m_ProfilingEnabled);
@@ -719,46 +770,18 @@ std::string WorldGenerator::GetLandformNameAt(int x, int z) {
 
 BlockType WorldGenerator::GetSurfaceBlock(int x, int y, int z,
                                           const ChunkColumn *column) {
+  // Use config loader by default
   float temp = noiseManager.GetTemperature(x, z);
   float humid = noiseManager.GetHumidity(x, z);
   float patch = noiseManager.GetSurfacePatchNoise(x, z);
+  float fertility = humid; // Derived for now
 
-  // Patch Overrides (Micro-biomes)
-  if (patch > 0.60f)
-    return BlockType::GRAVEL;
-  if (patch < -0.70f)
-    return BlockType::COARSE_DIRT;
+  float yNormalized = (float)y / (float)config.worldHeight;
+  yNormalized = std::max(0.0f, std::min(1.0f, yNormalized));
 
-  // Biome Logic
-  // Hot
-  if (temp > 22.0f) {
-    if (humid < 0.25f)
-      return BlockType::SAND; // Desert
-    if (humid > 0.6f)
-      return BlockType::TERRA_PRETA; // Jungle
-  }
-
-  // Swamp / Bog
-  if (humid > 0.75f) {
-    if (temp > 5.0f)
-      return BlockType::MUD; // Swamp
-    else
-      return BlockType::PEAT; // Cold Bog
-  }
-
-  // Cold
-  if (temp < 5.0f) {
-    if (humid < 0.2f)
-      return BlockType::COARSE_DIRT; // Tundra
-  }
-
-  // Forest Soils
-  if (humid > 0.4f && temp > 10.0f) {
-    if (patch < -0.2f)
-      return BlockType::PODZOL;
-  }
-
-  return BlockType::GRASS;
+  uint8_t id = blockLayerConfig.GetSurfaceBlockId(temp, humid, fertility, patch,
+                                                  yNormalized);
+  return (BlockType)id;
 }
 
 float WorldGenerator::GetTemperature(int x, int z) {
