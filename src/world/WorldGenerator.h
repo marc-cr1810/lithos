@@ -104,6 +104,9 @@ private:
   // Decorators
   std::vector<WorldDecorator *> decorators;
   CaveGenerator *caveGenerator;
+
+  // Post-Processing
+  void CleanupFloatingIslands(Chunk &chunk);
 };
 
 #endif

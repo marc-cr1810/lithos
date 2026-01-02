@@ -10,7 +10,9 @@
 #include "TreeDecorator.h"
 #include "gen/NoiseManager.h"
 #include <algorithm>
+#include <glm/glm.hpp>
 #include <iostream>
+#include <queue>
 
 WorldGenerator::WorldGenerator(const WorldGenConfig &config)
     : config(config), m_Seed(config.seed), noiseManager(config),
@@ -581,6 +583,12 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
       decorator->Decorate(chunk, *this, column);
     }
   }
+
+  // 5. Post-Processing
+  {
+    PROFILE_SCOPE_CONDITIONAL("ChunkGen_PostProcess", m_ProfilingEnabled);
+    CleanupFloatingIslands(chunk);
+  }
 }
 
 // Helpers
@@ -722,4 +730,105 @@ float WorldGenerator::GetBeachNoise(int x, int z) {
 }
 float WorldGenerator::GetLandformNoise(int x, int z) {
   return noiseManager.GetLandformNoise(x, z);
+}
+
+void WorldGenerator::CleanupFloatingIslands(Chunk &chunk) {
+  // Post-process to remove floating islands (small clusters of solid blocks
+  // entirely surrounded by air/water or nothingness)
+
+  static const int SIZE = CHUNK_SIZE;
+  static const int TOTAL_BLOCKS = SIZE * SIZE * SIZE;
+  // Local visited array for the chunk (32*32*32 = 32768 bools)
+  std::vector<bool> visited(TOTAL_BLOCKS, false);
+
+  // Optimization: Queue for BFS
+  std::vector<glm::ivec3> component;
+  std::queue<glm::ivec3> q;
+  component.reserve(64);
+
+  // Helper lambda for index
+  auto getIdx = [](int x, int y, int z) { return (y * SIZE + z) * SIZE + x; };
+
+  for (int y = 0; y < SIZE; ++y) {
+    for (int z = 0; z < SIZE; ++z) {
+      for (int x = 0; x < SIZE; ++x) {
+        int idx = getIdx(x, y, z);
+        if (visited[idx])
+          continue;
+
+        ChunkBlock cb = chunk.getBlock(x, y, z);
+        bool isSolid = (cb.getType() != BlockType::AIR &&
+                        cb.getType() != BlockType::WATER);
+
+        if (!isSolid) {
+          visited[idx] = true;
+          continue;
+        }
+
+        // It is Solid and Not Visited.
+        // y=0 blocks are intrinsically stable (connected to chunk below)
+        bool isStable = (y == 0);
+        bool touchesBorder = false;
+
+        // BFS to find component
+        component.clear();
+        q.push({x, y, z});
+        visited[idx] = true;
+        component.push_back({x, y, z});
+
+        if (x == 0 || x == SIZE - 1 || z == 0 || z == SIZE - 1)
+          touchesBorder = true;
+
+        int count = 0;
+        const int MAX_FLOATING_SIZE = 64; // Increased to 64
+        bool tooBig = false;
+
+        while (!q.empty()) {
+          glm::ivec3 curr = q.front();
+          q.pop();
+          count++;
+
+          if (count > MAX_FLOATING_SIZE) {
+            tooBig = true;
+          }
+
+          if (curr.x == 0 || curr.x == SIZE - 1 || curr.z == 0 ||
+              curr.z == SIZE - 1) {
+            touchesBorder = true;
+          }
+
+          static const glm::ivec3 dirs[] = {{0, 1, 0},  {0, -1, 0}, {1, 0, 0},
+                                            {-1, 0, 0}, {0, 0, 1},  {0, 0, -1}};
+
+          for (const auto &d : dirs) {
+            glm::ivec3 n = curr + d;
+            if (n.x >= 0 && n.x < SIZE && n.y >= 0 && n.y < SIZE && n.z >= 0 &&
+                n.z < SIZE) {
+              int nIdx = getIdx(n.x, n.y, n.z);
+              if (!visited[nIdx]) {
+                ChunkBlock ncb = chunk.getBlock(n.x, n.y, n.z);
+                bool nSolid = (ncb.getType() != BlockType::AIR &&
+                               ncb.getType() != BlockType::WATER);
+                if (nSolid) {
+                  visited[nIdx] = true;
+                  q.push(n);
+                  if (!tooBig)
+                    component.push_back(n);
+                }
+              }
+            }
+          }
+        }
+
+        if (isStable || touchesBorder || tooBig) {
+          // Keep it.
+        } else {
+          // Delete it.
+          for (const auto &p : component) {
+            chunk.setBlock(p.x, p.y, p.z, BlockType::AIR);
+          }
+        }
+      }
+    }
+  }
 }
