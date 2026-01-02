@@ -4,6 +4,7 @@
 #include "blocks/LayeredBlock.h"
 #include "blocks/LightBlock.h"
 #include "blocks/LiquidBlock.h"
+#include "blocks/LogBlock.h"
 #include "blocks/MetadataBlock.h"
 #include "blocks/PlantBlock.h"
 #include "blocks/SlabBlock.h"
@@ -50,7 +51,7 @@ BlockRegistry::BlockRegistry() {
   stone->setTexture("stone");
   registerBlock(stone);
 
-  Block *wood = new SolidBlock(BlockType::WOOD, "Oak Log");
+  Block *wood = new LogBlock(BlockType::WOOD, "Oak Log");
   wood->setResourceId("lithos:oak_log");
   wood->setTexture("oak_log");
   wood->setTexture(4, "oak_log_top");
@@ -125,7 +126,7 @@ BlockRegistry::BlockRegistry() {
   cactus->setOpaque(false);
   registerBlock(cactus);
 
-  Block *pine = new SolidBlock(BlockType::PINE_WOOD, "Spruce Log");
+  Block *pine = new LogBlock(BlockType::PINE_WOOD, "Spruce Log");
   pine->setResourceId("lithos:spruce_log");
   pine->setTexture("spruce_log");
   pine->setTexture(4, "spruce_log_top");

@@ -315,9 +315,27 @@ void GameState::HandleInput(Application *app) {
                                  ->isSolid()) {
             app->GetWorld()->setBlock(m_PrePos.x, m_PrePos.y, m_PrePos.z,
                                       m_SelectedBlock);
-            if (m_SelectedBlockMetadata > 0) {
+
+            int placementMeta = m_SelectedBlockMetadata;
+
+            // Directional Logs Logic
+            if (m_SelectedBlock == WOOD || m_SelectedBlock == PINE_WOOD) {
+              int dx = m_PrePos.x - m_HitPos.x;
+              int dy = m_PrePos.y - m_HitPos.y;
+              int dz = m_PrePos.z - m_HitPos.z;
+
+              if (dy != 0) {
+                placementMeta = 0; // Vertical (Y-Axis)
+              } else if (dx != 0) {
+                placementMeta = 1; // Horizontal (X-Axis)
+              } else if (dz != 0) {
+                placementMeta = 2; // Horizontal (Z-Axis)
+              }
+            }
+
+            if (placementMeta > 0) {
               app->GetWorld()->setMetadata(m_PrePos.x, m_PrePos.y, m_PrePos.z,
-                                           m_SelectedBlockMetadata);
+                                           placementMeta);
             }
           }
         }

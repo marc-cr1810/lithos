@@ -128,6 +128,9 @@ public:
   // Resolve UVs from Atlas
   void setModel(const std::filesystem::path &path) {
     customModel = ModelLoader::loadModel(path);
+    if (customModel) {
+      setRenderShape(RenderShape::MODEL);
+    }
   }
 
   const Model *getModel() const { return customModel.get(); }

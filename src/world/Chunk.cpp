@@ -1793,6 +1793,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
               glm::vec3 maxP = elem.to;
 
               auto transform = [&](glm::vec3 p) -> glm::vec3 {
+                glm::vec3 res = p;
                 if (elem.hasRotation) {
                   glm::vec3 local = p - elem.rotation.origin;
                   float rad = glm::radians(elem.rotation.angle);
@@ -1808,9 +1809,41 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                     nx = local.x * c - local.y * s;
                     ny = local.x * s + local.y * c;
                   }
-                  return elem.rotation.origin + glm::vec3(nx, ny, nz);
+                  res = elem.rotation.origin + glm::vec3(nx, ny, nz);
                 }
-                return p;
+
+                // Global Rotation for Logs
+                if (cb.block->getId() == WOOD ||
+                    cb.block->getId() == PINE_WOOD) {
+                  if (cb.metadata == 1) { // X-Axis
+                    // Rotate 90 deg around Z axis
+                    // Center is 0.5, 0.5, 0.5
+                    glm::vec3 center(0.5f);
+                    glm::vec3 local = res - center;
+                    // Z-Axis rotation 90 deg (Clockwise? or CCW?)
+                    // To point Y to X.
+                    // X' = X*c - Y*s
+                    // Y' = X*s + Y*c
+                    // -90 deg: s=-1, c=0 => X'=Y, Y'=-X
+                    float tmpx = local.x;
+                    local.x = local.y;
+                    local.y = -tmpx;
+                    res = center + local;
+                  } else if (cb.metadata == 2) { // Z-Axis
+                    // Rotate 90 deg around X axis
+                    // Y to Z.
+                    // Y' = Y*c - Z*s
+                    // Z' = Y*s + Z*c
+                    // 90 deg: s=1, c=0 => Y'=-Z, Z'=Y
+                    glm::vec3 center(0.5f);
+                    glm::vec3 local = res - center;
+                    float tmpy = local.y;
+                    local.y = -local.z;
+                    local.z = tmpy;
+                    res = center + local;
+                  }
+                }
+                return res;
               };
 
               auto getFaceLight = [&](int faceIdx) -> std::pair<float, float> {
