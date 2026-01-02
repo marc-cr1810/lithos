@@ -2,9 +2,7 @@
 #include "../../debug/Logger.h"
 #include <algorithm>
 #include <fstream>
-#include <iostream>
 #include <nlohmann/json.hpp>
-#include <random>
 
 // Internal helper for exact calculation
 float CalculateThreshold(int y, const std::vector<YKey> &keys) {
@@ -84,14 +82,19 @@ const Landform *LandformRegistry::GetLandform(const std::string &name) const {
   return nullptr;
 }
 
-Landform LandformRegistry::Select(int worldX, int worldZ, float temp,
-                                  float humid) const {
-  // VS-style: Seed RNG with world position (NoiseLandform.cs:128)
-  // InitPositionSeed(xpos, zpos) -> uses position hash for deterministic random
-  uint32_t seed = static_cast<uint32_t>(worldX) * 1619 +
+const Landform *LandformRegistry::Select(int worldX, int worldZ, float temp,
+                                         float humid) const {
+  // VS-style: Seed with world position
+  // Optimization: Use simple hash instead of expensive mt19937 construction
+  uint32_t hash = static_cast<uint32_t>(worldX) * 1619 +
                   static_cast<uint32_t>(worldZ) * 31337;
-  std::mt19937 rng(seed);
-  std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+  hash = (hash ^ 61) ^ (hash >> 16);
+  hash = hash + (hash << 3);
+  hash = hash ^ (hash >> 4);
+  hash = hash * 0x27d4eb2d;
+  hash = hash ^ (hash >> 15);
+
+  float roll = (float)(hash % 1000000) / 1000000.0f; // [0, 1)
 
   // Convert our climate values to VS's expected ranges:
   // - Temperature: VS landforms use Celsius scale directly (minTemp=-50,
@@ -103,7 +106,13 @@ Landform LandformRegistry::Select(int worldX, int worldZ, float temp,
       std::min(255.0f, std::max(0.0f, (humid + 1.0f) * 127.5f)));
 
   // 1. Filter candidates by climate and calculate total weight
-  std::vector<const Landform *> candidates;
+  // Optimization: Use thread_local to avoid reallocation
+  static thread_local std::vector<const Landform *> candidates;
+  candidates.clear();
+  // Reserve roughly expected max size to avoid reallocs during push_back
+  if (candidates.capacity() < 64)
+    candidates.reserve(64);
+
   float totalWeight = 0.0f;
 
   for (const auto &lf : landforms) {
@@ -145,11 +154,11 @@ Landform LandformRegistry::Select(int worldX, int worldZ, float temp,
     }
     */
 
-    return landforms.empty() ? Landform{} : landforms[0];
+    return landforms.empty() ? nullptr : &landforms[0];
   }
 
   // 2. Weighted random selection (VS: NoiseLandform.cs:147-152)
-  float roll = dist(rng) * totalWeight;
+  roll *= totalWeight;
 
   // DEBUG: Log selection (only occasionally to avoid spam)
   /*
@@ -169,21 +178,14 @@ Landform LandformRegistry::Select(int worldX, int worldZ, float temp,
   for (const auto *lf : candidates) {
     roll -= lf->weight;
     if (roll <= 0.0f) {
-      // Selected! Now handle variants/mutations
-      Landform result = *lf;
-
-      if (false) { // Disabled
-        LOG_INFO("  => Selected: {}", result.name);
-      }
-
-      // TODO: Implement mutation system if needed
-      // For now, just return the base landform
-      return result;
+      // Selected!
+      // Return pointer (no variants applied for now)
+      return lf;
     }
   }
 
   // Shouldn't reach here, but fallback to last candidate
-  return candidates.empty() ? landforms[0] : *candidates.back();
+  return candidates.empty() ? &landforms[0] : candidates.back();
 }
 
 static void ParseVariant(const nlohmann::json &j, LandformVariant &v) {

@@ -145,10 +145,10 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
       int cellX = wx / cellScale;
       int cellZ = wz / cellScale;
 
-      Landform lf1 = landformRegistry.Select(cellX, cellZ, t, h);
+      const Landform *lf1 = landformRegistry.Select(cellX, cellZ, t, h);
       // For now, use same landform for all 3 (we can add neighbor lookup later)
-      Landform lf2 = lf1;
-      Landform lf3 = lf1;
+      const Landform *lf2 = lf1;
+      const Landform *lf3 = lf1;
 
       float upVal = upheaval[index];
       // float baseHeight = 64.0f + upVal * 20.0f; // Upheaval handled in
@@ -203,15 +203,15 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
                                      config.worldHeight, 1);
 
       // Optimization: Hoist LUT pointers
-      const std::vector<float> *lut1Ptr = lf1.GetLUT();
+      const std::vector<float> *lut1Ptr = lf1->GetLUT();
       const float *lut1Data = lut1Ptr ? lut1Ptr->data() : nullptr;
       int lut1Size = lut1Ptr ? (int)lut1Ptr->size() : 0;
 
-      const std::vector<float> *lut2Ptr = lf2.GetLUT();
+      const std::vector<float> *lut2Ptr = lf2->GetLUT();
       const float *lut2Data = lut2Ptr ? lut2Ptr->data() : nullptr;
       int lut2Size = lut2Ptr ? (int)lut2Ptr->size() : 0;
 
-      const std::vector<float> *lut3Ptr = lf3.GetLUT();
+      const std::vector<float> *lut3Ptr = lf3->GetLUT();
       const float *lut3Data = lut3Ptr ? lut3Ptr->data() : nullptr;
       int lut3Size = lut3Ptr ? (int)lut3Ptr->size() : 0;
 
@@ -231,17 +231,17 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
           if (lut1Data && shiftedY >= 0 && shiftedY < lut1Size)
             th1 = lut1Data[shiftedY];
           else
-            th1 = lf1.GetDensityThreshold(shiftedY);
+            th1 = lf1->GetDensityThreshold(shiftedY);
 
           if (lut2Data && shiftedY >= 0 && shiftedY < lut2Size)
             th2 = lut2Data[shiftedY];
           else
-            th2 = lf2.GetDensityThreshold(shiftedY);
+            th2 = lf2->GetDensityThreshold(shiftedY);
 
           if (lut3Data && shiftedY >= 0 && shiftedY < lut3Size)
             th3 = lut3Data[shiftedY];
           else
-            th3 = lf3.GetDensityThreshold(shiftedY);
+            th3 = lf3->GetDensityThreshold(shiftedY);
 
           float th = th1 * w1 + th2 * w2 + th3 * w3;
 
@@ -414,10 +414,10 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
         int cellX = wx / cellScale;
         int cellZ = wz / cellScale;
 
-        Landform lf1 = landformRegistry.Select(cellX, cellZ, tempMap[index],
-                                               humidMap[index]);
-        Landform lf2 = lf1; // Use same for all 3
-        Landform lf3 = lf1;
+        const Landform *lf1 = landformRegistry.Select(
+            cellX, cellZ, tempMap[index], humidMap[index]);
+        const Landform *lf2 = lf1; // Use same for all 3
+        const Landform *lf3 = lf1;
 
         int surfaceHeight = column.getHeight(lx, lz);
         float pNoise = provinceNoise[index];
@@ -437,15 +437,15 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
         if (processLimit >= 0) {
           int maxLy = std::min(CHUNK_SIZE - 1, processLimit);
 
-          const std::vector<float> *lut1Ptr = lf1.GetLUT();
+          const std::vector<float> *lut1Ptr = lf1->GetLUT();
           const float *lut1Data = lut1Ptr ? lut1Ptr->data() : nullptr;
           int lut1Size = lut1Ptr ? (int)lut1Ptr->size() : 0;
 
-          const std::vector<float> *lut2Ptr = lf2.GetLUT();
+          const std::vector<float> *lut2Ptr = lf2->GetLUT();
           const float *lut2Data = lut2Ptr ? lut2Ptr->data() : nullptr;
           int lut2Size = lut2Ptr ? (int)lut2Ptr->size() : 0;
 
-          const std::vector<float> *lut3Ptr = lf3.GetLUT();
+          const std::vector<float> *lut3Ptr = lf3->GetLUT();
           const float *lut3Data = lut3Ptr ? lut3Ptr->data() : nullptr;
           int lut3Size = lut3Ptr ? (int)lut3Ptr->size() : 0;
 
@@ -459,17 +459,17 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
             if (lut1Data && sampleY >= 0 && sampleY < lut1Size)
               th1 = lut1Data[sampleY];
             else
-              th1 = lf1.GetDensityThreshold(sampleY);
+              th1 = lf1->GetDensityThreshold(sampleY);
 
             if (lut2Data && sampleY >= 0 && sampleY < lut2Size)
               th2 = lut2Data[sampleY];
             else
-              th2 = lf2.GetDensityThreshold(sampleY);
+              th2 = lf2->GetDensityThreshold(sampleY);
 
             if (lut3Data && sampleY >= 0 && sampleY < lut3Size)
               th3 = lut3Data[sampleY];
             else
-              th3 = lf3.GetDensityThreshold(sampleY);
+              th3 = lf3->GetDensityThreshold(sampleY);
 
             columnThresholds[ly] = th1 * w1 + th2 * w2 + th3 * w3;
           }
@@ -602,9 +602,9 @@ int WorldGenerator::GetHeight(int x, int z) {
   int cellX = x / cellScale;
   int cellZ = z / cellScale;
 
-  Landform lf1 = landformRegistry.Select(cellX, cellZ, t, h);
-  Landform lf2 = lf1;
-  Landform lf3 = lf1;
+  const Landform *lf1 = landformRegistry.Select(cellX, cellZ, t, h);
+  const Landform *lf2 = lf1;
+  const Landform *lf3 = lf1;
 
   float baseHeight = 64.0f + upheaval * 20.0f;
   float detail = noiseManager.GetTerrainDetail(x, z);
@@ -655,9 +655,9 @@ int WorldGenerator::GetHeight(int x, int z) {
     return (float)bestY + baseShift + upheaval * 10.0f;
   };
 
-  float h1 = calcHeight(lf1);
-  float h2 = calcHeight(lf2);
-  float h3 = calcHeight(lf3);
+  float h1 = calcHeight(*lf1);
+  float h2 = calcHeight(*lf2);
+  float h3 = calcHeight(*lf3);
 
   float f1, f2, f3;
   noiseManager.GetLandformDistances(x, z, f1, f2, f3);
@@ -701,8 +701,8 @@ std::string WorldGenerator::GetLandformNameAt(int x, int z) {
   int cellScale = std::max(1, (int)(1.0f / config.landformScale));
   int cellX = x / cellScale;
   int cellZ = z / cellScale;
-  Landform lf = landformRegistry.Select(cellX, cellZ, t, h);
-  return lf.name;
+  const Landform *lf = landformRegistry.Select(cellX, cellZ, t, h);
+  return lf->name;
 }
 
 BlockType WorldGenerator::GetSurfaceBlock(int x, int y, int z,

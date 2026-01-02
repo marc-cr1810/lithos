@@ -75,9 +75,9 @@ public:
   const Landform *GetLandform(const std::string &name) const;
 
   // Select a landform based on environment
-  // Returns by value to allow variants/mutations to be applied
+  // Returns by pointer to avoid expensive copies
   // VS-style: position-seeded weighted random selection
-  Landform Select(int worldX, int worldZ, float temp, float humid) const;
+  const Landform *Select(int worldX, int worldZ, float temp, float humid) const;
 
 private:
   LandformRegistry(); // Private constructor to register defaults
