@@ -273,17 +273,20 @@ float NoiseManager::GetTerrainOctave(float x, float z, int octave) const {
 }
 
 float NoiseManager::GetForestNoise(int x, int z) const {
-  return forestNode->GenSingle2D((float)x * config.forestScale,
-                                 (float)z * config.forestScale, seed + 3);
+  float val = forestNode->GenSingle2D((float)x * config.forestScale,
+                                      (float)z * config.forestScale, seed + 3);
+  return (val + 1.0f) * 0.5f;
 }
 
 float NoiseManager::GetBushNoise(int x, int z) const {
-  return bushNode->GenSingle2D((float)x * config.bushScale,
-                               (float)z * config.bushScale, seed + 4);
+  float val = bushNode->GenSingle2D((float)x * config.bushScale,
+                                    (float)z * config.bushScale, seed + 4);
+  return (val + 1.0f) * 0.5f;
 }
 
 float NoiseManager::GetBeachNoise(int x, int z) const {
-  return beachNode->GenSingle2D((float)x, (float)z, seed + 5);
+  float val = beachNode->GenSingle2D((float)x, (float)z, seed + 5);
+  return (val + 1.0f) * 0.5f;
 }
 
 float NoiseManager::GetLandformNeighbor3Noise(int x, int z) const {
@@ -419,6 +422,12 @@ void NoiseManager::GenVegetation(float *forestOut, float *bushOut, int startX,
                                config.forestScale, seed + 3);
   bushNode->GenUniformGrid2D(bushOut, startX, startZ, width, height,
                              config.bushScale, seed + 4);
+
+  // Normalize [-1, 1] to [0, 1]
+  for (int i = 0; i < width * height; ++i) {
+    forestOut[i] = (forestOut[i] + 1.0f) * 0.5f;
+    bushOut[i] = (bushOut[i] + 1.0f) * 0.5f;
+  }
 }
 
 void NoiseManager::GenBeach(float *output, int startX, int startZ, int width,
