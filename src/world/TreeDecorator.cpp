@@ -6,6 +6,7 @@
 #include "World.h"
 #include "WorldGenerator.h"
 #include "decorators/TreeRegistry.h"
+#include <algorithm>
 #include <cstdlib>
 #include <fstream>
 #include <glm/glm.hpp>
@@ -35,8 +36,9 @@ void TreeDecorator::GenerateTree(Chunk &chunk, int x, int y, int z,
   }
 
   // Initial State
-  glm::vec3 pos(x + 0.5f, y + tree.yOffset, z + 0.5f);
-  glm::vec3 dir(0, 1, 0);
+  // VS: Origin is integer coordinate (or whatever was passed), offsets handle
+  // +0.5
+  glm::vec3 treeOrigin(x, y + tree.yOffset, z);
 
   // Pick a trunk template
   if (tree.trunks.empty())
@@ -53,29 +55,33 @@ void TreeDecorator::GenerateTree(Chunk &chunk, int x, int y, int z,
   float width = baseSize * rootSeg.widthMultiplier;
 
   // VS: Use trunk's own angles if specified, otherwise default upward
+  float rootAngleVert = 0.0f;
+  float rootAngleHori = 0.0f;
+
+  // VS: Use trunk's own angles if specified, otherwise default upward
   if (!rootSeg.angleVert.dist.empty() && rootSeg.angleVert.dist != "none") {
-    float angleVert = rootSeg.angleVert.Sample(rng);
-    float angleHori =
+    rootAngleVert = rootSeg.angleVert.Sample(rng);
+    rootAngleHori =
         (!rootSeg.angleHori.dist.empty() && rootSeg.angleHori.dist != "none")
             ? rootSeg.angleHori.Sample(rng)
             : 0.0f;
-
-    // Convert angles to direction vector
-    dir.x = std::sin(angleVert) * std::cos(angleHori);
-    dir.y = std::cos(angleVert);
-    dir.z = std::sin(angleVert) * std::sin(angleHori);
-    dir = glm::normalize(dir);
   }
 
-  BuildSegment(&chunk, x, y, z, rootSeg, pos, dir, width, 0.0f, 0, tree, rng,
-               hood);
+  // VS: dx/dz from root segment
+  float rootDx = rootSeg.dx;
+  float rootDz = rootSeg.dz;
+
+  BuildSegment(&chunk, x, y, z, rootSeg, treeOrigin, rootDx, 0.0f, rootDz,
+               rootAngleVert, rootAngleHori, width, 0.0f, 0, tree, rng, hood);
 }
 
 void TreeDecorator::BuildSegment(Chunk *chunk, int x, int y, int z,
-                                 const TreeSegment &segment, glm::vec3 pos,
-                                 glm::vec3 dir, float width, float progress,
-                                 int depth, const TreeStructure &tree,
-                                 std::mt19937 &rng,
+                                 const TreeSegment &segment,
+                                 glm::vec3 treeOrigin, float dx, float dy,
+                                 float dz, float angleVerStart,
+                                 float angleHorStart, float width,
+                                 float progress, int depth,
+                                 const TreeStructure &tree, std::mt19937 &rng,
                                  const ChunkNeighborhood &hood) {
 
   if (!chunk)
@@ -104,22 +110,11 @@ void TreeDecorator::BuildSegment(Chunk *chunk, int x, int y, int z,
 
   glm::ivec3 chunkOrigin = chunk->chunkPosition * 32;
 
-  // VS: Get initial angles (passed as parameters in VS, or use defaults)
-  float angleVerStart = (depth == 0 && !segment.angleVert.dist.empty() &&
-                         segment.angleVert.dist != "none")
-                            ? segment.angleVert.Sample(rng)
-                            : 1.57f; // Default up
-  float angleHorStart = (depth == 0 && !segment.angleHori.dist.empty() &&
-                         segment.angleHori.dist != "none")
-                            ? segment.angleHori.Sample(rng)
-                            : 0.0f;
+  // VS: Initialize deltas from base position (NOT direction vector!)
+  // Note: angles are now passed in, matching VS logic
 
   // VS: Initialize deltas from base position (NOT direction vector!)
-  float dx = (depth == 0) ? segment.dx : 0.0f;
-  float dy = 0.0f;
-  float dz = (depth == 0) ? segment.dz : 0.0f;
-
-  glm::vec3 basePos = pos; // Store base position
+  // VS: Initialize deltas - ALREADY PASSED IN
 
   // Determine Max Length based on Width Loss (VS Logic)
   // VS: sequencesPerIteration = 1f / (curWidth / widthloss)
@@ -158,11 +153,7 @@ void TreeDecorator::BuildSegment(Chunk *chunk, int x, int y, int z,
   // VS: Sample dieAt threshold ONCE (not every iteration!)
   float dieAtThreshold = segment.dieAt.Sample(rng);
 
-  // Apply Start Offset (Only for root segments/trunks)
-  if (depth == 0) {
-    basePos.x += segment.dx;
-    basePos.z += segment.dz;
-  }
+  // Offset logic handled by passed dx/dy/dz now
 
   // Resolve Block IDs
   Block *logBlock =
@@ -281,8 +272,9 @@ void TreeDecorator::BuildSegment(Chunk *chunk, int x, int y, int z,
       currentSegmentBlockId = logId;
     }
 
-    // VS: Position = basePos + deltas
-    glm::vec3 currentPos(basePos.x + dx, basePos.y + dy, basePos.z + dz);
+    // VS: Position = treeOrigin + deltas
+    glm::vec3 currentPos(treeOrigin.x + dx, treeOrigin.y + dy,
+                         treeOrigin.z + dz);
     // 1. Place Log
     glm::ivec3 bPos = glm::vec3(currentPos);
     if (bPos.y >= 0 && bPos.y < maxHeight) {
@@ -335,32 +327,117 @@ void TreeDecorator::BuildSegment(Chunk *chunk, int x, int y, int z,
       int branchIdx = std::min(depth, (int)tree.branches.size() - 1);
       const TreeSegment &branchSeg = tree.branches[branchIdx];
 
-      for (int b = 0; b < quantity; ++b) {
-        // VS: Evolve branch width multiplier
-        float bWidthMul = segment.branchWidthMultiplierEvolve.Apply(
-            branchWidthMultiplierStart, currentSequence);
-        float branchWidth = curWidth * bWidthMul;
-
-        // Branch angles
-        float branchAngleVer = branchSeg.branchVerticalAngle.Sample(rng);
-        float branchAngleHor = branchSeg.branchHorizontalAngle.Sample(rng);
-
-        // VS: Spawn from trunk offset position
-        glm::vec3 branchPos(basePos.x + dx + trunkOffsetX, basePos.y + dy,
-                            basePos.z + dz + trunkOffsetZ);
-
-        // Branch direction
-        glm::vec3 branchDir;
-        branchDir.x = std::sin(branchAngleVer) * std::cos(branchAngleHor);
-        branchDir.y = std::cos(branchAngleVer);
-        branchDir.z = std::sin(branchAngleVer) * std::sin(branchAngleHor);
-        branchDir = glm::normalize(branchDir);
-
-        BuildSegment(chunk, x, y, z, branchSeg, branchPos, branchDir,
-                     branchWidth, 0, depth + 1, tree, rng, hood);
-      }
+      curWidth = GrowBranches(chunk, x, y, z, quantity, branchSeg, depth + 1,
+                              curWidth, branchWidthMultiplierStart,
+                              currentSequence, angleHor, dx, dy, dz, treeOrigin,
+                              trunkOffsetX, trunkOffsetZ, tree, rng, hood);
     }
   } // End while loop
+}
+
+float TreeDecorator::GrowBranches(
+    Chunk *chunk, int x, int y, int z, int branchQuantity,
+    const TreeSegment &branchSeg, int newDepth, float curWidth,
+    float branchWidthMultiplierStart, float currentSequence, float angleHor,
+    float dx, float dy, float dz, glm::vec3 treeOrigin, float trunkOffsetX,
+    float trunkOffsetZ, const TreeStructure &tree, std::mt19937 &rng,
+    const struct ChunkNeighborhood &hood) {
+
+  float branchWidth;
+  float prevHorAngle = 0.0f;
+  float horAngle;
+  // VS: Minimum angle distance to prevent clumping (PI/5 or var/5)
+  float minHorangleDist =
+      std::min(3.14159265f / 5.0f, branchSeg.branchHorizontalAngle.var / 5.0f);
+  bool first = true;
+
+  while (branchQuantity-- > 0) {
+    // VS: Reduce parent trunk width for each branch
+    curWidth *= branchSeg.branchWidthLossMul;
+
+    // VS: Relative horizontal angle (relative to parent)
+    horAngle = angleHor + branchSeg.branchHorizontalAngle.Sample(rng);
+
+    // VS: Try to find a good angle 10 times
+    int tries = 10;
+    while (!first && std::abs(horAngle - prevHorAngle) < minHorangleDist &&
+           tries-- > 0) {
+      float newAngle = angleHor + branchSeg.branchHorizontalAngle.Sample(rng);
+      if (std::abs(horAngle - prevHorAngle) <
+          std::abs(newAngle - prevHorAngle)) {
+        horAngle = newAngle;
+      }
+    }
+
+    // VS: Branch Width
+    // Check if evolution exists (simplified check here, assuming always
+    // non-null in our struct if used)
+    if (branchSeg.branchWidthMultiplierEvolve.transform !=
+        MathUtils::TransformType::NONE) {
+      branchWidth = curWidth * branchSeg.branchWidthMultiplierEvolve.Apply(
+                                   branchWidthMultiplierStart, currentSequence);
+    } else {
+      // VS logic is intricate here, often just uses sample
+      branchWidth = curWidth * branchSeg.branchWidthMultiplier.Sample(rng);
+    }
+
+    // Branch angles
+    float branchAngleVer = branchSeg.branchVerticalAngle.Sample(rng);
+    // Use the calculated horAngle (relative + spread)
+    float branchAngleHor = horAngle;
+
+    // Recursive call
+    BuildSegment(chunk, x, y, z, branchSeg, treeOrigin, dx + trunkOffsetX, dy,
+                 dz + trunkOffsetZ, branchAngleVer, branchAngleHor, branchWidth,
+                 0, newDepth, tree, rng, hood);
+
+    first = false;
+    prevHorAngle = angleHor + horAngle; // VS: accumulates? No, wait.
+    // VS: prevHorAngle = angleHor + horAngle;
+    // Actually in VS code:
+    // prevHorAngle = angleHor + horAngle; -> Wait, `int tries` loop checks
+    // `horAngle` vs `prevHorAngle`. The `horAngle` calculated inside the loop
+    // is `angleHor + random`. So `horAngle` IS the absolute angle (parent +
+    // relative). So `prevHorAngle` should store the absolute angle of the last
+    // branch. In VS code: `prevHorAngle = angleHor + horAngle;` -> wait,
+    // `horAngle` was effectively `relative`. VS: `horAngle = angleHor + ...` ->
+    // `horAngle` is absolute. VS line 227: `prevHorAngle = angleHor +
+    // horAngle;` -> This looks like double addition if `horAngle` is already
+    // absolute. Let's re-read VS code CAREFULLY. Line 193: `horAngle = angleHor
+    // + ...` (Absolute) Line 227: `prevHorAngle = angleHor + horAngle;` ?? If
+    // horAngle is absolute, why add angleHor again? Ah, wait. VS `horAngle`
+    // variable might be reusing the name or I misread. Line 193: `horAngle =
+    // angleHor + branch.branchHorizontalAngle.nextFloat(...)` So `horAngle` is
+    // ABSOLUTE. Line 227: `prevHorAngle = angleHor + horAngle` -> This sets
+    // prev to (Parent + Absolute). This implies `prevHorAngle` is stored in
+    // some weird space or it's a bug in VS or I'm misinterpreting "angleHor".
+    // If `angleHor` is 0, then prev = hor.
+    // If `angleHor` is PI, prev = PI + (PI + rel) = 2PI + rel.
+    // The check `Math.Abs(horAngle - prevHorAngle)` would be `Abs((PI+rel) -
+    // (2PI+prevRel))`. This seems ... Odd. BUT: "The user's main objective is
+    // to ... aligning with the Vintagestory (VS) implementation." I should copy
+    // logic exactly even if it looks weird, unless it's strictly impossible.
+    // HOWEVER: `prevHorAngle` is initialized to 0.
+    // If I look at the loop:
+    // 1st iter: horAngle = P + R1. prev = P + (P + R1) = 2P + R1.
+    // 2nd iter: newHor = P + R2. check Abs(newHor - prev) = Abs(P+R2 - (2P+R1))
+    // = Abs(R2 - P - R1). This effectively checks distance but shifts by P. If
+    // correct, I will copy it. LET'S LOOK AT VS CODE AGAIN from the view. Line
+    // 184: `float prevHorAngle = 0f;` Line 193: `horAngle = angleHor + ...`
+    // Line 227: `prevHorAngle = angleHor + horAngle;`
+    // YES. It is doing that. I will replicate it to be safe.
+
+    // Actually, wait. In VS line 227: `prevHorAngle = angleHor + horAngle;`
+    // But `horAngle` variable in implementation:
+    // Line 193: `horAngle = angleHor + ...`
+    // Re-reading closely.
+    // Maybe `horAngle` in line 227 is being interpreted as relative?
+    // No, `horAngle` is local variable.
+    // I will replicate EXACTLY.
+    prevHorAngle = angleHor + horAngle;
+  }
+
+  return curWidth;
 }
 
 // ======================================================================
@@ -431,9 +508,6 @@ void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
   int attempts = (int)config.treesPerChunk.Sample(rng);
   attempts = attempts < 0 ? 0 : attempts;
 
-  // LOG_INFO("Chunk {},{},{} attempts: {}",
-  // cp.x, cp.y, cp.z, attempts);
-
   for (int i = 0; i < attempts; ++i) {
     int lx = std::uniform_int_distribution<int>(0, CHUNK_SIZE - 1)(rng);
     int lz = std::uniform_int_distribution<int>(0, CHUNK_SIZE - 1)(rng);
@@ -467,7 +541,8 @@ void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
                      surfaceBlock == SAND || surfaceBlock == GRAVEL ||
                      surfaceBlock == COARSE_DIRT ||
                      surfaceBlock == TERRA_PRETA || surfaceBlock == PEAT ||
-                     surfaceBlock == CLAY || surfaceBlock == CLAYSTONE);
+                     surfaceBlock == CLAY || surfaceBlock == CLAYSTONE ||
+                     surfaceBlock == SNOW || surfaceBlock == SNOW_LAYER);
 
       if (!isSoil) {
         continue;
@@ -486,13 +561,21 @@ void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
       }
 
       const TreeGenerator *gen = TreeRegistry::Get().SelectTree(
-          realTemp, realRain, 100.0f, forest * 255.0f, (float)height / 256.0f,
-          rng);
+          realTemp, realRain, 100.0f, forest, (float)height / 256.0f, rng);
       if (gen) {
         const TreeStructure *structure =
             TreeRegistry::Get().GetTreeStructure(gen->generator);
         if (structure) {
           GenerateTree(chunk, gx, height + 1, gz, *structure, rng, hood);
+        } else {
+          LOG_ERROR("TreeFail: Structure not found for {}", gen->generator);
+        }
+      } else {
+        // Debug log for failure (throttled)
+        static int failCount = 0;
+        if (failCount++ < 10) {
+          LOG_INFO("TreeFail: SelectTree returned null. T:{} R:{} F:{} H:{}",
+                   realTemp, realRain, forest, height);
         }
       }
     }

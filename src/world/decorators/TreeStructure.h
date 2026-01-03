@@ -7,7 +7,7 @@
 using json = nlohmann::json;
 
 struct Distribution {
-  std::string dist = "uniform";
+  std::string dist = "none";
   float avg = 0.0f;
   float var = 0.0f;
 
