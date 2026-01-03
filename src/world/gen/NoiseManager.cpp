@@ -557,14 +557,36 @@ float NoiseManager::GetTerrainNoise3D(int x, int y, int z) const {
 void NoiseManager::GenTerrainNoise3D(float *output, int startX, int startY,
                                      int startZ, int width, int height,
                                      int depth) const {
-  // For now, just use uniform grid with same frequency for all axes
-  // The vertical scaling needs more careful implementation
-  terrainDetailNode->GenUniformGrid3D(output, startX, startY, startZ, width,
-                                      height, depth, config.terrainDetailScale,
-                                      seed + 10);
+  // VS uses different vertical scaling for Y-axis
+  float horizontalFreq = config.terrainDetailScale;
+  float verticalFreq =
+      horizontalFreq * (0.5f / config.terrainNoiseVerticalScale);
+
+  int totalPoints = width * height * depth;
+
+  // Generate position arrays with scaled frequencies
+  std::vector<float> xPos(totalPoints);
+  std::vector<float> yPos(totalPoints);
+  std::vector<float> zPos(totalPoints);
+
+  int idx = 0;
+  for (int z = 0; z < depth; z++) {
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        xPos[idx] = (startX + x) * horizontalFreq;
+        yPos[idx] = (startY + y) * verticalFreq; // Different frequency!
+        zPos[idx] = (startZ + z) * horizontalFreq;
+        idx++;
+      }
+    }
+  }
+
+  // Generate noise with per-axis frequencies
+  terrainDetailNode->GenPositionArray3D(output, totalPoints, xPos.data(),
+                                        yPos.data(), zPos.data(), 0.0f, 0.0f,
+                                        0.0f, seed + 10);
 
   // Normalize from [-1, 1] to [0, 1] to match VS
-  int totalPoints = width * height * depth;
   for (int i = 0; i < totalPoints; i++) {
     output[i] = (output[i] + 1.0f) * 0.5f;
   }
