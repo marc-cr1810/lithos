@@ -69,6 +69,13 @@ public:
   void GenTerrainNoise3D(float *output, int startX, int startY, int startZ,
                          int width, int height, int depth) const;
 
+  // Per-Octave 3D Terrain Noise (VS-style)
+  // Output array must be: width * height * depth * numOctaves
+  // Each octave is a separate noise layer that can be weighted/thresholded
+  void GenTerrainNoise3DOctaves(float *output, int startX, int startY,
+                                int startZ, int width, int height, int depth,
+                                int numOctaves) const;
+
   // Single point access for 3D terrain density
   float GetTerrainNoise3D(int x, int y, int z) const;
 

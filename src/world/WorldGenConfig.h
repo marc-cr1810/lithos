@@ -78,6 +78,8 @@ struct WorldGenConfig {
   float beachScale = 0.01f;          // For beach placement
   float strataScale = 0.005f;        // For rock strata layers
   float surfacePatchScale = 0.04f;   // For gravel/sand patches
+  float terrainNoiseVerticalScale =
+      2.0f; // VS uses 0.5/verticalScale for Y-axis frequency
 
   WorldGenConfig() {
     // Initialize with default values seen in WorldGenerator.cpp

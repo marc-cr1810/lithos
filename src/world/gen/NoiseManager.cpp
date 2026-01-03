@@ -542,22 +542,67 @@ void NoiseManager::GetPreview(NoiseType type, float *output, int width,
 
 // 3D Terrain Noise
 float NoiseManager::GetTerrainNoise3D(int x, int y, int z) const {
-  // Use terrainDetailNode but as 3D source?
-  // FastNoise2 nodes are often dimension-agnostic, but let's verify if
-  // terrainDetailNode (FractalFBm) supports 3D input.
-  // Standard Simplex/Fractal does.
-  // We use the same 'terrainDetailNode' which is FractalFBm -> Simplex.
-  // We scale coordinates by detailScale.
-  return terrainDetailNode->GenSingle3D((float)x * config.terrainDetailScale,
-                                        (float)y * config.terrainDetailScale,
-                                        (float)z * config.terrainDetailScale,
-                                        seed + 10);
+  // VS uses different vertical scaling for Y-axis
+  float horizontalFreq = config.terrainDetailScale;
+  float verticalFreq =
+      horizontalFreq * (0.5f / config.terrainNoiseVerticalScale);
+
+  // FastNoise2 returns [-1, 1], VS uses NormalizedSimplex [0, 1]
+  float rawNoise = terrainDetailNode->GenSingle3D(
+      (float)x * horizontalFreq, (float)y * verticalFreq,
+      (float)z * horizontalFreq, seed + 10);
+  return (rawNoise + 1.0f) * 0.5f;
 }
 
 void NoiseManager::GenTerrainNoise3D(float *output, int startX, int startY,
                                      int startZ, int width, int height,
                                      int depth) const {
+  // For now, just use uniform grid with same frequency for all axes
+  // The vertical scaling needs more careful implementation
   terrainDetailNode->GenUniformGrid3D(output, startX, startY, startZ, width,
                                       height, depth, config.terrainDetailScale,
                                       seed + 10);
+
+  // Normalize from [-1, 1] to [0, 1] to match VS
+  int totalPoints = width * height * depth;
+  for (int i = 0; i < totalPoints; i++) {
+    output[i] = (output[i] + 1.0f) * 0.5f;
+  }
+}
+
+// VS-Style Per-Octave Terrain Noise Generation
+void NoiseManager::GenTerrainNoise3DOctaves(float *output, int startX,
+                                            int startY, int startZ, int width,
+                                            int height, int depth,
+                                            int numOctaves) const {
+  // VS uses: 0.0005 * OldToNewFrequency / noiseScale
+  // OldToNewFrequency ≈ 1.0 (compatibility constant)
+  // noiseScale = max(1, worldHeight/256) → for 320 height ≈ 1.25
+  float baseFreq = 0.0005f;
+  float persistence = 0.9f; // VS default
+
+  // Create temporary simplex node for octave generation
+  auto simplexSource = FastNoise::New<FastNoise::Simplex>();
+
+  int totalPoints = width * height * depth;
+
+  // Generate each octave separately
+  for (int octave = 0; octave < numOctaves; octave++) {
+    // Calculate frequency for this octave
+    // VS: frequency doubles each octave (lacunarity = 2.0)
+    float freq = baseFreq * std::pow(2.0f, (float)octave);
+
+    // Generate into temp buffer
+    std::vector<float> tempBuffer(totalPoints);
+    simplexSource->GenUniformGrid3D(tempBuffer.data(), startX, startY, startZ,
+                                    width, height, depth, freq,
+                                    seed + 100 + octave);
+
+    // Interleave into output buffer: [oct0_y0, oct1_y0, ..., oct0_y1, ...]
+    for (int i = 0; i < totalPoints; i++) {
+      // Normalize from [-1, 1] to [0, 1]
+      float normalizedNoise = (tempBuffer[i] + 1.0f) * 0.5f;
+      output[i * numOctaves + octave] = normalizedNoise;
+    }
+  }
 }

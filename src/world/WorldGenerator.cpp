@@ -187,13 +187,11 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
       // --- 3D Density Search ---
       int surfaceY = 0;
 
-      // Optimization: Batch Generate 3D Noise for the entire column
-      static thread_local std::vector<float> noiseColumn(
-          320); // Default size 320
+      // Simple noise generation (baseline)
+      static thread_local std::vector<float> noiseColumn(320);
       if ((int)noiseColumn.size() < config.worldHeight)
         noiseColumn.resize(config.worldHeight);
 
-      // Generate using SIMD (1xHx1)
       noiseManager.GenTerrainNoise3D(noiseColumn.data(), wx, 0, wz, 1,
                                      config.worldHeight, 1);
 
@@ -246,39 +244,10 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
           if (th < -1.2f)
             return -1.0f; // Definitely Air
 
-          // Blend terrain octave amplitudes from the 3 landforms
-          // VS applies octave-specific amplitudes to modify terrain noise
-          float octaveMultiplier = 1.0f;
+          // **Per-Octave Noise Processing (VS-Style)**
+          // Generate 9 octaves and filter each with max(0, noise - threshold)
 
-          // Calculate weighted octave contribution
-          // terrainOctaves contains amplitude values for different noise
-          // frequencies When amplitude is 0, that octave doesn't contribute
-          // When amplitude is 1, it contributes fully
-          float totalOctaveAmp = 0.0f;
-          int numOctaves = 9; // VS uses 9 octaves typically
-
-          // Blend octave amplitudes from the 3 landforms
-          for (int octIdx = 0; octIdx < numOctaves; octIdx++) {
-            float amp1 = (octIdx < (int)lf1->terrainOctaves.size())
-                             ? lf1->terrainOctaves[octIdx].amplitude
-                             : 0.0f;
-            float amp2 = (octIdx < (int)lf2->terrainOctaves.size())
-                             ? lf2->terrainOctaves[octIdx].amplitude
-                             : 0.0f;
-            float amp3 = (octIdx < (int)lf3->terrainOctaves.size())
-                             ? lf3->terrainOctaves[octIdx].amplitude
-                             : 0.0f;
-
-            float blendedAmp = amp1 * w1 + amp2 * w2 + amp3 * w3;
-            totalOctaveAmp += blendedAmp;
-          }
-
-          // Normalize: octave multiplier scales the noise contribution
-          // Higher octave amplitude = more terrain variation
-          // Lower octave amplitude = smoother terrain
-          octaveMultiplier = totalOctaveAmp / numOctaves;
-
-          // Use batched noise
+          // Simple baseline: single noise value
           float n = 0.0f;
           if (sampleY >= 0 && sampleY < config.worldHeight) {
             n = noiseColumn[sampleY];
@@ -286,12 +255,7 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
             n = noiseManager.GetTerrainNoise3D(wx, sampleY, wz);
           }
 
-          // Apply octave blending to noise
-          // This scales the noise influence based on landform octave
-          // configuration
-          float modifiedNoise = n * octaveMultiplier;
-
-          return modifiedNoise + th;
+          return n + th;
         };
 
         float density = getDensity(y);
@@ -503,16 +467,19 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
             columnThresholds[ly] = th1 * w1 + th2 * w2 + th3 * w3;
           }
 
-          // Optimization: Batch convert noise for the column
-          // Width=1, Height=(maxLy+1), Depth=1
-          static thread_local std::vector<float> noiseBuffer(CHUNK_SIZE);
-          noiseManager.GenTerrainNoise3D(noiseBuffer.data(), wx, startY, wz, 1,
-                                         maxLy + 1, 1);
+          // Generate 9 octaves for this column
+          const int numOctaves = 9;
+          static thread_local std::vector<float> octaveBuffer(CHUNK_SIZE *
+                                                              numOctaves);
+          if ((int)octaveBuffer.size() < (maxLy + 1) * numOctaves)
+            octaveBuffer.resize((maxLy + 1) * numOctaves);
 
-          // Blend terrain octave amplitudes from the 3 landforms
-          float octaveMultiplier = 1.0f;
-          float totalOctaveAmp = 0.0f;
-          int numOctaves = 9;
+          noiseManager.GenTerrainNoise3DOctaves(
+              octaveBuffer.data(), wx, startY, wz, 1, maxLy + 1, 1, numOctaves);
+
+          // Pre-blend octave parameters once for the column
+          float blendedAmps[9];
+          float blendedThreshs[9];
 
           for (int octIdx = 0; octIdx < numOctaves; octIdx++) {
             float amp1 = (octIdx < (int)lf1->terrainOctaves.size())
@@ -524,10 +491,19 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
             float amp3 = (octIdx < (int)lf3->terrainOctaves.size())
                              ? lf3->terrainOctaves[octIdx].amplitude
                              : 0.0f;
+            blendedAmps[octIdx] = amp1 * w1 + amp2 * w2 + amp3 * w3;
 
-            totalOctaveAmp += amp1 * w1 + amp2 * w2 + amp3 * w3;
+            float th1 = (octIdx < (int)lf1->terrainOctaves.size())
+                            ? lf1->terrainOctaves[octIdx].threshold
+                            : 0.0f;
+            float th2 = (octIdx < (int)lf2->terrainOctaves.size())
+                            ? lf2->terrainOctaves[octIdx].threshold
+                            : 0.0f;
+            float th3 = (octIdx < (int)lf3->terrainOctaves.size())
+                            ? lf3->terrainOctaves[octIdx].threshold
+                            : 0.0f;
+            blendedThreshs[octIdx] = th1 * w1 + th2 * w2 + th3 * w3;
           }
-          octaveMultiplier = totalOctaveAmp / numOctaves;
 
           for (int ly = 0; ly < CHUNK_SIZE; ly++) {
             int wy = startY + ly;
@@ -540,9 +516,25 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
               } else if (threshold < -1.2f) {
                 isSolid = false;
               } else {
-                float noise3d =
-                    noiseBuffer[ly] * octaveMultiplier; // Apply octave blending
-                isSolid = (noise3d + threshold) > 0;
+                // Per-octave filtering
+                float noiseSum = 0.0f;
+
+                for (int octIdx = 0; octIdx < numOctaves; octIdx++) {
+                  if (blendedAmps[octIdx] == 0.0f)
+                    continue;
+
+                  // Get actual octave noise from buffer
+                  float octaveNoise = octaveBuffer[ly * numOctaves + octIdx];
+
+                  // DIAGNOSTIC: Disable threshold filtering
+                  // float filtered = std::max(0.0f, octaveNoise -
+                  // blendedThreshs[octIdx]);
+                  float filtered = octaveNoise;
+                  noiseSum += filtered * blendedAmps[octIdx];
+                }
+
+                // Simple comparison: noise + landform threshold
+                isSolid = (noiseSum + threshold) > 0;
               }
             }
 
