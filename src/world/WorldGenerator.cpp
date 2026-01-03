@@ -18,6 +18,7 @@ WorldGenerator::WorldGenerator(const WorldGenConfig &config)
     : config(config), m_Seed(config.seed), noiseManager(config),
       landformRegistry(LandformRegistry::Get()),
       strataRegistry(RockStrataRegistry::Get()) {
+  m_ProfilingEnabled = true; // Enable by default for now to ensure visibility
   // VS Style Sea Level: ~43% of world height
   this->config.seaLevel = (int)(config.worldHeight * 0.4313725490196078);
 
@@ -691,16 +692,27 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
 
   // 4. Decorators
   {
-    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Decorators", m_ProfilingEnabled);
-    for (auto *decorator : decorators) {
-      decorator->Decorate(chunk, *this, column);
-    }
+    // Decorators now handled by region decoration path in
+    // World::GenerationWorkerLoop
+    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Decorators_Legacy", m_ProfilingEnabled);
   }
 
   // 5. Post-Processing
   {
     PROFILE_SCOPE_CONDITIONAL("ChunkGen_PostProcess", m_ProfilingEnabled);
     CleanupFloatingIslands(chunk);
+  }
+}
+
+// Region-based decoration (for cross-chunk features like large trees)
+void WorldGenerator::Decorate(WorldGenRegion &region,
+                              const ChunkColumn &column) {
+  PROFILE_SCOPE_CONDITIONAL("WorldGen_Decorate_Region", m_ProfilingEnabled);
+
+  for (auto *decorator : decorators) {
+    if (decorator) {
+      decorator->Decorate(*this, region, column);
+    }
   }
 }
 

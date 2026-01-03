@@ -1,9 +1,10 @@
 #include "OreDecorator.h"
 #include "../debug/Profiler.h"
 #include "Block.h"
+#include "World.h"
+#include "WorldGenRegion.h"
 #include "WorldGenerator.h"
 #include <cstdlib>
-
 
 #include "ChunkColumn.h"
 
@@ -69,6 +70,24 @@ void OreDecorator::GenerateOre(Chunk &chunk, int startX, int startY, int startZ,
       if (chunk.getBlock(nx, ny, nz).getType() == STONE) {
         chunk.setBlock(nx, ny, nz, oreType);
       }
+    }
+  }
+}
+
+// Region-based decoration
+void OreDecorator::Decorate(WorldGenerator &generator, WorldGenRegion &region,
+                            const ChunkColumn &column) {
+  PROFILE_SCOPE_CONDITIONAL("Decorator_Ores_Region",
+                            generator.IsProfilingEnabled());
+
+  World *world = region.getWorld();
+  int colX = region.getCenterX();
+  int colZ = region.getCenterZ();
+
+  for (int y = 0; y < 8; y++) {
+    auto chunk = world->getChunk(colX, y, colZ);
+    if (chunk) {
+      Decorate(*chunk, generator, column);
     }
   }
 }

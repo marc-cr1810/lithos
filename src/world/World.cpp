@@ -3,6 +3,7 @@
 #include "../debug/Profiler.h"
 #include "../ecs/Systems.h"
 #include "../render/Shader.h"
+#include "WorldGenRegion.h"
 #include "WorldGenerator.h"
 #include <algorithm>
 #include <array>
@@ -330,22 +331,17 @@ void World::GenerationWorkerLoop() {
       // 5. Spread Light (Might need neighboring chunks)
       c->spreadLight();
 
-      // 6. Queue Mesh (Low Priority for Generation)
+      // Queue mesh update
       QueueMeshUpdate(c, false);
 
-      // Also queue neighbors for mesh update if they exist
-      // Also queue neighbors for mesh update if they exist
-      int dx[] = {0, 0, -1, 1, 0, 0};
-      int dy[] = {0, 0, 0, 0, 1, -1};
-      int dz[] = {1, -1, 0, 0, 0, 0};
-
-      int dirs_indices[] = {Chunk::DIR_FRONT, Chunk::DIR_BACK,
-                            Chunk::DIR_LEFT,  Chunk::DIR_RIGHT,
-                            Chunk::DIR_TOP,   Chunk::DIR_BOTTOM};
-
-      for (int i = 0; i < 6; ++i) {
-        if (auto n = c->getNeighbor(dirs_indices[i])) {
-          // FIX: If we added a chunk ABOVE this neighbor, force it to
+      // Update neighbors
+      int dirs_indices[] = {
+          Chunk::DIR_LEFT, Chunk::DIR_RIGHT, Chunk::DIR_FRONT,
+          Chunk::DIR_BACK, Chunk::DIR_TOP,   Chunk::DIR_BOTTOM,
+      };
+      for (int i = 0; i < 6; i++) {
+        auto n = c->getNeighbor(dirs_indices[i]);
+        if (n) {
           // re-calculate sunlight because we might have just blocked the sky.
           if (dirs_indices[i] == Chunk::DIR_BOTTOM) {
             n->calculateSunlight();
@@ -354,6 +350,62 @@ void World::GenerationWorkerLoop() {
 
           n->spreadLight();
           QueueMeshUpdate(n, false);
+        }
+      }
+
+      // ===== DECORATION PHASE =====
+      // Decoration follows a 3x3 rule. When a column is generated, it might
+      // satisfy the 3x3 requirement for itself or any of its 8 neighbors.
+      auto isColumnReady = [this](int colX, int colZ) -> ChunkColumn * {
+        std::lock_guard<std::mutex> lock(columnMutex);
+        auto it = columns.find({colX, colZ});
+        if (it == columns.end() || it->second->decorated)
+          return nullptr;
+
+        // Check 3x3 neighborhood for ALL 8 chunks in each column
+        // We need the full 3x3x8 block context to prevent feature cut-offs
+        for (int dx = -1; dx <= 1; dx++) {
+          for (int dz = -1; dz <= 1; dz++) {
+            // 1. Column must exist
+            if (columns.find({colX + dx, colZ + dz}) == columns.end()) {
+              return nullptr;
+            }
+            // 2. All vertical chunks must exist in chunks map
+            for (int y = 0; y < 8; y++) {
+              // We don't hold the lock for the whole 3x3x8 search to avoid
+              // deadlock, but we must check chunks map safely. Actually
+              // getChunk uses worldMutex, but we are inside
+              // GenerationWorkerLoop which might be called while holding other
+              // locks. However, getChunk is generally safe to call.
+              if (!this->getChunk(colX + dx, y, colZ + dz)) {
+                return nullptr;
+              }
+            }
+          }
+        }
+        return it->second.get();
+      };
+
+      // Check center and 8 neighbors
+      for (int dx = -1; dx <= 1; dx++) {
+        for (int dz = -1; dz <= 1; dz++) {
+          int targetX = x + dx;
+          int targetZ = z + dz;
+
+          ChunkColumn *target = isColumnReady(targetX, targetZ);
+          if (target) {
+            // Mark as decorated FIRST under lock if possible (to avoid race)
+            {
+              std::lock_guard<std::mutex> lock(columnMutex);
+              if (target->decorated)
+                continue;
+              target->decorated = true;
+            }
+
+            // Create WorldGenRegion and decorate
+            WorldGenRegion region(this, targetX, targetZ);
+            generator.Decorate(region, *target);
+          }
         }
       }
     }

@@ -2,6 +2,7 @@
 #define CHUNK_COLUMN_H
 
 #include "Chunk.h" // For CHUNK_SIZE
+#include <cstring>
 
 struct ChunkColumn {
   int heightMap[CHUNK_SIZE][CHUNK_SIZE];
@@ -20,6 +21,20 @@ struct ChunkColumn {
         localZ >= CHUNK_SIZE)
       return 0;
     return heightMap[localX][localZ];
+  }
+
+  bool generated = false;
+  bool decorated = false;
+
+  ChunkColumn() {
+    // Initialize heightMap to 0
+    // CHUNK_SIZE * CHUNK_SIZE is 256 for typical CHUNK_SIZE=16
+    // Using memset for efficiency to zero out the entire 2D array
+    ::memset(heightMap, 0, sizeof(heightMap));
+    // Other maps could also be initialized if needed, e.g.,
+    // std::memset(temperatureMap, 0, sizeof(temperatureMap));
+    // std::memset(humidityMap, 0, sizeof(humidityMap));
+    // ...
   }
 
   // Setters for WorldGenerator to populate

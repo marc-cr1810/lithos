@@ -4,6 +4,7 @@
 #include "Block.h"
 #include "ChunkColumn.h"
 #include "World.h"
+#include "WorldGenRegion.h"
 #include "WorldGenerator.h"
 #include "decorators/TreeRegistry.h"
 #include <algorithm>
@@ -583,6 +584,24 @@ void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
           //          realTemp, realRain, forest, height);
         }
       }
+    }
+  }
+}
+
+// Region-based decoration (delegates to chunk-based for now)
+void TreeDecorator::Decorate(WorldGenerator &generator, WorldGenRegion &region,
+                             const ChunkColumn &column) {
+  PROFILE_SCOPE_CONDITIONAL("Decorator_Trees_Region",
+                            generator.IsProfilingEnabled());
+
+  World *world = region.getWorld();
+  int colX = region.getCenterX();
+  int colZ = region.getCenterZ();
+
+  for (int y = 0; y < 8; y++) {
+    auto chunk = world->getChunk(colX, y, colZ);
+    if (chunk) {
+      Decorate(*chunk, generator, column);
     }
   }
 }

@@ -3,6 +3,7 @@
 #include "Block.h"
 #include "ChunkColumn.h"
 #include "World.h"
+#include "WorldGenRegion.h"
 #include "WorldGenerator.h"
 #include <cstdlib>
 #include <glm/glm.hpp>
@@ -101,6 +102,24 @@ void FloraDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
           }
         }
       }
+    }
+  }
+}
+
+// Region-based decoration
+void FloraDecorator::Decorate(WorldGenerator &generator, WorldGenRegion &region,
+                              const ChunkColumn &column) {
+  PROFILE_SCOPE_CONDITIONAL("Decorator_Flora_Region",
+                            generator.IsProfilingEnabled());
+
+  World *world = region.getWorld();
+  int colX = region.getCenterX();
+  int colZ = region.getCenterZ();
+
+  for (int y = 0; y < 8; y++) {
+    auto chunk = world->getChunk(colX, y, colZ);
+    if (chunk) {
+      Decorate(*chunk, generator, column);
     }
   }
 }

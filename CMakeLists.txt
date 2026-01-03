@@ -161,6 +161,7 @@ add_executable(lithos
     src/render/NoisePreview.cpp
     src/world/Chunk.cpp
     src/world/WorldGenerator.cpp
+    src/world/WorldGenRegion.cpp
     src/world/CaveGenerator.cpp
     src/world/decorators/TreeRegistry.cpp
     src/world/TreeDecorator.cpp

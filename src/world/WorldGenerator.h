@@ -28,6 +28,9 @@ public:
   // Generate blocks in a Chunk
   void GenerateChunk(Chunk &chunk, const ChunkColumn &column);
 
+  // Decorate using WorldGenRegion (cross-chunk safe)
+  void Decorate(class WorldGenRegion &region, const ChunkColumn &column);
+
   // --- Helper / Getters ---
 
   int GetHeight(int x, int z);

@@ -12,6 +12,9 @@ public:
   virtual void Decorate(Chunk &chunk, WorldGenerator &generator,
                         const struct ChunkColumn &column) override;
 
+  virtual void Decorate(WorldGenerator &generator, WorldGenRegion &region,
+                        const struct ChunkColumn &column) override;
+
 private:
   struct ChunkNeighborhood {
     Chunk *chunks[3][3];

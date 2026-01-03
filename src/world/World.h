@@ -93,6 +93,17 @@ public:
   void Update(); // Main Thread
   void QueueMeshUpdate(std::shared_ptr<Chunk> c, bool priority = false);
 
+  struct key_hash_pair {
+    std::size_t operator()(const std::pair<int, int> &k) const {
+      return std::hash<int>{}(k.first) ^ (std::hash<int>{}(k.second) << 1);
+    }
+  };
+
+  std::mutex columnMutex;
+  std::unordered_map<std::pair<int, int>, std::unique_ptr<ChunkColumn>,
+                     key_hash_pair>
+      columns;
+
   // Friend for generator if needed, or public method
   // Generator will just use addChunk/getChunk.
 
@@ -138,17 +149,6 @@ private:
   std::priority_queue<GenTask> genQueue;
 
   std::unordered_set<std::tuple<int, int, int>, key_hash> generatingChunks;
-
-  struct key_hash_pair {
-    std::size_t operator()(const std::pair<int, int> &k) const {
-      return std::hash<int>{}(k.first) ^ (std::hash<int>{}(k.second) << 1);
-    }
-  };
-
-  std::unordered_map<std::pair<int, int>, std::unique_ptr<ChunkColumn>,
-                     key_hash_pair>
-      columns;
-  std::mutex columnMutex;
 
   void GenerationWorkerLoop();
 
