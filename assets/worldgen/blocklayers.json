@@ -73,12 +73,22 @@
             }
         },
         {
-            "comment": "Beach: Sand near Sea Level",
+            "comment": "Beach: Sand (High Beach Noise)",
             "block": "lithos:sand",
             "condition": {
                 "minY": 0.19375,
                 "maxY": 0.20625,
-                "maxRain": 0.8
+                "minBeachNoise": 0.4
+            }
+        },
+        {
+            "comment": "Beach: Gravel (Moderate Beach Noise)",
+            "block": "lithos:gravel",
+            "condition": {
+                "minY": 0.19375,
+                "maxY": 0.20625,
+                "minBeachNoise": 0.0,
+                "maxBeachNoise": 0.4
             }
         },
         {

@@ -21,9 +21,11 @@ struct BlockLayerRule {
   float maxPatchNoise = 1.0f;
   float minY = 0.0f;
   float maxY = 1.0f; // Normalized Height (0.0 - 1.0)
+  float minBeachNoise = -1.0f;
+  float maxBeachNoise = 1.0f;
 
   bool Matches(float temp, float rain, float fertility, float patchNoise,
-               float yNormalized) const;
+               float yNormalized, float beachNoise) const;
 };
 
 class BlockLayerConfig {
@@ -35,7 +37,8 @@ public:
 
   bool Load(const std::string &path);
   uint8_t GetSurfaceBlockId(float temp, float rain, float fertility,
-                            float patchNoise, float yNormalized) const;
+                            float patchNoise, float yFrac,
+                            float beachNoise) const;
   uint8_t GetLiquidSurfaceBlockId(float temp, float rain, float fertility,
                                   float patchNoise, float yNormalized) const;
 

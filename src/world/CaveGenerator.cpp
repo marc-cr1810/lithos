@@ -104,6 +104,13 @@ void CaveGenerator::GenerateCaves(Chunk &chunk, const ChunkColumn &column,
             // Allow entrances
             grandEntranceBonus =
                 (entranceNoise - config.caveEntranceNoise) * 0.3f;
+
+            // Explicit vertical shaft for very high noise (guaranteed entrance)
+            if (entranceNoise > 0.7f) {
+              chunk.blocks[lx][ly][lz].block = airBlock;
+              chunk.blocks[lx][ly][lz].metadata = 0;
+              continue;
+            }
           }
         }
 

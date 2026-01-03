@@ -7,7 +7,8 @@
 using json = nlohmann::json;
 
 bool BlockLayerRule::Matches(float temp, float rain, float fertility,
-                             float patchNoise, float yNormalized) const {
+                             float patchNoise, float yNormalized,
+                             float beachNoise) const {
   if (temp < minTemp || temp > maxTemp)
     return false;
   if (rain < minRain || rain > maxRain)
@@ -17,6 +18,8 @@ bool BlockLayerRule::Matches(float temp, float rain, float fertility,
   if (patchNoise < minPatchNoise || patchNoise > maxPatchNoise)
     return false;
   if (yNormalized < minY || yNormalized > maxY)
+    return false;
+  if (beachNoise < minBeachNoise || beachNoise > maxBeachNoise)
     return false;
   return true;
 }
@@ -76,6 +79,10 @@ bool BlockLayerConfig::Load(const std::string &path) {
             rule.minY = cond["minY"].get<float>();
           if (cond.contains("maxY"))
             rule.maxY = cond["maxY"].get<float>();
+          if (cond.contains("minBeachNoise"))
+            rule.minBeachNoise = cond["minBeachNoise"].get<float>();
+          if (cond.contains("maxBeachNoise"))
+            rule.maxBeachNoise = cond["maxBeachNoise"].get<float>();
         }
 
         rules.push_back(rule);
@@ -134,9 +141,11 @@ bool BlockLayerConfig::Load(const std::string &path) {
 
 uint8_t BlockLayerConfig::GetSurfaceBlockId(float temp, float rain,
                                             float fertility, float patchNoise,
-                                            float yNormalized) const {
+                                            float yNormalized,
+                                            float beachNoise) const {
   for (const auto &rule : rules) {
-    if (rule.Matches(temp, rain, fertility, patchNoise, yNormalized)) {
+    if (rule.Matches(temp, rain, fertility, patchNoise, yNormalized,
+                     beachNoise)) {
       return rule.cachedBlockId;
     }
   }
@@ -148,7 +157,7 @@ uint8_t BlockLayerConfig::GetLiquidSurfaceBlockId(float temp, float rain,
                                                   float patchNoise,
                                                   float yNormalized) const {
   for (const auto &rule : liquidRules) {
-    if (rule.Matches(temp, rain, fertility, patchNoise, yNormalized)) {
+    if (rule.Matches(temp, rain, fertility, patchNoise, yNormalized, 0.0f)) {
       return rule.cachedBlockId;
     }
   }
