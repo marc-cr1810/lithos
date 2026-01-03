@@ -246,6 +246,38 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
           if (th < -1.2f)
             return -1.0f; // Definitely Air
 
+          // Blend terrain octave amplitudes from the 3 landforms
+          // VS applies octave-specific amplitudes to modify terrain noise
+          float octaveMultiplier = 1.0f;
+
+          // Calculate weighted octave contribution
+          // terrainOctaves contains amplitude values for different noise
+          // frequencies When amplitude is 0, that octave doesn't contribute
+          // When amplitude is 1, it contributes fully
+          float totalOctaveAmp = 0.0f;
+          int numOctaves = 9; // VS uses 9 octaves typically
+
+          // Blend octave amplitudes from the 3 landforms
+          for (int octIdx = 0; octIdx < numOctaves; octIdx++) {
+            float amp1 = (octIdx < (int)lf1->terrainOctaves.size())
+                             ? lf1->terrainOctaves[octIdx].amplitude
+                             : 0.0f;
+            float amp2 = (octIdx < (int)lf2->terrainOctaves.size())
+                             ? lf2->terrainOctaves[octIdx].amplitude
+                             : 0.0f;
+            float amp3 = (octIdx < (int)lf3->terrainOctaves.size())
+                             ? lf3->terrainOctaves[octIdx].amplitude
+                             : 0.0f;
+
+            float blendedAmp = amp1 * w1 + amp2 * w2 + amp3 * w3;
+            totalOctaveAmp += blendedAmp;
+          }
+
+          // Normalize: octave multiplier scales the noise contribution
+          // Higher octave amplitude = more terrain variation
+          // Lower octave amplitude = smoother terrain
+          octaveMultiplier = totalOctaveAmp / numOctaves;
+
           // Use batched noise
           float n = 0.0f;
           if (sampleY >= 0 && sampleY < config.worldHeight) {
@@ -253,7 +285,13 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
           } else {
             n = noiseManager.GetTerrainNoise3D(wx, sampleY, wz);
           }
-          return n + th;
+
+          // Apply octave blending to noise
+          // This scales the noise influence based on landform octave
+          // configuration
+          float modifiedNoise = n * octaveMultiplier;
+
+          return modifiedNoise + th;
         };
 
         float density = getDensity(y);
@@ -471,6 +509,26 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
           noiseManager.GenTerrainNoise3D(noiseBuffer.data(), wx, startY, wz, 1,
                                          maxLy + 1, 1);
 
+          // Blend terrain octave amplitudes from the 3 landforms
+          float octaveMultiplier = 1.0f;
+          float totalOctaveAmp = 0.0f;
+          int numOctaves = 9;
+
+          for (int octIdx = 0; octIdx < numOctaves; octIdx++) {
+            float amp1 = (octIdx < (int)lf1->terrainOctaves.size())
+                             ? lf1->terrainOctaves[octIdx].amplitude
+                             : 0.0f;
+            float amp2 = (octIdx < (int)lf2->terrainOctaves.size())
+                             ? lf2->terrainOctaves[octIdx].amplitude
+                             : 0.0f;
+            float amp3 = (octIdx < (int)lf3->terrainOctaves.size())
+                             ? lf3->terrainOctaves[octIdx].amplitude
+                             : 0.0f;
+
+            totalOctaveAmp += amp1 * w1 + amp2 * w2 + amp3 * w3;
+          }
+          octaveMultiplier = totalOctaveAmp / numOctaves;
+
           for (int ly = 0; ly < CHUNK_SIZE; ly++) {
             int wy = startY + ly;
             bool isSolid = false;
@@ -482,7 +540,8 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
               } else if (threshold < -1.2f) {
                 isSolid = false;
               } else {
-                float noise3d = noiseBuffer[ly];
+                float noise3d =
+                    noiseBuffer[ly] * octaveMultiplier; // Apply octave blending
                 isSolid = (noise3d + threshold) > 0;
               }
             }
