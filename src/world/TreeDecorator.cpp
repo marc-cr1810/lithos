@@ -71,8 +71,10 @@ void TreeDecorator::GenerateTree(Chunk &chunk, int x, int y, int z,
   float rootDx = rootSeg.dx;
   float rootDz = rootSeg.dz;
 
+  int totalSegments = 0;
   BuildSegment(&chunk, x, y, z, rootSeg, treeOrigin, rootDx, 0.0f, rootDz,
-               rootAngleVert, rootAngleHori, width, 0.0f, 0, tree, rng, hood);
+               rootAngleVert, rootAngleHori, width, 0.0f, 0, totalSegments,
+               tree, rng, hood);
 }
 
 void TreeDecorator::BuildSegment(Chunk *chunk, int x, int y, int z,
@@ -80,7 +82,7 @@ void TreeDecorator::BuildSegment(Chunk *chunk, int x, int y, int z,
                                  glm::vec3 treeOrigin, float dx, float dy,
                                  float dz, float angleVerStart,
                                  float angleHorStart, float width,
-                                 float progress, int depth,
+                                 float progress, int depth, int &totalSegments,
                                  const TreeStructure &tree, std::mt19937 &rng,
                                  const ChunkNeighborhood &hood) {
 
@@ -91,15 +93,14 @@ void TreeDecorator::BuildSegment(Chunk *chunk, int x, int y, int z,
   if (depth > 30)
     return;
 
-  // EMERGENCY: Global iteration counter to absolutely prevent infinite loops
-  static thread_local int totalIterations = 0;
-  if (totalIterations > 100000) {
-    LOG_ERROR("TreeDecorator: Emergency iteration limit reached at depth {}! "
-              "NOT resetting.",
-              depth);
-    return; // Don't reset - stop permanently
+  // EMERGENCY: Per-tree iteration counter to prevent infinite loops
+  if (totalSegments > 5000) {
+    LOG_ERROR("TreeDecorator: Emergency segment limit reached (5000) for tree "
+              "at {},{},{}",
+              treeOrigin.x, treeOrigin.y, treeOrigin.z);
+    return;
   }
-  totalIterations++;
+  totalSegments++;
 
   World *world = chunk->getWorld();
   int maxHeight = world ? world->config.worldHeight : 320;
@@ -327,10 +328,11 @@ void TreeDecorator::BuildSegment(Chunk *chunk, int x, int y, int z,
       int branchIdx = std::min(depth, (int)tree.branches.size() - 1);
       const TreeSegment &branchSeg = tree.branches[branchIdx];
 
-      curWidth = GrowBranches(chunk, x, y, z, quantity, branchSeg, depth + 1,
-                              curWidth, branchWidthMultiplierStart,
-                              currentSequence, angleHor, dx, dy, dz, treeOrigin,
-                              trunkOffsetX, trunkOffsetZ, tree, rng, hood);
+      curWidth =
+          GrowBranches(chunk, x, y, z, quantity, branchSeg, depth + 1, curWidth,
+                       branchWidthMultiplierStart, currentSequence, angleHor,
+                       dx, dy, dz, treeOrigin, trunkOffsetX, trunkOffsetZ,
+                       totalSegments, tree, rng, hood);
     }
   } // End while loop
 }
@@ -340,8 +342,8 @@ float TreeDecorator::GrowBranches(
     const TreeSegment &branchSeg, int newDepth, float curWidth,
     float branchWidthMultiplierStart, float currentSequence, float angleHor,
     float dx, float dy, float dz, glm::vec3 treeOrigin, float trunkOffsetX,
-    float trunkOffsetZ, const TreeStructure &tree, std::mt19937 &rng,
-    const struct ChunkNeighborhood &hood) {
+    float trunkOffsetZ, int &totalSegments, const TreeStructure &tree,
+    std::mt19937 &rng, const struct ChunkNeighborhood &hood) {
 
   float branchWidth;
   float prevHorAngle = 0.0f;
@@ -389,7 +391,7 @@ float TreeDecorator::GrowBranches(
     // Recursive call
     BuildSegment(chunk, x, y, z, branchSeg, treeOrigin, dx + trunkOffsetX, dy,
                  dz + trunkOffsetZ, branchAngleVer, branchAngleHor, branchWidth,
-                 0, newDepth, tree, rng, hood);
+                 0, newDepth, totalSegments, tree, rng, hood);
 
     first = false;
     prevHorAngle = angleHor + horAngle; // VS: accumulates? No, wait.
@@ -577,8 +579,8 @@ void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
         // Debug log for failure (throttled)
         static int failCount = 0;
         if (failCount++ < 10) {
-          LOG_INFO("TreeFail: SelectTree returned null. T:{} R:{} F:{} H:{}",
-                   realTemp, realRain, forest, height);
+          // LOG_INFO("TreeFail: SelectTree returned null. T:{} R:{} F:{} H:{}",
+          //          realTemp, realRain, forest, height);
         }
       }
     }

@@ -27,16 +27,17 @@ private:
                     const TreeSegment &segment, glm::vec3 treeOrigin, float dx,
                     float dy, float dz, float angleVertStart,
                     float angleHorStart, float width, float progress, int depth,
-                    const TreeStructure &tree, std::mt19937 &rng,
-                    const struct ChunkNeighborhood &hood);
+                    int &totalSegments, const TreeStructure &tree,
+                    std::mt19937 &rng, const struct ChunkNeighborhood &hood);
 
   float GrowBranches(Chunk *chunk, int x, int y, int z, int branchQuantity,
                      const TreeSegment &branchSeg, int newDepth, float curWidth,
                      float branchWidthMultiplierStart, float currentSequence,
                      float angleHor, float dx, float dy, float dz,
                      glm::vec3 treeOrigin, float trunkOffsetX,
-                     float trunkOffsetZ, const TreeStructure &tree,
-                     std::mt19937 &rng, const struct ChunkNeighborhood &hood);
+                     float trunkOffsetZ, int &totalSegments,
+                     const TreeStructure &tree, std::mt19937 &rng,
+                     const struct ChunkNeighborhood &hood);
 };
 
 #endif

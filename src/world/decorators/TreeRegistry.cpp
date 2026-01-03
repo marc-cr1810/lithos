@@ -22,8 +22,8 @@ void TreeRegistry::LoadConfigs(const std::string &path) {
       json j;
       f >> j;
       treeGenConfig = j.get<TreeGenConfig>();
-      LOG_INFO("Loaded treeGenConfig with {} tree generators",
-               treeGenConfig.treegens.size());
+      // LOG_INFO("Loaded treeGenConfig with {} tree generators",
+      //          treeGenConfig.treegens.size());
     } catch (const json::parse_error &e) {
       LOG_ERROR("Failed to parse treegen.json: {}", e.what());
     }
@@ -42,7 +42,7 @@ void TreeRegistry::LoadConfigs(const std::string &path) {
         tf >> j;
         TreeStructure tree = j.get<TreeStructure>();
         loadedTrees[gen.generator] = tree;
-        LOG_INFO("Loaded tree definition: {}", gen.generator);
+        // LOG_INFO("Loaded tree definition: {}", gen.generator);
       } catch (const json::parse_error &e) {
         LOG_ERROR("Failed to parse tree {}: {}", gen.generator, e.what());
       }
