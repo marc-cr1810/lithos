@@ -566,7 +566,10 @@ void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
         const TreeStructure *structure =
             TreeRegistry::Get().GetTreeStructure(gen->generator);
         if (structure) {
-          GenerateTree(chunk, gx, height + 1, gz, *structure, rng, hood);
+          // VS: Tree generation starts FROM the passed coordinate, growing
+          // upwards. So we pass the ground block (height), not the air block.
+          // The algorithm typically steps y+1 for the first segment.
+          GenerateTree(chunk, gx, height, gz, *structure, rng, hood);
         } else {
           LOG_ERROR("TreeFail: Structure not found for {}", gen->generator);
         }

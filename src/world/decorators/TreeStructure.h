@@ -12,9 +12,16 @@ struct Distribution {
   float var = 0.0f;
 
   float Sample(std::mt19937 &rng) const {
-    if (dist == "gaussian")
+    if (dist == "gaussian") {
       return MathUtils::SampleGaussian(rng, avg, var);
-    return MathUtils::SampleUniform(rng, avg - var, avg + var);
+    } else if (dist == "inversegaussian") {
+      return MathUtils::SampleInverseGaussian(rng, avg, var);
+    } else if (dist == "triangle") {
+      return MathUtils::SampleTriangle(rng, avg - var, avg + var, avg);
+    } else if (dist == "uniform") {
+      return MathUtils::SampleUniform(rng, avg - var, avg + var);
+    }
+    return avg; // "none" or unknown
   }
 };
 
@@ -25,12 +32,20 @@ inline void from_json(const json &j, Distribution &d) {
     d.dist = "uniform";
     return;
   }
-  if (j.contains("dist"))
+
+  bool hasDist = j.contains("dist");
+  if (hasDist)
     d.dist = j.at("dist").get<std::string>();
+
   if (j.contains("avg"))
     d.avg = j.at("avg").get<float>();
   if (j.contains("var"))
     d.var = j.at("var").get<float>();
+
+  // Implicit Uniform: If data is provided but no dist specified, assume uniform
+  if (!hasDist && (j.contains("avg") || j.contains("var"))) {
+    d.dist = "uniform";
+  }
 }
 
 struct Evolution {
@@ -73,18 +88,22 @@ struct TreeSegment {
       dz = 0.5f;   // Offset from parent (for trunks relative to root)
 
   // VS: Trunk can have its own angles (for tilted/crooked trunks)
-  Distribution angleVert;
-  Distribution angleHori;
+  // VS: Trunk can have its own angles (for tilted/crooked trunks)
+  Distribution angleVert; // Default "none" (0) fits VS (Uniform 0,0)
+  Distribution angleHori = {"uniform", 0.0f, 3.14159f}; // VS: Uniform(0, PI)
 
-  Distribution branchStart;
-  Distribution branchSpacing;
-  Distribution branchVerticalAngle;
-  Distribution branchHorizontalAngle;
+  Distribution branchStart = {"uniform", 0.7f, 0.0f};   // VS: Uniform(0.7, 0)
+  Distribution branchSpacing = {"uniform", 0.3f, 0.0f}; // VS: Uniform(0.3, 0)
+  Distribution branchVerticalAngle = {"uniform", 0.0f,
+                                      3.14159f}; // VS: Uniform(0, PI)
+  Distribution branchHorizontalAngle = {"uniform", 0.0f,
+                                        3.14159f}; // VS: Uniform(0, PI)
 
-  Distribution branchQuantity;
+  Distribution branchQuantity = {"uniform", 1.0f, 0.0f}; // VS: Uniform(1, 0)
   Evolution branchQuantityEvolve;
 
-  Distribution branchWidthMultiplier;
+  Distribution branchWidthMultiplier = {"uniform", 0.0f,
+                                        0.0f}; // VS: Uniform(0, 0)
   Evolution branchWidthMultiplierEvolve;
   Evolution angleVertEvolve;
   Evolution angleHoriEvolve; // VS: Horizontal angle evolution (spiraling)
