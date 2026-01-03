@@ -284,7 +284,8 @@ public:
     return isOpaque_;
   } // Visualization/Light Blocking
   virtual uint8_t getEmission() const { return 0; } // Light source
-  virtual bool isActive() const { return true; }    // Replaces != AIR check
+  virtual bool isReplaceable() const { return false; }
+  virtual bool isActive() const { return true; } // Replaces != AIR check
 
   enum class RenderLayer { OPAQUE, CUTOUT, TRANSPARENT };
   virtual RenderLayer getRenderLayer() const { return RenderLayer::OPAQUE; }

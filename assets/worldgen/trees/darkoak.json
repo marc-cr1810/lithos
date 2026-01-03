@@ -1,0 +1,82 @@
+{
+    "treeWorldPropertyCode": "darkoak",
+    "sizeMultiplier": 1.2,
+    "yOffset": 0,
+    "trunks": [
+        {
+            "widthLoss": 0.04,
+            "gravityDrag": 0.0,
+            "dieAt": {
+                "dist": "inverse-gaussian",
+                "avg": 0.01,
+                "var": 20
+            },
+            "branchStart": {
+                "dist": "uniform",
+                "avg": 0.3,
+                "var": 0.1
+            },
+            "branchSpacing": {
+                "dist": "uniform",
+                "avg": 0.3,
+                "var": 0.05
+            },
+            "branchVerticalAngle": {
+                "dist": "uniform",
+                "avg": 0.5,
+                "var": 0.2
+            },
+            "branchHorizontalAngle": {
+                "dist": "uniform",
+                "avg": 0.0,
+                "var": 1.0
+            },
+            "branchQuantity": {
+                "dist": "uniform",
+                "avg": 3,
+                "var": 1
+            },
+            "branchWidthMultiplier": {
+                "dist": "uniform",
+                "avg": 0.9,
+                "var": 0
+            },
+            "dx": 0,
+            "dz": 0
+        }
+    ],
+    "branches": [
+        {
+            "widthLoss": 0.12,
+            "gravityDrag": 0.08,
+            "dieAt": {
+                "dist": "inverse-gaussian",
+                "avg": 0.1,
+                "var": 8
+            },
+            "branchStart": {
+                "dist": "uniform",
+                "avg": 0.1,
+                "var": 0.1
+            },
+            "branchSpacing": {
+                "dist": "uniform",
+                "avg": 0.4,
+                "var": 0
+            },
+            "branchQuantity": {
+                "dist": "uniform",
+                "avg": 1,
+                "var": 1
+            },
+            "dx": 0,
+            "dz": 0
+        }
+    ],
+    "treeBlocks": {
+        "logBlockCode": "lithos:dark_oak_log",
+        "leavesBlockCode": "lithos:dark_oak_leaves",
+        "leavesBranchyBlockCode": "lithos:dark_oak_leaves",
+        "vinesBlockCode": "lithos:air"
+    }
+}

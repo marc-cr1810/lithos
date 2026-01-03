@@ -5,262 +5,494 @@
 #include "ChunkColumn.h"
 #include "World.h"
 #include "WorldGenerator.h"
+#include "decorators/TreeRegistry.h"
 #include <cstdlib>
+#include <fstream>
 #include <glm/glm.hpp>
+#include <iostream>
 #include <vector>
 
-// Helper for deterministic random based on position and seed
-static int GetPosRand(int x, int z, int seed, int salt) {
-  unsigned int h = (unsigned int)x * 73856093 ^ (unsigned int)z * 19349663 ^
-                   (unsigned int)seed * 83492791 ^ (unsigned int)salt;
-  return (int)(h % 100);
+// Helper for neighbor caching
+
+void TreeDecorator::GenerateTree(Chunk &chunk, int x, int y, int z,
+                                 const TreeStructure &tree, std::mt19937 &rng,
+                                 const ChunkNeighborhood &hood) {
+  // CRASH GUARD: Verify World pointer
+  // Determine World Limits safely
+  int maxHeight = 320; // Default for benchmark
+  if (chunk.getWorld()) {
+    maxHeight = chunk.getWorld()->config.worldHeight;
+  }
+
+  // Basic root position check
+  if (y + tree.yOffset < 0 || y + tree.yOffset >= maxHeight)
+    return;
+
+  // Start with Trunks (Level 0)
+  if (tree.trunks.empty()) {
+    // LOG_WARN("GenerateTree: No trunks defined for tree.");
+    return;
+  }
+
+  // Initial State
+  glm::vec3 pos(x + 0.5f, y + tree.yOffset, z + 0.5f);
+  glm::vec3 dir(0, 1, 0);
+
+  // Pick a trunk template
+  if (tree.trunks.empty())
+    return;
+  std::uniform_int_distribution<int> trunkDist(0, tree.trunks.size() - 1);
+  const TreeSegment &rootSeg = tree.trunks[trunkDist(rng)];
+
+  // VS: Calculate initial trunk width
+  // size = sizeMultiplier + sizeVar
+  float baseSize = tree.sizeMultiplier;
+  if (!tree.sizeVar.dist.empty() && tree.sizeVar.dist != "none") {
+    baseSize += tree.sizeVar.Sample(rng);
+  }
+  float width = baseSize * rootSeg.widthMultiplier;
+
+  // VS: Use trunk's own angles if specified, otherwise default upward
+  if (!rootSeg.angleVert.dist.empty() && rootSeg.angleVert.dist != "none") {
+    float angleVert = rootSeg.angleVert.Sample(rng);
+    float angleHori =
+        (!rootSeg.angleHori.dist.empty() && rootSeg.angleHori.dist != "none")
+            ? rootSeg.angleHori.Sample(rng)
+            : 0.0f;
+
+    // Convert angles to direction vector
+    dir.x = std::sin(angleVert) * std::cos(angleHori);
+    dir.y = std::cos(angleVert);
+    dir.z = std::sin(angleVert) * std::sin(angleHori);
+    dir = glm::normalize(dir);
+  }
+
+  BuildSegment(&chunk, x, y, z, rootSeg, pos, dir, width, 0.0f, 0, tree, rng,
+               hood);
 }
 
-// Tree generation helpers that check chunk bounds
-static void GenerateOak(Chunk &chunk, int gx, int gy, int gz, int seed) {
-  int treeHeight = 4 + (GetPosRand(gx, gz, seed, 1) % 4);
-  World *world = chunk.getWorld();
-  glm::ivec3 cp = chunk.chunkPosition * CHUNK_SIZE;
+void TreeDecorator::BuildSegment(Chunk *chunk, int x, int y, int z,
+                                 const TreeSegment &segment, glm::vec3 pos,
+                                 glm::vec3 dir, float width, float progress,
+                                 int depth, const TreeStructure &tree,
+                                 std::mt19937 &rng,
+                                 const ChunkNeighborhood &hood) {
 
-  // Trunk
-  for (int h = 1; h <= treeHeight; ++h) {
-    int wy = gy + h;
-    if (world) {
-      BlockType existing = (BlockType)world->getBlock(gx, wy, gz).getType();
-      if (existing == AIR || existing == LEAVES)
-        world->setBlock(gx, wy, gz, WOOD);
+  if (!chunk)
+    return;
+
+  // VS: Prevent infinite recursion
+  if (depth > 30)
+    return;
+
+  // EMERGENCY: Global iteration counter to absolutely prevent infinite loops
+  static thread_local int totalIterations = 0;
+  if (totalIterations > 100000) {
+    LOG_ERROR("TreeDecorator: Emergency iteration limit reached at depth {}! "
+              "NOT resetting.",
+              depth);
+    return; // Don't reset - stop permanently
+  }
+  totalIterations++;
+
+  World *world = chunk->getWorld();
+  int maxHeight = world ? world->config.worldHeight : 320;
+
+  float sizeMultiplier = tree.sizeMultiplier;
+  if (sizeMultiplier <= 0.0f)
+    sizeMultiplier = 1.0f;
+
+  glm::ivec3 chunkOrigin = chunk->chunkPosition * 32;
+
+  // VS: Get initial angles (passed as parameters in VS, or use defaults)
+  float angleVerStart = (depth == 0 && !segment.angleVert.dist.empty() &&
+                         segment.angleVert.dist != "none")
+                            ? segment.angleVert.Sample(rng)
+                            : 1.57f; // Default up
+  float angleHorStart = (depth == 0 && !segment.angleHori.dist.empty() &&
+                         segment.angleHori.dist != "none")
+                            ? segment.angleHori.Sample(rng)
+                            : 0.0f;
+
+  // VS: Initialize deltas from base position (NOT direction vector!)
+  float dx = (depth == 0) ? segment.dx : 0.0f;
+  float dy = 0.0f;
+  float dz = (depth == 0) ? segment.dz : 0.0f;
+
+  glm::vec3 basePos = pos; // Store base position
+
+  // Determine Max Length based on Width Loss (VS Logic)
+  // VS: sequencesPerIteration = 1f / (curWidth / widthloss)
+  // So total length in blocks approx width / widthLoss
+  float calculatedMaxLen =
+      (segment.widthLoss > 0.0001f) ? (width / segment.widthLoss) : 200.0f;
+  // Clamp to reasonable bounds to prevent infinite loops or tiny segments
+  if (calculatedMaxLen > 200)
+    calculatedMaxLen = 200;
+  if (calculatedMaxLen < 2)
+    calculatedMaxLen = 2;
+
+  float totaldistance = calculatedMaxLen; // VS uses curWidth / widthloss
+
+  // Initialize branch spawning state
+  float lastRelDistance = 0.0f;
+  float nextBranchDistance = segment.branchStart.Sample(rng);
+  float currentSpacing = segment.branchSpacing.Sample(rng);
+
+  float branchQuantityStart = segment.branchQuantity.Sample(rng);
+  float branchWidthMultiplierStart = segment.branchWidthMultiplier.Sample(rng);
+
+  // VS: Use randomWidthLoss if specified, otherwise base widthLoss
+  float widthloss = (!segment.randomWidthLoss.dist.empty() &&
+                     segment.randomWidthLoss.dist != "none")
+                        ? segment.randomWidthLoss.Sample(rng)
+                        : segment.widthLoss;
+
+  // VS: If widthloss is essentially zero, segment can't progress - exit early
+  if (widthloss < 0.000001f) {
+    return; // Can't make progress
+  }
+
+  float curWidth = width; // Track current width separately
+
+  // VS: Sample dieAt threshold ONCE (not every iteration!)
+  float dieAtThreshold = segment.dieAt.Sample(rng);
+
+  // Apply Start Offset (Only for root segments/trunks)
+  if (depth == 0) {
+    basePos.x += segment.dx;
+    basePos.z += segment.dz;
+  }
+
+  // Resolve Block IDs
+  Block *logBlock =
+      BlockRegistry::getInstance().getBlock(tree.treeBlocks.logBlockCode);
+  if (!logBlock || logBlock->getId() == AIR)
+    logBlock = BlockRegistry::getInstance().getBlock(WOOD);
+  if (!logBlock)
+    logBlock = BlockRegistry::getInstance().getBlock(AIR);
+
+  Block *leavesBlock =
+      BlockRegistry::getInstance().getBlock(tree.treeBlocks.leavesBlockCode);
+  if (!leavesBlock || leavesBlock->getId() == AIR)
+    leavesBlock = BlockRegistry::getInstance().getBlock(LEAVES);
+  if (!leavesBlock)
+    leavesBlock = BlockRegistry::getInstance().getBlock(AIR);
+
+  BlockType logId = static_cast<BlockType>(logBlock->getId());
+  BlockType leavesId = static_cast<BlockType>(leavesBlock->getId());
+
+  // Resolve Branchy Leaves for structure
+  Block *branchyBlock = BlockRegistry::getInstance().getBlock(
+      tree.treeBlocks.leavesBranchyBlockCode);
+  BlockType branchyId = (branchyBlock && branchyBlock->getId() != AIR)
+                            ? (BlockType)branchyBlock->getId()
+                            : logId;
+
+  // VS: Build trunk segment block IDs (for multi-textured trunks)
+  std::vector<BlockType> trunkSegmentBlockIds;
+  if (!tree.treeBlocks.trunkSegmentBase.empty() &&
+      !tree.treeBlocks.trunkSegmentVariants.empty()) {
+    for (const std::string &variant : tree.treeBlocks.trunkSegmentVariants) {
+      std::string blockCode =
+          tree.treeBlocks.trunkSegmentBase + variant + "-ud";
+      Block *segBlock = BlockRegistry::getInstance().getBlock(blockCode);
+      if (segBlock && segBlock->getId() != AIR) {
+        trunkSegmentBlockIds.push_back((BlockType)segBlock->getId());
+      } else {
+        trunkSegmentBlockIds.push_back(logId); // Fallback
+      }
+    }
+  }
+
+  bool alive = true;
+
+  int iteration = 0;
+  float sequencesPerIteration = 1.0f / (curWidth / widthloss);
+
+  float currentSequence;
+  float angleVer, angleHor;
+  float ddrag;
+  float sinAngleVer, cosAngleHor, sinAngleHor;
+  float trunkOffsetX, trunkOffsetZ;
+
+  while (curWidth > 0 && iteration++ < 5000) {
+    if (iteration >= 4999) {
+      LOG_WARN("BuildSegment: Iteration {} reached at depth {}, curWidth={}, "
+               "widthloss={}",
+               iteration, depth, curWidth, widthloss);
+    }
+    curWidth -= widthloss;
+
+    // VS widthlossCurve dampening - critical for proper taper
+    if (segment.widthlossCurve + curWidth / 20.0f < 1.0f) {
+      widthloss *= (segment.widthlossCurve + curWidth / 20.0f);
+    }
+
+    // VS: If widthloss becomes too small, segment can't progress - stop
+    if (widthloss < 0.000001f) {
+      break;
+    }
+
+    currentSequence = sequencesPerIteration * (iteration - 1);
+
+    if (curWidth < dieAtThreshold)
+      break;
+
+    // VS: Evolve angles each iteration
+    angleVer = segment.angleVertEvolve.Apply(angleVerStart, currentSequence);
+    angleHor = segment.angleHoriEvolve.Apply(angleHorStart, currentSequence);
+
+    sinAngleVer = std::sin(angleVer);
+    cosAngleHor = std::cos(angleHor);
+    sinAngleHor = std::sin(angleHor);
+
+    // VS: Trunk offset for branch spawning
+    trunkOffsetX = std::clamp(0.7f * sinAngleVer * cosAngleHor, -0.5f, 0.5f);
+    trunkOffsetZ = std::clamp(0.7f * sinAngleVer * sinAngleHor, -0.5f, 0.5f);
+
+    // VS: Gravity drag based on horizontal distance
+    ddrag = segment.gravityDrag * std::sqrt(dx * dx + dz * dz);
+
+    // VS: Update deltas (NOT direction vector!)
+    dx += sinAngleVer * cosAngleHor / std::max(1.0f, std::abs(ddrag));
+    dy += std::min(1.0f, std::max(-1.0f, std::cos(angleVer) - ddrag));
+    dz += sinAngleVer * sinAngleHor / std::max(1.0f, std::abs(ddrag));
+
+    // VS: Determine Block ID based on Width
+    BlockType currentSegmentBlockId;
+    if (segment.segment != 0 && curWidth >= 0.3f &&
+        !trunkSegmentBlockIds.empty()) {
+      int idx = segment.segment - 1;
+      if (idx >= 0 && idx < (int)trunkSegmentBlockIds.size()) {
+        currentSegmentBlockId = trunkSegmentBlockIds[idx];
+      } else {
+        currentSegmentBlockId = logId;
+      }
+    } else if (segment.NoLogs || curWidth <= 0.3f) {
+      // Use leaf gradient
+      if (curWidth > 0.1f) {
+        currentSegmentBlockId = branchyId;
+      } else {
+        currentSegmentBlockId = leavesId;
+      }
     } else {
-      int lx = gx - cp.x;
-      int ly = wy - cp.y;
-      int lz = gz - cp.z;
-      if (lx >= 0 && lx < CHUNK_SIZE && ly >= 0 && ly < CHUNK_SIZE && lz >= 0 &&
-          lz < CHUNK_SIZE) {
-        if (chunk.getBlock(lx, ly, lz).getType() == AIR ||
-            chunk.getBlock(lx, ly, lz).getType() == LEAVES)
-          chunk.setBlock(lx, ly, lz, WOOD);
-      }
+      // Normal log
+      currentSegmentBlockId = logId;
     }
-  }
 
-  // Leaves
-  int leavesStart = gy + treeHeight - 2;
-  int leavesEnd = gy + treeHeight;
+    // VS: Position = basePos + deltas
+    glm::vec3 currentPos(basePos.x + dx, basePos.y + dy, basePos.z + dz);
+    // 1. Place Log
+    glm::ivec3 bPos = glm::vec3(currentPos);
+    if (bPos.y >= 0 && bPos.y < maxHeight) {
+      int lx = bPos.x - chunkOrigin.x;
+      int ly = bPos.y - chunkOrigin.y;
+      int lz = bPos.z - chunkOrigin.z;
 
-  for (int ly = leavesStart; ly <= leavesEnd; ++ly) {
-    int radius = 2;
-    if (ly == leavesEnd)
-      radius = 1;
+      // Bounds Check: confine to local chunk
+      if (lx >= 0 && lx < 32 && lz >= 0 && lz < 32) {
+        BlockType currentType =
+            (BlockType)chunk->getBlock(lx, ly, lz).getType();
+        Block *currentBlock =
+            BlockRegistry::getInstance().getBlock(currentType);
 
-    for (int lx_g = gx - radius; lx_g <= gx + radius; ++lx_g) {
-      for (int lz_g = gz - radius; lz_g <= gz + radius; ++lz_g) {
-        if (abs(lx_g - gx) == radius && abs(lz_g - gz) == radius &&
-            (GetPosRand(lx_g, lz_g, ly, seed) % 2 == 0))
-          continue;
-
-        if (world) {
-          BlockType existing =
-              (BlockType)world->getBlock(lx_g, ly, lz_g).getType();
-          if (existing == AIR)
-            world->setBlock(lx_g, ly, lz_g, LEAVES);
-        } else {
-          int lx = lx_g - cp.x;
-          int lz = lz_g - cp.z;
-          int ly_local = ly - cp.y;
-          if (lx >= 0 && lx < CHUNK_SIZE && ly_local >= 0 &&
-              ly_local < CHUNK_SIZE && lz >= 0 && lz < CHUNK_SIZE) {
-            if (chunk.getBlock(lx, ly_local, lz).getType() == AIR)
-              chunk.setBlock(lx, ly_local, lz, LEAVES);
-          }
-        }
-      }
-    }
-  }
-}
-
-static void GenerateSpruce(Chunk &chunk, int gx, int gy, int gz, int seed) {
-  int height = 6 + (GetPosRand(gx, gz, seed, 2) % 4); // 6-9
-  World *world = chunk.getWorld();
-  glm::ivec3 cp = chunk.chunkPosition * CHUNK_SIZE;
-
-  // Trunk
-  for (int h = 1; h <= height; ++h) {
-    int wy = gy + h;
-    if (world) {
-      world->setBlock(gx, wy, gz, SPRUCE_LOG);
-    } else {
-      int lx = gx - cp.x;
-      int ly = wy - cp.y;
-      int lz = gz - cp.z;
-      if (lx >= 0 && lx < CHUNK_SIZE && ly >= 0 && ly < CHUNK_SIZE && lz >= 0 &&
-          lz < CHUNK_SIZE) {
-        chunk.setBlock(lx, ly, lz, SPRUCE_LOG);
-      }
-    }
-  }
-
-  // Cone Leaves
-  int startLeaves = gy + 2;
-  for (int ly_g = startLeaves; ly_g <= gy + height + 1; ++ly_g) {
-    int distFromTop = (gy + height + 1) - ly_g;
-    int radius = 0;
-
-    if (distFromTop == 0)
-      radius = 0;
-    else if (distFromTop < 3)
-      radius = 1;
-    else if (distFromTop < 5)
-      radius = 2;
-    else
-      radius = 2; // Keep thin
-
-    for (int lx_g = gx - radius; lx_g <= gx + radius; ++lx_g) {
-      for (int lz_g = gz - radius; lz_g <= gz + radius; ++lz_g) {
-        if (radius > 0 && abs(lx_g - gx) == radius &&
-            abs(lz_g - gz) == radius) {
-          if ((GetPosRand(lx_g, lz_g, ly_g, seed) % 2) != 0)
-            continue;
+        if (currentBlock->isSolid() && !currentBlock->isReplaceable() &&
+            currentType != currentSegmentBlockId && currentType != logId &&
+            currentType != branchyId && currentType != leavesId) {
+          alive = false;
+          break;
         }
 
-        if (world) {
-          BlockType existing =
-              (BlockType)world->getBlock(lx_g, ly_g, lz_g).getType();
-          if (existing == AIR)
-            world->setBlock(lx_g, ly_g, lz_g, SPRUCE_LEAVES);
-        } else {
-          int lx = lx_g - cp.x;
-          int lz = lz_g - cp.z;
-          int ly_local = ly_g - cp.y;
-          if (lx >= 0 && lx < CHUNK_SIZE && ly_local >= 0 &&
-              ly_local < CHUNK_SIZE && lz >= 0 && lz < CHUNK_SIZE) {
-            if (chunk.getBlock(lx, ly_local, lz).getType() == AIR)
-              chunk.setBlock(lx, ly_local, lz, SPRUCE_LEAVES);
-          }
+        // Replace if air or replaceable
+        if (currentBlock->isReplaceable() || currentType == AIR) {
+          chunk->setBlock(lx, ly, lz, currentSegmentBlockId);
         }
+      } else {
+        // Neighbor placement disabled
       }
     }
-  }
-}
 
-static void GenerateCactus(Chunk &chunk, int gx, int gy, int gz, int seed) {
-  int height = 2 + (GetPosRand(gx, gz, seed, 3) % 3); // 2-4
-  World *world = chunk.getWorld();
-  glm::ivec3 cp = chunk.chunkPosition * CHUNK_SIZE;
+    // VS: Calculate relative distance from deltas
+    float reldistance = std::sqrt(dx * dx + dy * dy + dz * dz) / totaldistance;
 
-  for (int h = 1; h <= height; ++h) {
-    int wy = gy + h;
-    if (world) {
-      world->setBlock(gx, wy, gz, CACTUS);
-    } else {
-      int lx = gx - cp.x;
-      int ly = wy - cp.y;
-      int lz = gz - cp.z;
-      if (lx >= 0 && lx < CHUNK_SIZE && ly >= 0 && ly < CHUNK_SIZE && lz >= 0 &&
-          lz < CHUNK_SIZE) {
-        chunk.setBlock(lx, ly, lz, CACTUS);
+    // VS: Branch spawning check
+    if (reldistance < nextBranchDistance)
+      continue;
+
+    if (depth < 3 && !tree.branches.empty() &&
+        reldistance > lastRelDistance + currentSpacing * (1.0f - reldistance)) {
+      currentSpacing = segment.branchSpacing.Sample(rng);
+      lastRelDistance = reldistance;
+
+      // VS: Evolve branch quantity
+      float branchQuantity = segment.branchQuantityEvolve.Apply(
+          branchQuantityStart, currentSequence);
+      int quantity = (int)(branchQuantity + 0.5f);
+      if (quantity < 0)
+        quantity = 0;
+
+      int branchIdx = std::min(depth, (int)tree.branches.size() - 1);
+      const TreeSegment &branchSeg = tree.branches[branchIdx];
+
+      for (int b = 0; b < quantity; ++b) {
+        // VS: Evolve branch width multiplier
+        float bWidthMul = segment.branchWidthMultiplierEvolve.Apply(
+            branchWidthMultiplierStart, currentSequence);
+        float branchWidth = curWidth * bWidthMul;
+
+        // Branch angles
+        float branchAngleVer = branchSeg.branchVerticalAngle.Sample(rng);
+        float branchAngleHor = branchSeg.branchHorizontalAngle.Sample(rng);
+
+        // VS: Spawn from trunk offset position
+        glm::vec3 branchPos(basePos.x + dx + trunkOffsetX, basePos.y + dy,
+                            basePos.z + dz + trunkOffsetZ);
+
+        // Branch direction
+        glm::vec3 branchDir;
+        branchDir.x = std::sin(branchAngleVer) * std::cos(branchAngleHor);
+        branchDir.y = std::cos(branchAngleVer);
+        branchDir.z = std::sin(branchAngleVer) * std::sin(branchAngleHor);
+        branchDir = glm::normalize(branchDir);
+
+        BuildSegment(chunk, x, y, z, branchSeg, branchPos, branchDir,
+                     branchWidth, 0, depth + 1, tree, rng, hood);
       }
     }
-  }
+  } // End while loop
 }
+
+// ======================================================================
+// Public API - Decorator Interface
+// ======================================================================
 
 void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
                              const ChunkColumn &column) {
   PROFILE_SCOPE_CONDITIONAL("Decorator_Trees", generator.IsProfilingEnabled());
+
   glm::ivec3 cp = chunk.chunkPosition;
+
+  // Cache Neighbors (One-time Global Lock)
+  ChunkNeighborhood hood;
+  hood.world = chunk.getWorld();
+  hood.chunks[1][1] = &chunk;
+
+  if (hood.world) {
+    // We need to look up neighbors safely.
+    // Use GenerationWorkerLoop context if
+    // possible, but here we only have
+    // generator. We can use
+    // world->getChunk, which locks
+    // worldMutex. Doing it 8 times starts
+    // to be expensive, but less than 1000
+    // times. BUT: getChunk is
+    // std::shared_ptr return. We need raw
+    // pointers for the cache (careful with
+    // lifetime). Since we are in
+    // Generation, and chunks persist until
+    // Unload (main thread), and we hold
+    // shared_ptrs in the World map... It
+    // should be safe-ish if we hold
+    // shared_ptrs locally?
+
+    // Optimization: Lock ONCE and get
+    // all 8. World::getChunk locks
+    // individually. We can add a
+    // World::getNeighbors(int x, int y, int
+    // z, OutputArray) helper? Or just call
+    // getChunk. 8 locks is infinitely
+    // better than 1000 locks.
+
+    // Optimization: Neighbor lookup
+    // disabled for stability.
+    // hood.world->getNeighbors(cp.x, cp.y,
+    // cp.z, hood.chunks);
+    hood.chunks[1][1] = &chunk;
+
+  } else {
+    // Benchmark mode: no neighbors
+    for (int i = 0; i < 3; ++i)
+      for (int j = 0; j < 3; ++j)
+        if (i != 1 || j != 1)
+          hood.chunks[i][j] = nullptr;
+  }
+
   int seed = generator.GetSeed();
 
   int startX = cp.x * CHUNK_SIZE;
   int startZ = cp.z * CHUNK_SIZE;
 
-  // Iterate over column
-  for (int lx = 0; lx < CHUNK_SIZE; ++lx) {
-    for (int lz = 0; lz < CHUNK_SIZE; ++lz) {
-      int gx = startX + lx;
-      int gz = startZ + lz;
+  std::mt19937 rng(seed + startX * 342 + startZ * 521); // Distinct seed per
+                                                        // chunk column
 
-      int height = column.getHeight(lx, lz);
+  // Try X attempts from Global Config
+  const auto &config = TreeRegistry::Get().GetConfig();
+  int attempts = (int)config.treesPerChunk.Sample(rng);
+  attempts = attempts < 0 ? 0 : attempts;
 
-      // Skip if height is not in this chunk (optional optimization, but we need
-      // to place blocks relative to chunk) Actually, we should check if the
-      // SURFACE is within or near this chunk. If the surface is Y=70 and this
-      // chunk is Y=0..32, we do nothing. If chunk is Y=64..96, we decorate.
+  // LOG_INFO("Chunk {},{},{} attempts: {}",
+  // cp.x, cp.y, cp.z, attempts);
 
-      int chunkYStart = cp.y * CHUNK_SIZE;
-      int chunkYEnd = (cp.y + 1) * CHUNK_SIZE;
+  for (int i = 0; i < attempts; ++i) {
+    int lx = std::uniform_int_distribution<int>(0, CHUNK_SIZE - 1)(rng);
+    int lz = std::uniform_int_distribution<int>(0, CHUNK_SIZE - 1)(rng);
 
-      // Tree usually starts at surface + 1
-      // Tree usually starts at surface + 1
-      if (height < chunkYStart - 10 || height > chunkYEnd + 10)
-        continue;
+    int gx = startX + lx;
+    int gz = startZ + lz;
+    int height = column.getHeight(lx, lz);
 
-      // New: Check against Sea Level to prevent underwater forests
-      if (height < generator.GetConfig().seaLevel)
-        continue;
+    // Check bounds and sea level
+    if (height < generator.GetConfig().seaLevel)
+      continue;
 
-      // Check surface block type (Must be soil)
+    int cyStart = cp.y * CHUNK_SIZE;
+    int cyEnd = cyStart + CHUNK_SIZE;
+
+    // If the base of the tree is in this
+    // chunk (or close enough that we should
+    // start it)
+    if (height >= cyStart && height < cyEnd) {
+      // Check block
       BlockType surfaceBlock = AIR;
-      if (chunk.getWorld()) {
-        surfaceBlock =
-            (BlockType)chunk.getWorld()->getBlock(gx, height, gz).getType();
-      } else {
-        int ly_surf = height - cp.y * CHUNK_SIZE;
-        if (ly_surf >= 0 && ly_surf < CHUNK_SIZE) {
-          surfaceBlock =
-              static_cast<BlockType>(chunk.getBlock(lx, ly_surf, lz).getType());
-        }
+      int ly = height - cyStart;
+      if (ly >= 0 && ly < CHUNK_SIZE) {
+        surfaceBlock = (BlockType)chunk.getBlock(lx, ly, lz).getType();
       }
 
-      if (surfaceBlock == WATER || surfaceBlock == ICE || surfaceBlock == AIR ||
-          surfaceBlock == LAVA) {
+      // Updated Soil Check with extensive
+      // list
+      bool isSoil = (surfaceBlock == GRASS || surfaceBlock == DIRT ||
+                     surfaceBlock == PODZOL || surfaceBlock == MUD ||
+                     surfaceBlock == SAND || surfaceBlock == GRAVEL ||
+                     surfaceBlock == COARSE_DIRT ||
+                     surfaceBlock == TERRA_PRETA || surfaceBlock == PEAT ||
+                     surfaceBlock == CLAY || surfaceBlock == CLAYSTONE);
+
+      if (!isSoil) {
         continue;
       }
 
-      // Valid Soil Sets
-      bool isFertile = (surfaceBlock == GRASS || surfaceBlock == DIRT ||
-                        surfaceBlock == PODZOL || surfaceBlock == TERRA_PRETA ||
-                        surfaceBlock == MUD);
-      bool isSandy =
-          (surfaceBlock == SAND ||
-           surfaceBlock == COARSE_DIRT); // Coarse dirt as 'arid' soil
+      // Climate
+      float realTemp = column.temperatureMap[lx][lz];
+      float rawRain = column.humidityMap[lx][lz];
+      float realRain = (rawRain + 1.0f) * 0.5f;
+      float forest = column.forestNoiseMap[lx][lz]; // 0..1
 
-      // Get Noise Data
-      float temp = column.temperatureMap[lx][lz];
-      float humid = column.humidityMap[lx][lz];
-      float forest = column.forestNoiseMap[lx][lz];
-
-      // --- Decision Logic ---
-
-      // 1. Cactus (Desert: Hot & Dry)
-      // High Temp (> 30C), Low Humidity
-      if (temp > 30.0f && humid < -0.5f && isSandy) {
-        if (GetPosRand(gx, gz, seed, 300) <
-            generator.GetConfig().cactusDensity) {
-          GenerateCactus(chunk, gx, height, gz, seed);
-        }
+      // Density scaling: Use forest value
+      // as probability of placement
+      if (std::uniform_real_distribution<float>(0, 1)(rng) > forest) {
+        continue;
       }
 
-      // 2. Trees (Need Forest Noise + suitable Temp/Humid)
-      if (forest > 0.2f && isFertile) {
-
-        // Pine (Cold < 5C)
-        // Also allow on SNOW if we had it, but usually surface is soil then
-        // covered
-        if (temp < 5.0f) {
-          // Allow on Coarse Dirt for Tundra trees
-          if (surfaceBlock == COARSE_DIRT || isFertile) {
-            if (GetPosRand(gx, gz, seed, 400) <
-                generator.GetConfig().pineDensity) {
-              GenerateSpruce(chunk, gx, height, gz, seed);
-            }
-          }
-        }
-        // Oak (Moderate: 5C to 35C)
-        else if (temp >= 5.0f && temp < 35.0f && humid > -0.3f) {
-          // Jungle Logic? If Terra Preta, maybe denser?
-          // For now just standard Oak on all fertile soils
-          if (GetPosRand(gx, gz, seed, 500) <
-              generator.GetConfig().oakDensity) {
-            GenerateOak(chunk, gx, height, gz, seed);
-          }
+      const TreeGenerator *gen = TreeRegistry::Get().SelectTree(
+          realTemp, realRain, 100.0f, forest * 255.0f, (float)height / 256.0f,
+          rng);
+      if (gen) {
+        const TreeStructure *structure =
+            TreeRegistry::Get().GetTreeStructure(gen->generator);
+        if (structure) {
+          GenerateTree(chunk, gx, height + 1, gz, *structure, rng, hood);
         }
       }
     }

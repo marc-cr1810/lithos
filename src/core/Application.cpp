@@ -11,6 +11,7 @@
 #include "imgui.h"
 
 #include "../world/Block.h"
+#include "../world/decorators/TreeRegistry.h"
 #include "../world/gen/BlockLayerConfig.h"
 #include "../world/gen/Landform.h"
 #include "../world/gen/RockStrata.h"
@@ -94,6 +95,7 @@ void Application::Init() {
   RockStrataRegistry::Get().LoadProvinces(
       "assets/worldgen/geologicprovinces.json");
   BlockLayerConfig::Get().Load("assets/worldgen/blocklayers.json");
+  TreeRegistry::Get().LoadConfigs("assets/worldgen/treegen.json");
   LOG_INFO("WorldGen Assets Loaded.");
 
   // Apply Config

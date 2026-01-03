@@ -3,10 +3,31 @@
 
 #include "WorldDecorator.h"
 
+#include "decorators/TreeGenConfig.h"
+#include <random>
+#include <unordered_map>
+
 class TreeDecorator : public WorldDecorator {
 public:
   virtual void Decorate(Chunk &chunk, WorldGenerator &generator,
                         const struct ChunkColumn &column) override;
+
+private:
+  struct ChunkNeighborhood {
+    Chunk *chunks[3][3];
+    World *world;
+  };
+
+  // Build the selected tree
+  void GenerateTree(Chunk &chunk, int x, int y, int z,
+                    const TreeStructure &tree, std::mt19937 &rng,
+                    const struct ChunkNeighborhood &hood);
+
+  void BuildSegment(Chunk *chunk, int x, int y, int z,
+                    const TreeSegment &segment, glm::vec3 pos, glm::vec3 dir,
+                    float width, float progress, int depth,
+                    const TreeStructure &tree, std::mt19937 &rng,
+                    const struct ChunkNeighborhood &hood);
 };
 
 #endif

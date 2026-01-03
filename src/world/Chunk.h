@@ -24,7 +24,7 @@ public:
   Chunk();
   ~Chunk();
 
-  void setWorld(World *w) { world = w; }
+  void setWorld(World *w);
   World *getWorld() const { return world; }
 
   glm::ivec3 chunkPosition; // Chunk coordinates (e.g. 0,0,0)
@@ -87,8 +87,8 @@ public:
                glm::ivec3 &outputPos, glm::ivec3 &outputPrePos);
 
 private:
-  ChunkBlock blocks[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
   World *world;
+  ChunkBlock blocks[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
   unsigned int VAO, VBO, EBO;
   int vertexCount;
   int vertexCountTransparent;

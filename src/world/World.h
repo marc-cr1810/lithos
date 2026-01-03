@@ -55,6 +55,8 @@ public:
   std::shared_ptr<Chunk> getChunk(int chunkX, int chunkY, int chunkZ);
   std::shared_ptr<const Chunk> getChunk(int chunkX, int chunkY,
                                         int chunkZ) const;
+  // Optimized neighbor cleanup
+  void getNeighbors(int cx, int cy, int cz, Chunk *chunks[3][3]);
 
   // Global world coordinates
   WorldGenConfig config;

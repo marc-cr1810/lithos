@@ -5,10 +5,11 @@
 
 class AirBlock : public Block {
 public:
-    AirBlock() : Block(BlockType::AIR, "Air") {}
-    bool isSolid() const override { return false; }
-    bool isOpaque() const override { return false; }
-    bool isActive() const override { return false; }
+  AirBlock() : Block(BlockType::AIR, "Air") {}
+  bool isSolid() const override { return false; }
+  bool isOpaque() const override { return false; }
+  bool isActive() const override { return false; }
+  bool isReplaceable() const override { return true; }
 };
 
 #endif

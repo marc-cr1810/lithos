@@ -22,7 +22,12 @@ Chunk::Chunk()
 
   for (int i = 0; i < 6; ++i)
     neighbors[i].reset();
+
+  // LOG_INFO("Chunk created at {}", (void*)this);
+  world = nullptr;
 }
+
+void Chunk::setWorld(World *w) { world = w; }
 
 Chunk::~Chunk() {
   glDeleteVertexArrays(1, &VAO);

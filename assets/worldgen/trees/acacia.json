@@ -1,0 +1,113 @@
+{
+    "treeWorldPropertyCode": "acacia",
+    "sizeMultiplier": 1,
+    "trunks": [
+        {
+            "widthLoss": 0.06,
+            "dieAt": {
+                "dist": "inverse-gaussian",
+                "avg": 0.002,
+                "var": 0
+            },
+            "branchStart": {
+                "dist": "uniform",
+                "avg": 0.5,
+                "var": 0.05
+            },
+            "branchSpacing": {
+                "dist": "uniform",
+                "avg": 0,
+                "var": 0
+            },
+            "branchVerticalAngle": {
+                "dist": "uniform",
+                "avg": 1.6,
+                "var": 0.1
+            },
+            "branchHorizontalAngle": {
+                "dist": "uniform",
+                "avg": 0,
+                "var": 3.1415
+            },
+            "branchWidthMultiplier": {
+                "dist": "uniform",
+                "avg": 1,
+                "var": 0
+            },
+            "branchWidthMultiplierEvolve": {
+                "transform": "linear",
+                "factor": 1
+            },
+            "branchQuantity": {
+                "dist": "uniform",
+                "avg": 3,
+                "var": 0
+            },
+            "branchQuantityEvolve": {
+                "transform": "linear",
+                "factor": 1
+            },
+            "angleVertEvolve": {
+                "transform": "linear",
+                "factor": 1.0
+            },
+            "dx": 0,
+            "dz": 0
+        }
+    ],
+    "branches": [
+        {
+            "widthLoss": 0.1,
+            "gravityDrag": 0,
+            "dieAt": {
+                "dist": "inverse-gaussian",
+                "avg": 0.05,
+                "var": 0
+            },
+            "branchStart": {
+                "dist": "uniform",
+                "avg": 0.6,
+                "var": 0.1
+            },
+            "branchSpacing": {
+                "dist": "uniform",
+                "avg": 0.4,
+                "var": 0
+            },
+            "branchVerticalAngle": {
+                "dist": "gaussian",
+                "avg": 1.2,
+                "var": 0.1
+            },
+            "branchHorizontalAngle": {
+                "dist": "inverse-gaussian",
+                "avg": 0,
+                "var": 3.1415
+            },
+            "branchQuantity": {
+                "dist": "uniform",
+                "avg": 3,
+                "var": 0
+            },
+            "branchQuantityEvolve": {
+                "transform": "linear",
+                "factor": 1
+            },
+            "branchWidthMultiplier": {
+                "dist": "uniform",
+                "avg": 0.6,
+                "var": 0
+            },
+            "dx": 0,
+            "dz": 0
+        }
+    ],
+    "treeBlocks": {
+        "logBlockCode": "lithos:acacia_log",
+        "leavesBlockCode": "lithos:acacia_leaves",
+        "leavesBranchyBlockCode": "lithos:acacia_leaves",
+        "vinesBlockCode": "lithos:air",
+        "vinesEndBlockCode": "lithos:air",
+        "mossDecorCode": "lithos:air"
+    }
+}

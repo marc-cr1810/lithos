@@ -823,13 +823,14 @@ BlockType WorldGenerator::GetSurfaceBlock(int x, int y, int z,
   float temp = noiseManager.GetTemperature(x, z);
   float humid = noiseManager.GetHumidity(x, z);
   float patch = noiseManager.GetSurfacePatchNoise(x, z);
+  float beach = noiseManager.GetBeachNoise(x, z);
   float fertility = humid; // Derived for now
 
   float yNormalized = (float)y / (float)config.worldHeight;
   yNormalized = std::max(0.0f, std::min(1.0f, yNormalized));
 
-  uint8_t id = BlockLayerConfig::Get().GetSurfaceBlockId(temp, humid, fertility,
-                                                         patch, yNormalized);
+  uint8_t id = BlockLayerConfig::Get().GetSurfaceBlockId(
+      temp, humid, fertility, patch, yNormalized, beach);
   return (BlockType)id;
 }
 

@@ -162,6 +162,7 @@ add_executable(lithos
     src/world/Chunk.cpp
     src/world/WorldGenerator.cpp
     src/world/CaveGenerator.cpp
+    src/world/decorators/TreeRegistry.cpp
     src/world/TreeDecorator.cpp
     src/world/FloraDecorator.cpp
     src/world/OreDecorator.cpp

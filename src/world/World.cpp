@@ -684,6 +684,23 @@ std::shared_ptr<Chunk> World::getChunk(int chunkX, int chunkY, int chunkZ) {
   return nullptr;
 }
 
+void World::getNeighbors(int cx, int cy, int cz, Chunk *chunks[3][3]) {
+  std::lock_guard<std::mutex> lock(worldMutex);
+  for (int dx = -1; dx <= 1; ++dx) {
+    for (int dz = -1; dz <= 1; ++dz) {
+      if (dx == 0 && dz == 0)
+        continue;
+      auto key = std::make_tuple(cx + dx, cy, cz + dz);
+      auto it = this->chunks.find(key); // Access member 'chunks'
+      if (it != this->chunks.end()) {
+        chunks[dx + 1][dz + 1] = it->second.get();
+      } else {
+        chunks[dx + 1][dz + 1] = nullptr;
+      }
+    }
+  }
+}
+
 std::shared_ptr<const Chunk> World::getChunk(int chunkX, int chunkY,
                                              int chunkZ) const {
   std::lock_guard<std::mutex> lock(worldMutex);

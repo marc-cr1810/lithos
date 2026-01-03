@@ -1,0 +1,102 @@
+{
+    "treeWorldPropertyCode": "jungle",
+    "sizeMultiplier": 1.4,
+    "trunks": [
+        {
+            "widthLoss": 0.06,
+            "dieAt": {
+                "dist": "inverse-gaussian",
+                "avg": 0.001,
+                "var": 0
+            },
+            "branchStart": {
+                "dist": "gaussian",
+                "avg": 0.3,
+                "var": 0.2
+            },
+            "branchSpacing": {
+                "dist": "uniform",
+                "avg": 0,
+                "var": 0
+            },
+            "branchVerticalAngle": {
+                "dist": "uniform",
+                "avg": 0.8,
+                "var": 0.1
+            },
+            "branchHorizontalAngle": {
+                "dist": "uniform",
+                "avg": 0,
+                "var": 3.1415
+            },
+            "branchWidthMultiplier": {
+                "dist": "uniform",
+                "avg": 0.15,
+                "var": 0
+            },
+            "branchWidthMultiplierEvolve": {
+                "transform": "linear",
+                "factor": 1.5
+            },
+            "branchQuantity": {
+                "dist": "uniform",
+                "avg": 5,
+                "var": 0
+            },
+            "branchWidthLossMul": 0.98,
+            "dx": 0,
+            "dz": 0
+        }
+    ],
+    "branches": [
+        {
+            "widthLoss": 0.06,
+            "gravityDrag": 0.1,
+            "dieAt": {
+                "dist": "inverse-gaussian",
+                "avg": 0.001,
+                "var": 0
+            },
+            "branchStart": {
+                "dist": "uniform",
+                "avg": 0.1,
+                "var": 0.01
+            },
+            "branchSpacing": {
+                "dist": "uniform",
+                "avg": 0.1,
+                "var": 0
+            },
+            "branchVerticalAngle": {
+                "dist": "inverse-gaussian",
+                "avg": 0.5,
+                "var": 0.2
+            },
+            "branchHorizontalAngle": {
+                "dist": "uniform",
+                "avg": 0,
+                "var": 3.1415
+            },
+            "branchQuantity": {
+                "dist": "uniform",
+                "avg": 1,
+                "var": 0
+            },
+            "branchWidthMultiplier": {
+                "dist": "uniform",
+                "avg": 0.6,
+                "var": 0
+            },
+            "dx": 0,
+            "dz": 0
+        }
+    ],
+    "treeBlocks": {
+        "logBlockCode": "lithos:jungle_log",
+        "leavesBlockCode": "lithos:jungle_leaves",
+        "leavesBranchyBlockCode": "lithos:jungle_leaves",
+        "vinesBlockCode": "lithos:air",
+        "vinesEndBlockCode": "lithos:air",
+        "mossDecorCode": "lithos:air"
+    }
+}

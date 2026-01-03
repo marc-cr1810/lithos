@@ -7,6 +7,7 @@ class LiquidBlock : public Block {
 public:
   LiquidBlock(uint8_t id, const std::string &name) : Block(id, name) {}
   bool isSolid() const override { return false; }
+  bool isReplaceable() const override { return true; }
   bool isOpaque() const override { return false; }
   RenderLayer getRenderLayer() const override {
     return RenderLayer::TRANSPARENT;

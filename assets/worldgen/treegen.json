@@ -1,0 +1,100 @@
+{
+    "treesPerChunk": {
+        "dist": "gaussian",
+        "avg": 70,
+        "var": 40
+    },
+    "shrubsPerChunk": {
+        "dist": "gaussian",
+        "avg": 90,
+        "var": 40
+    },
+    "vinesBlockGenerator": "wildvine-section-north",
+    "vinesBlockCodeEnd": "wildvine-end-north",
+    "vinesMinRain": 0.5,
+    "vinesMinTemp": 15,
+    "treegens": [
+        {
+            "generator": "oldenglishoak",
+            "weight": 3.0,
+            "minTemp": 5,
+            "maxTemp": 30,
+            "minRain": 0.3,
+            "maxRain": 1.0,
+            "minForest": 0.2
+        },
+        {
+            "generator": "birch",
+            "weight": 2.0,
+            "minTemp": 0,
+            "maxTemp": 20,
+            "minRain": 0.4,
+            "maxRain": 0.9,
+            "minForest": 0.3
+        },
+        {
+            "generator": "spruce",
+            "weight": 3.0,
+            "minTemp": -15,
+            "maxTemp": 10,
+            "minRain": 0.2,
+            "maxRain": 1.0,
+            "minForest": 0.4
+        },
+        {
+            "generator": "pine",
+            "weight": 3.0,
+            "minTemp": -20,
+            "maxTemp": 5,
+            "minRain": 0.1,
+            "maxRain": 0.8,
+            "minForest": 0.3
+        },
+        {
+            "generator": "acacia",
+            "weight": 3.0,
+            "minTemp": 25,
+            "maxTemp": 50,
+            "minRain": 0.0,
+            "maxRain": 0.4,
+            "minForest": 0.1
+        },
+        {
+            "generator": "jungle",
+            "weight": 5.0,
+            "minTemp": 20,
+            "maxTemp": 45,
+            "minRain": 0.8,
+            "maxRain": 1.0,
+            "minForest": 0.7
+        },
+        {
+            "generator": "darkoak",
+            "weight": 1.0,
+            "minTemp": 10,
+            "maxTemp": 25,
+            "minRain": 0.5,
+            "maxRain": 1.0,
+            "minForest": 0.8
+        },
+        {
+            "generator": "pale_oak",
+            "weight": 0.5,
+            "minTemp": 8,
+            "maxTemp": 20,
+            "minRain": 0.6,
+            "maxRain": 1.0,
+            "minForest": 0.9
+        },
+        {
+            "generator": "mangrove",
+            "weight": 2.0,
+            "minTemp": 15,
+            "maxTemp": 35,
+            "minRain": 0.9,
+            "maxRain": 1.0,
+            "minForest": 0.5
+        }
+    ],
+    "shrubgens": []
+}
