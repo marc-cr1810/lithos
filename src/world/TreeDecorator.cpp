@@ -12,6 +12,7 @@
 #include <fstream>
 #include <glm/glm.hpp>
 #include <iostream>
+#include <random>
 #include <vector>
 
 // Helper for neighbor caching
@@ -504,7 +505,8 @@ void TreeDecorator::Decorate(WorldGenerator &generator, WorldGenRegion &region,
       continue;
 
     const TreeGenerator *gen = TreeRegistry::Get().SelectTree(
-        realTemp, realRain, 100.0f, forest, (float)height / 256.0f, rng);
+        realTemp, realRain, 100.0f, forest,
+        (float)height / (float)generator.GetConfig().worldHeight, rng);
     if (gen) {
       const TreeStructure *structure =
           TreeRegistry::Get().GetTreeStructure(gen->generator);

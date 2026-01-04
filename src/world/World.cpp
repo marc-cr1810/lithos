@@ -1045,7 +1045,7 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection,
 
     // Vertical range usually 0..7 for 256 height
     int minY = 0;
-    int maxY = 256 / CHUNK_SIZE;
+    int maxY = (config.worldHeight + CHUNK_SIZE - 1) / CHUNK_SIZE;
 
     {
       PROFILE_SCOPE("Culling & Vis List");
@@ -1053,7 +1053,8 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection,
         for (int z = cz - renderDist; z <= cz + renderDist; ++z) {
           // 1. Cull Column First
           glm::vec3 colMin(x * CHUNK_SIZE, 0, z * CHUNK_SIZE);
-          glm::vec3 colMax(colMin.x + CHUNK_SIZE, 256, colMin.z + CHUNK_SIZE);
+          glm::vec3 colMax(colMin.x + CHUNK_SIZE, config.worldHeight,
+                           colMin.z + CHUNK_SIZE);
 
           if (!isAABBInFrustum(colMin, colMax, planes)) {
             continue; // Skip whole column

@@ -298,9 +298,11 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
       // Clamp
       if (surfaceY < 5)
         surfaceY = 5; // Bedrock
-      if (surfaceY > 255)
-        surfaceY = 255; // Clamped to 255 for Column storage? Wait/Check column
-                        // height storage.
+      // Clamp
+      if (surfaceY < 5)
+        surfaceY = 5; // Bedrock
+      if (surfaceY > config.worldHeight - 1)
+        surfaceY = config.worldHeight - 1; // Clamped to world height
 
       // Debug SurfaceY
       if (lx == 8 && lz == 8 &&
@@ -774,7 +776,7 @@ int WorldGenerator::GetHeight(int x, int z) {
     // Noise is positive. So we want Threshold(y) + NoiseSum/40.0f >= 0.
 
     int low = 1;
-    int high = 318;
+    int high = config.worldHeight - 2;
     int bestY = low;
 
     // Noise normalization for threshold comparison
