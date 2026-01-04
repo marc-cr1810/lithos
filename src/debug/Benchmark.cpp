@@ -1,6 +1,8 @@
 #include "Benchmark.h"
 #include "../world/Chunk.h"
 #include "../world/ChunkColumn.h"
+#include "../world/World.h"
+#include "../world/WorldGenRegion.h"
 #include "../world/WorldGenerator.h"
 #include "Logger.h"
 #include "Profiler.h"
@@ -42,21 +44,38 @@ void StartBenchmarkAsync(const WorldGenConfig &config, int sideSize) {
     std::vector<std::shared_ptr<Chunk>> generatedChunks;
     generatedChunks.reserve(totalColumns * (config.worldHeight / CHUNK_SIZE));
 
+    // Create minimal World for region-based decoration to work
+    World benchmarkWorld(config);
+
     for (int cx = 0; cx < sideSize; ++cx) {
       for (int cz = 0; cz < sideSize; ++cz) {
         ChunkColumn column;
         generator.GenerateColumn(column, cx, cz);
 
+        // Store column in world for region access
+        {
+          std::lock_guard<std::mutex> lock(benchmarkWorld.columnMutex);
+          benchmarkWorld.columns[{cx, cz}] =
+              std::make_unique<ChunkColumn>(column);
+        }
+
         int chunksY = config.worldHeight / CHUNK_SIZE;
         for (int cy = 0; cy < chunksY; ++cy) {
           auto c = std::make_shared<Chunk>();
           c->chunkPosition = glm::ivec3(cx, cy, cz);
-          c->setWorld(nullptr);
-          generator.GenerateChunk(*c, column); // Pass reference
+          c->setWorld(&benchmarkWorld);
+          generator.GenerateChunk(*c, column);
+
+          // Insert chunk into world for region access
+          benchmarkWorld.insertChunk(c);
 
           generatedChunks.push_back(c);
           count++;
         }
+
+        // Decoration step (now has access to chunks via benchmarkWorld)
+        WorldGenRegion region(&benchmarkWorld, cx, cz);
+        generator.Decorate(region, column);
 
         processedCols++;
         s_Status.progress = (float)processedCols / (float)totalColumns;
@@ -110,19 +129,36 @@ BenchmarkResult RunWorldGenBenchmark(const WorldGenConfig &config,
   auto start = std::chrono::high_resolution_clock::now();
   int count = 0;
 
+  // Create minimal World for region-based decoration to work
+  World benchmarkWorld(config);
+
   for (int cx = 0; cx < sideSize; ++cx) {
     for (int cz = 0; cz < sideSize; ++cz) {
       ChunkColumn column;
       generator.GenerateColumn(column, cx, cz);
 
+      // Store column in world for region access
+      {
+        std::lock_guard<std::mutex> lock(benchmarkWorld.columnMutex);
+        benchmarkWorld.columns[{cx, cz}] =
+            std::make_unique<ChunkColumn>(column);
+      }
+
       int chunksY = config.worldHeight / CHUNK_SIZE;
       for (int cy = 0; cy < chunksY; ++cy) {
-        Chunk c;
-        c.chunkPosition = glm::ivec3(cx, cy, cz);
-        c.setWorld(nullptr);
-        generator.GenerateChunk(c, column);
+        auto c = std::make_shared<Chunk>();
+        c->chunkPosition = glm::ivec3(cx, cy, cz);
+        c->setWorld(&benchmarkWorld);
+        generator.GenerateChunk(*c, column);
+
+        // Insert chunk into world for region access
+        benchmarkWorld.insertChunk(c);
         count++;
       }
+
+      // Decoration step (now has access to chunks via benchmarkWorld)
+      WorldGenRegion region(&benchmarkWorld, cx, cz);
+      generator.Decorate(region, column);
     }
   }
 

@@ -449,6 +449,7 @@ void TreeDecorator::Decorate(WorldGenerator &generator, WorldGenRegion &region,
                             generator.IsProfilingEnabled());
 
   World *world = region.getWorld();
+
   int colX = region.getCenterX();
   int colZ = region.getCenterZ();
 
