@@ -77,8 +77,15 @@ void MenuState::InitPreview() {
 
 void MenuState::UpdatePreview3D() {
   bool useBenchmark = !m_BenchmarkChunks.empty();
-  if (!m_PreviewWorld || m_PreviewWorld->worldSeed != m_Config.seed ||
-      useBenchmark) {
+
+  // Only recreate world if:
+  // 1. No world exists, OR
+  // 2. Seed changed (for live preview), AND not using benchmark chunks
+  bool needsNewWorld =
+      !m_PreviewWorld ||
+      (!useBenchmark && m_PreviewWorld->worldSeed != m_Config.seed);
+
+  if (needsNewWorld) {
     m_PreviewWorld = std::make_unique<World>(m_Config);
 
     if (useBenchmark) {
@@ -425,20 +432,54 @@ void MenuState::RenderUI(Application *app) {
           if (status.isFinished) {
             // Benchmark complete, transition to result
             std::lock_guard<std::mutex> lock(status.resultMutex);
-            BenchmarkResult res = status.result;
+
+            if (!status.result) {
+              ImGui::EndPopup();
+              ImGui::End();
+              return; // Skip if result is null
+            }
+
+            BenchmarkResult *res = status.result.get();
 
             std::string msg =
-                "Total Time: " + std::to_string(res.totalTimeMs) + " ms\n" +
-                "Chunks: " + std::to_string(res.chunksGenerated) + "\n" +
-                "Avg/Chunk: " + std::to_string(res.avgChunkTimeMs) + " ms\n\n";
+                "Total Time: " + std::to_string(res->totalTimeMs) + " ms\n" +
+                "Chunks: " + std::to_string(res->chunksGenerated) + "\n" +
+                "Avg/Chunk: " + std::to_string(res->avgChunkTimeMs) + " ms\n\n";
 
             msg += "Breakdown (Avg per Chunk):\n";
-            for (const auto &kv : res.stepAvgTimes) {
+            for (const auto &kv : res->stepAvgTimes) {
               msg +=
                   " - " + kv.first + ": " + std::to_string(kv.second) + " ms\n";
             }
             m_BenchmarkResult = msg;
-            m_BenchmarkChunks = res.generatedChunks;
+            m_BenchmarkChunks = res->generatedChunks;
+
+            // Reuse the benchmark World instead of creating a new one
+            m_PreviewWorld = std::move(res->benchmarkWorld);
+
+            // Calculate camera target based on benchmark chunk bounds
+            if (!m_BenchmarkChunks.empty()) {
+              int minX = 100000, maxX = -100000;
+              int minZ = 100000, maxZ = -100000;
+
+              for (const auto &c : m_BenchmarkChunks) {
+                if (c->chunkPosition.x < minX)
+                  minX = c->chunkPosition.x;
+                if (c->chunkPosition.x > maxX)
+                  maxX = c->chunkPosition.x;
+                if (c->chunkPosition.z < minZ)
+                  minZ = c->chunkPosition.z;
+                if (c->chunkPosition.z > maxZ)
+                  maxZ = c->chunkPosition.z;
+              }
+
+              // Center of benchmark area
+              float size = (float)CHUNK_SIZE;
+              float cx = (minX * size + (maxX + 1) * size) / 2.0f;
+              float cz = (minZ * size + (maxZ + 1) * size) / 2.0f;
+
+              m_PreviewTarget = glm::vec3(cx, m_Config.seaLevel, cz);
+            }
 
             // Log to console for easy copy/paste
             spdlog::info("=== Benchmark Results ===");
@@ -448,7 +489,9 @@ void MenuState::RenderUI(Application *app) {
             ImGui::CloseCurrentPopup();
             m_ShouldOpenResults = true;
             m_IsBenchmarkResultsOpen = true;
-            UpdatePreview3D(); // Generate preview for the benchmarked config
+
+            // No need to call UpdatePreview3D() - we already have the World
+            // with chunks
           }
 
           ImGui::EndPopup();

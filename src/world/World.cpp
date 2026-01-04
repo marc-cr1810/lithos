@@ -54,28 +54,28 @@ bool isAABBInFrustum(const glm::vec3 &min, const glm::vec3 &max,
   return true;
 }
 
-World::World(const WorldGenConfig &config)
-    : shutdown(false), config(config), worldSeed(config.seed) {
-  LOG_WORLD_INFO("World initialized with Seed: {}", worldSeed);
+World::World(const WorldGenConfig &config, bool silent)
+    : config(config), shutdown(false) {
+  worldSeed = config.seed;
+
+  // Start mesh worker threads
+  int threadCount = std::thread::hardware_concurrency();
+  if (threadCount < 2)
+    threadCount = 2;
+  for (int i = 0; i < threadCount; ++i) {
+    meshThreads.emplace_back(&World::WorkerLoop, this);
+  }
+
+  // Start generation worker threads
+  for (int i = 0; i < threadCount; ++i) {
+    genThreads.emplace_back(&World::GenerationWorkerLoop, this);
+  }
 
   m_Generator = std::make_unique<WorldGenerator>(config);
   m_Generator->GenerateFixedMaps();
 
-  // Start Mesh Threads
-  int numMeshThreads = std::thread::hardware_concurrency();
-  if (numMeshThreads < 1)
-    numMeshThreads = 1;
-
-  for (int i = 0; i < numMeshThreads; ++i) {
-    meshThreads.emplace_back(&World::WorkerLoop, this);
-  }
-
-  // Start Generation Threads (e.g., 2-4 threads)
-  int numGenThreads = std::thread::hardware_concurrency() / 2;
-  if (numGenThreads < 1)
-    numGenThreads = 1;
-  for (int i = 0; i < numGenThreads; ++i) {
-    genThreads.emplace_back(&World::GenerationWorkerLoop, this);
+  if (!silent) {
+    LOG_WORLD_INFO("World initialized with Seed: {}", worldSeed);
   }
 }
 
