@@ -16,14 +16,13 @@
 
 // Helper for neighbor caching
 
-void TreeDecorator::GenerateTree(Chunk &chunk, int x, int y, int z,
+void TreeDecorator::GenerateTree(WorldGenRegion *region, int x, int y, int z,
                                  const TreeStructure &tree, std::mt19937 &rng,
                                  const ChunkNeighborhood &hood) {
-  // CRASH GUARD: Verify World pointer
   // Determine World Limits safely
   int maxHeight = 320; // Default for benchmark
-  if (chunk.getWorld()) {
-    maxHeight = chunk.getWorld()->config.worldHeight;
+  if (region && region->getWorld()) {
+    maxHeight = region->getWorld()->config.worldHeight;
   }
 
   // Basic root position check
@@ -73,12 +72,12 @@ void TreeDecorator::GenerateTree(Chunk &chunk, int x, int y, int z,
   float rootDz = rootSeg.dz;
 
   int totalSegments = 0;
-  BuildSegment(&chunk, x, y, z, rootSeg, treeOrigin, rootDx, 0.0f, rootDz,
+  BuildSegment(region, x, y, z, rootSeg, treeOrigin, rootDx, 0.0f, rootDz,
                rootAngleVert, rootAngleHori, width, 0.0f, 0, totalSegments,
                tree, rng, hood);
 }
 
-void TreeDecorator::BuildSegment(Chunk *chunk, int x, int y, int z,
+void TreeDecorator::BuildSegment(WorldGenRegion *region, int x, int y, int z,
                                  const TreeSegment &segment,
                                  glm::vec3 treeOrigin, float dx, float dy,
                                  float dz, float angleVerStart,
@@ -87,7 +86,7 @@ void TreeDecorator::BuildSegment(Chunk *chunk, int x, int y, int z,
                                  const TreeStructure &tree, std::mt19937 &rng,
                                  const ChunkNeighborhood &hood) {
 
-  if (!chunk)
+  if (!region)
     return;
 
   // VS: Prevent infinite recursion
@@ -103,14 +102,12 @@ void TreeDecorator::BuildSegment(Chunk *chunk, int x, int y, int z,
   }
   totalSegments++;
 
-  World *world = chunk->getWorld();
+  World *world = region->getWorld();
   int maxHeight = world ? world->config.worldHeight : 320;
 
   float sizeMultiplier = tree.sizeMultiplier;
   if (sizeMultiplier <= 0.0f)
     sizeMultiplier = 1.0f;
-
-  glm::ivec3 chunkOrigin = chunk->chunkPosition * 32;
 
   // VS: Initialize deltas from base position (NOT direction vector!)
   // Note: angles are now passed in, matching VS logic
@@ -277,33 +274,23 @@ void TreeDecorator::BuildSegment(Chunk *chunk, int x, int y, int z,
     // VS: Position = treeOrigin + deltas
     glm::vec3 currentPos(treeOrigin.x + dx, treeOrigin.y + dy,
                          treeOrigin.z + dz);
-    // 1. Place Log
+    // 1. Place Log using world coordinates via region
     glm::ivec3 bPos = glm::vec3(currentPos);
     if (bPos.y >= 0 && bPos.y < maxHeight) {
-      int lx = bPos.x - chunkOrigin.x;
-      int ly = bPos.y - chunkOrigin.y;
-      int lz = bPos.z - chunkOrigin.z;
+      // Get current block at world position
+      BlockType currentType = region->getBlock(bPos.x, bPos.y, bPos.z);
+      Block *currentBlock = BlockRegistry::getInstance().getBlock(currentType);
 
-      // Bounds Check: confine to local chunk
-      if (lx >= 0 && lx < 32 && lz >= 0 && lz < 32) {
-        BlockType currentType =
-            (BlockType)chunk->getBlock(lx, ly, lz).getType();
-        Block *currentBlock =
-            BlockRegistry::getInstance().getBlock(currentType);
+      if (currentBlock->isSolid() && !currentBlock->isReplaceable() &&
+          currentType != currentSegmentBlockId && currentType != logId &&
+          currentType != branchyId && currentType != leavesId) {
+        alive = false;
+        break;
+      }
 
-        if (currentBlock->isSolid() && !currentBlock->isReplaceable() &&
-            currentType != currentSegmentBlockId && currentType != logId &&
-            currentType != branchyId && currentType != leavesId) {
-          alive = false;
-          break;
-        }
-
-        // Replace if air or replaceable
-        if (currentBlock->isReplaceable() || currentType == AIR) {
-          chunk->setBlock(lx, ly, lz, currentSegmentBlockId);
-        }
-      } else {
-        // Neighbor placement disabled
+      // Replace if air or replaceable
+      if (currentBlock->isReplaceable() || currentType == AIR) {
+        region->setBlock(bPos.x, bPos.y, bPos.z, currentSegmentBlockId);
       }
     }
 
@@ -330,16 +317,16 @@ void TreeDecorator::BuildSegment(Chunk *chunk, int x, int y, int z,
       const TreeSegment &branchSeg = tree.branches[branchIdx];
 
       curWidth =
-          GrowBranches(chunk, x, y, z, quantity, branchSeg, depth + 1, curWidth,
-                       branchWidthMultiplierStart, currentSequence, angleHor,
-                       dx, dy, dz, treeOrigin, trunkOffsetX, trunkOffsetZ,
-                       totalSegments, tree, rng, hood);
+          GrowBranches(region, x, y, z, quantity, branchSeg, depth + 1,
+                       curWidth, branchWidthMultiplierStart, currentSequence,
+                       angleHor, dx, dy, dz, treeOrigin, trunkOffsetX,
+                       trunkOffsetZ, totalSegments, tree, rng, hood);
     }
   } // End while loop
 }
 
 float TreeDecorator::GrowBranches(
-    Chunk *chunk, int x, int y, int z, int branchQuantity,
+    WorldGenRegion *region, int x, int y, int z, int branchQuantity,
     const TreeSegment &branchSeg, int newDepth, float curWidth,
     float branchWidthMultiplierStart, float currentSequence, float angleHor,
     float dx, float dy, float dz, glm::vec3 treeOrigin, float trunkOffsetX,
@@ -390,7 +377,7 @@ float TreeDecorator::GrowBranches(
     float branchAngleHor = horAngle;
 
     // Recursive call
-    BuildSegment(chunk, x, y, z, branchSeg, treeOrigin, dx + trunkOffsetX, dy,
+    BuildSegment(region, x, y, z, branchSeg, treeOrigin, dx + trunkOffsetX, dy,
                  dz + trunkOffsetZ, branchAngleVer, branchAngleHor, branchWidth,
                  0, newDepth, totalSegments, tree, rng, hood);
 
@@ -447,66 +434,37 @@ float TreeDecorator::GrowBranches(
 // Public API - Decorator Interface
 // ======================================================================
 
+// Chunk-based decoration (DEPRECATED - use region-based decoration)
+// Legacy method kept for interface compatibility but does nothing
+// All tree generation now uses region-based decoration for cross-chunk support
 void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
                              const ChunkColumn &column) {
-  PROFILE_SCOPE_CONDITIONAL("Decorator_Trees", generator.IsProfilingEnabled());
+  // Intentionally empty - all decoration now happens via region-based Decorate
+}
 
-  glm::ivec3 cp = chunk.chunkPosition;
+// Region-based decoration (cross-chunk tree generation)
+void TreeDecorator::Decorate(WorldGenerator &generator, WorldGenRegion &region,
+                             const ChunkColumn &column) {
+  PROFILE_SCOPE_CONDITIONAL("Decorator_Trees_Region",
+                            generator.IsProfilingEnabled());
 
-  // Cache Neighbors (One-time Global Lock)
-  ChunkNeighborhood hood;
-  hood.world = chunk.getWorld();
-  hood.chunks[1][1] = &chunk;
+  World *world = region.getWorld();
+  int colX = region.getCenterX();
+  int colZ = region.getCenterZ();
 
-  if (hood.world) {
-    // We need to look up neighbors safely.
-    // Use GenerationWorkerLoop context if
-    // possible, but here we only have
-    // generator. We can use
-    // world->getChunk, which locks
-    // worldMutex. Doing it 8 times starts
-    // to be expensive, but less than 1000
-    // times. BUT: getChunk is
-    // std::shared_ptr return. We need raw
-    // pointers for the cache (careful with
-    // lifetime). Since we are in
-    // Generation, and chunks persist until
-    // Unload (main thread), and we hold
-    // shared_ptrs in the World map... It
-    // should be safe-ish if we hold
-    // shared_ptrs locally?
-
-    // Optimization: Lock ONCE and get
-    // all 8. World::getChunk locks
-    // individually. We can add a
-    // World::getNeighbors(int x, int y, int
-    // z, OutputArray) helper? Or just call
-    // getChunk. 8 locks is infinitely
-    // better than 1000 locks.
-
-    // Optimization: Neighbor lookup
-    // disabled for stability.
-    // hood.world->getNeighbors(cp.x, cp.y,
-    // cp.z, hood.chunks);
-    hood.chunks[1][1] = &chunk;
-
-  } else {
-    // Benchmark mode: no neighbors
-    for (int i = 0; i < 3; ++i)
-      for (int j = 0; j < 3; ++j)
-        if (i != 1 || j != 1)
-          hood.chunks[i][j] = nullptr;
-  }
+  int startX = colX * CHUNK_SIZE;
+  int startZ = colZ * CHUNK_SIZE;
 
   int seed = generator.GetSeed();
+  std::mt19937 rng(seed + startX * 342 + startZ * 521);
 
-  int startX = cp.x * CHUNK_SIZE;
-  int startZ = cp.z * CHUNK_SIZE;
+  // ChunkNeighborhood is less relevant with region, but keep for compatibility
+  ChunkNeighborhood hood;
+  hood.world = world;
+  for (int i = 0; i < 3; ++i)
+    for (int j = 0; j < 3; ++j)
+      hood.chunks[i][j] = nullptr;
 
-  std::mt19937 rng(seed + startX * 342 + startZ * 521); // Distinct seed per
-                                                        // chunk column
-
-  // Try X attempts from Global Config
   const auto &config = TreeRegistry::Get().GetConfig();
   int attempts = (int)config.treesPerChunk.Sample(rng);
   attempts = attempts < 0 ? 0 : attempts;
@@ -519,89 +477,39 @@ void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
     int gz = startZ + lz;
     int height = column.getHeight(lx, lz);
 
-    // Check bounds and sea level
     if (height < generator.GetConfig().seaLevel)
       continue;
 
-    int cyStart = cp.y * CHUNK_SIZE;
-    int cyEnd = cyStart + CHUNK_SIZE;
+    // Get surface block using region
+    BlockType surfaceBlock = region.getBlock(gx, height, gz);
 
-    // If the base of the tree is in this
-    // chunk (or close enough that we should
-    // start it)
-    if (height >= cyStart && height < cyEnd) {
-      // Check block
-      BlockType surfaceBlock = AIR;
-      int ly = height - cyStart;
-      if (ly >= 0 && ly < CHUNK_SIZE) {
-        surfaceBlock = (BlockType)chunk.getBlock(lx, ly, lz).getType();
+    bool isSoil = (surfaceBlock == GRASS || surfaceBlock == DIRT ||
+                   surfaceBlock == PODZOL || surfaceBlock == MUD ||
+                   surfaceBlock == SAND || surfaceBlock == GRAVEL ||
+                   surfaceBlock == COARSE_DIRT || surfaceBlock == TERRA_PRETA ||
+                   surfaceBlock == PEAT || surfaceBlock == CLAY ||
+                   surfaceBlock == CLAYSTONE || surfaceBlock == SNOW ||
+                   surfaceBlock == SNOW_LAYER);
+
+    if (!isSoil)
+      continue;
+
+    float realTemp = column.temperatureMap[lx][lz];
+    float rawRain = column.humidityMap[lx][lz];
+    float realRain = (rawRain + 1.0f) * 0.5f;
+    float forest = column.forestNoiseMap[lx][lz];
+
+    if (std::uniform_real_distribution<float>(0, 1)(rng) > forest)
+      continue;
+
+    const TreeGenerator *gen = TreeRegistry::Get().SelectTree(
+        realTemp, realRain, 100.0f, forest, (float)height / 256.0f, rng);
+    if (gen) {
+      const TreeStructure *structure =
+          TreeRegistry::Get().GetTreeStructure(gen->generator);
+      if (structure) {
+        GenerateTree(&region, gx, height, gz, *structure, rng, hood);
       }
-
-      // Updated Soil Check with extensive
-      // list
-      bool isSoil = (surfaceBlock == GRASS || surfaceBlock == DIRT ||
-                     surfaceBlock == PODZOL || surfaceBlock == MUD ||
-                     surfaceBlock == SAND || surfaceBlock == GRAVEL ||
-                     surfaceBlock == COARSE_DIRT ||
-                     surfaceBlock == TERRA_PRETA || surfaceBlock == PEAT ||
-                     surfaceBlock == CLAY || surfaceBlock == CLAYSTONE ||
-                     surfaceBlock == SNOW || surfaceBlock == SNOW_LAYER);
-
-      if (!isSoil) {
-        continue;
-      }
-
-      // Climate
-      float realTemp = column.temperatureMap[lx][lz];
-      float rawRain = column.humidityMap[lx][lz];
-      float realRain = (rawRain + 1.0f) * 0.5f;
-      float forest = column.forestNoiseMap[lx][lz]; // 0..1
-
-      // Density scaling: Use forest value
-      // as probability of placement
-      if (std::uniform_real_distribution<float>(0, 1)(rng) > forest) {
-        continue;
-      }
-
-      const TreeGenerator *gen = TreeRegistry::Get().SelectTree(
-          realTemp, realRain, 100.0f, forest, (float)height / 256.0f, rng);
-      if (gen) {
-        const TreeStructure *structure =
-            TreeRegistry::Get().GetTreeStructure(gen->generator);
-        if (structure) {
-          // VS: Tree generation starts FROM the passed coordinate, growing
-          // upwards. So we pass the ground block (height), not the air block.
-          // The algorithm typically steps y+1 for the first segment.
-          GenerateTree(chunk, gx, height, gz, *structure, rng, hood);
-        } else {
-          LOG_ERROR("TreeFail: Structure not found for {}", gen->generator);
-        }
-      } else {
-        // Debug log for failure (throttled)
-        static int failCount = 0;
-        if (failCount++ < 10) {
-          // LOG_INFO("TreeFail: SelectTree returned null. T:{} R:{} F:{} H:{}",
-          //          realTemp, realRain, forest, height);
-        }
-      }
-    }
-  }
-}
-
-// Region-based decoration (delegates to chunk-based for now)
-void TreeDecorator::Decorate(WorldGenerator &generator, WorldGenRegion &region,
-                             const ChunkColumn &column) {
-  PROFILE_SCOPE_CONDITIONAL("Decorator_Trees_Region",
-                            generator.IsProfilingEnabled());
-
-  World *world = region.getWorld();
-  int colX = region.getCenterX();
-  int colZ = region.getCenterZ();
-
-  for (int y = 0; y < 8; y++) {
-    auto chunk = world->getChunk(colX, y, colZ);
-    if (chunk) {
-      Decorate(*chunk, generator, column);
     }
   }
 }
