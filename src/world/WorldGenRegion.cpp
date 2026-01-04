@@ -124,6 +124,7 @@ void WorldGenRegion::setBlock(int x, int y, int z, BlockType type) {
   }
 
   chunk->setBlock(lx, ly, lz, type);
+  chunk->needsLightingUpdate = true;
 }
 
 Block *WorldGenRegion::getBlockPtr(int x, int y, int z) const {
@@ -206,4 +207,5 @@ void WorldGenRegion::setBlock(int x, int y, int z, Block *block) {
   }
 
   chunk->setBlock(lx, ly, lz, static_cast<BlockType>(block->getId()));
+  chunk->needsLightingUpdate = true;
 }

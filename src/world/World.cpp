@@ -405,6 +405,19 @@ void World::GenerationWorkerLoop() {
             // Create WorldGenRegion and decorate
             WorldGenRegion region(this, targetX, targetZ);
             generator.Decorate(region, *target);
+
+            // Re-queue chunks for mesh/light update if they were modified
+            for (int Lx = -1; Lx <= 1; Lx++) {
+              for (int Lz = -1; Lz <= 1; Lz++) {
+                for (int Ly = 0; Ly < 8; Ly++) {
+                  std::shared_ptr<Chunk> c =
+                      getChunk(targetX + Lx, Ly, targetZ + Lz);
+                  if (c && c->needsLightingUpdate) {
+                    QueueMeshUpdate(c, false);
+                  }
+                }
+              }
+            }
           }
         }
       }
