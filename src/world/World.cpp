@@ -10,6 +10,7 @@
 #include <cmath>
 #include <glm/gtc/matrix_access.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/norm.hpp>
 #include <iostream>
 #include <limits>
 
@@ -102,22 +103,26 @@ void World::WorkerLoop() {
     std::shared_ptr<Chunk> c = nullptr;
     {
       std::unique_lock<std::mutex> lock(queueMutex);
-      condition.wait(lock, [this] {
-        return !meshQueue.empty() || !meshQueueHighPrio.empty() || shutdown;
-      });
+      condition.wait(lock, [this] { return !meshQueue.empty() || shutdown; });
 
       if (shutdown)
         break;
 
-      // Check high-priority queue first (block breaks)
-      if (!meshQueueHighPrio.empty()) {
-        c = meshQueueHighPrio.front();
-        meshQueueHighPrio.pop_front();
-        meshSet.erase(c.get());
-      } else if (!meshQueue.empty()) {
-        c = meshQueue.front();
-        meshQueue.pop_front();
-        meshSet.erase(c.get());
+      if (!meshQueue.empty()) {
+        auto task = meshQueue.top();
+        meshQueue.pop();
+
+        c = task.chunk;
+        float priority = task.priority;
+
+        // Discard obsolete tasks (higher priority task came later)
+        auto it = meshPriorityMap.find(c.get());
+        if (it != meshPriorityMap.end() && priority < it->second) {
+          continue; // Newer task is in the queue
+        }
+
+        // We are processing this chunk, remove from priority map
+        meshPriorityMap.erase(c.get());
       }
     }
 
@@ -172,15 +177,31 @@ void World::Update() {
         toUpload.push_back(std::move(uploadQueue[i]));
       }
 
-      // Remove from queue (erasing from front is O(N) for vector but N is small
-      // here)
+      // Remove from queue
       uploadQueue.erase(uploadQueue.begin(), uploadQueue.begin() + count);
     }
   }
 
-  for (auto &t : toUpload) {
-    if (std::get<0>(t))
-      std::get<0>(t)->uploadMesh(std::get<1>(t), std::get<2>(t));
+  // Priority-based sorting of uploads (Main Thread)
+  if (!toUpload.empty()) {
+    std::sort(toUpload.begin(), toUpload.end(),
+              [this](const auto &a, const auto &b) {
+                auto chunkA = std::get<0>(a);
+                auto chunkB = std::get<0>(b);
+
+                glm::vec3 posA = glm::vec3(chunkA->chunkPosition * CHUNK_SIZE);
+                glm::vec3 posB = glm::vec3(chunkB->chunkPosition * CHUNK_SIZE);
+
+                float distSqA = glm::distance2(m_CameraPos, posA);
+                float distSqB = glm::distance2(m_CameraPos, posB);
+
+                return distSqA < distSqB; // Closer first
+              });
+
+    for (auto &t : toUpload) {
+      if (std::get<0>(t))
+        std::get<0>(t)->uploadMesh(std::get<1>(t), std::get<2>(t));
+    }
   }
 }
 
@@ -213,17 +234,30 @@ void World::updateBlocks() {
   }
 }
 
-void World::QueueMeshUpdate(std::shared_ptr<Chunk> ptr, bool priority) {
-  if (ptr) {
-    Chunk *c = ptr.get();
-    std::lock_guard<std::mutex> lock(queueMutex);
-    if (meshSet.find(c) == meshSet.end()) {
-      // Add to appropriate queue based on priority
-      if (priority)
-        meshQueueHighPrio.push_back(ptr);
-      else
-        meshQueue.push_back(ptr);
-      meshSet.insert(c);
+void World::QueueMeshUpdate(std::shared_ptr<Chunk> c, float priority) {
+  if (!c)
+    return;
+
+  // Default priority based on distance and view angle
+  if (priority < 0) {
+    float dist = glm::distance(m_CameraPos, c->getCenter());
+
+    // View Angle Bias: Boost priority for chunks in front of the camera
+    glm::vec3 toChunk = glm::normalize(c->getCenter() - m_CameraPos);
+    float dot = glm::dot(m_CameraFront, toChunk);
+    float angleBias = (dot > 0.5f) ? 2.0f : 1.0f; // 60 degree cone
+
+    priority = angleBias / (dist + 1.0f);
+  }
+
+  std::shared_ptr<Chunk> ptr = c;
+  {
+    std::unique_lock<std::mutex> lock(queueMutex);
+
+    auto it = meshPriorityMap.find(c.get());
+    if (it == meshPriorityMap.end() || priority > it->second) {
+      meshPriorityMap[c.get()] = priority;
+      meshQueue.push({ptr, priority});
       condition.notify_one();
     }
   }
@@ -318,8 +352,10 @@ void World::GenerationWorkerLoop() {
           std::shared_ptr<Chunk> n = it->second;
           c->neighbors[dirs[i]] = n;
           n->neighbors[opps[i]] = c;
+          n->updateSealedStatus(); // Neighbor might now be sealed
         }
       }
+      c->updateSealedStatus(); // This chunk might be sealed
     }
 
     std::shared_ptr<Chunk> c = getChunk(x, y, z); // Safe retrieval
@@ -332,7 +368,7 @@ void World::GenerationWorkerLoop() {
       c->spreadLight();
 
       // Queue mesh update
-      QueueMeshUpdate(c, false);
+      QueueMeshUpdate(c);
 
       // Update neighbors
       int dirs_indices[] = {
@@ -342,14 +378,15 @@ void World::GenerationWorkerLoop() {
       for (int i = 0; i < 6; i++) {
         auto n = c->getNeighbor(dirs_indices[i]);
         if (n) {
-          // re-calculate sunlight because we might have just blocked the sky.
+          // re-calculate sunlight because we might have just blocked the
+          // sky.
           if (dirs_indices[i] == Chunk::DIR_BOTTOM) {
             n->calculateSunlight();
             n->calculateBlockLight();
           }
 
           n->spreadLight();
-          QueueMeshUpdate(n, false);
+          QueueMeshUpdate(n);
         }
       }
 
@@ -375,8 +412,8 @@ void World::GenerationWorkerLoop() {
               // We don't hold the lock for the whole 3x3x8 search to avoid
               // deadlock, but we must check chunks map safely. Actually
               // getChunk uses worldMutex, but we are inside
-              // GenerationWorkerLoop which might be called while holding other
-              // locks. However, getChunk is generally safe to call.
+              // GenerationWorkerLoop which might be called while holding
+              // other locks. However, getChunk is generally safe to call.
               if (!this->getChunk(colX + dx, y, colZ + dz)) {
                 return nullptr;
               }
@@ -394,7 +431,8 @@ void World::GenerationWorkerLoop() {
 
           ChunkColumn *target = isColumnReady(targetX, targetZ);
           if (target) {
-            // Mark as decorated FIRST under lock if possible (to avoid race)
+            // Mark as decorated FIRST under lock if possible (to avoid
+            // race)
             {
               std::lock_guard<std::mutex> lock(columnMutex);
               if (target->decorated)
@@ -406,7 +444,8 @@ void World::GenerationWorkerLoop() {
             WorldGenRegion region(this, targetX, targetZ);
             generator.Decorate(region, *target);
 
-            // 1. Recalculate Lighting synchronously Top-Down TO prevent cutoffs
+            // 1. Recalculate Lighting synchronously Top-Down TO prevent
+            // cutoffs
             for (int Lx = -1; Lx <= 1; Lx++) {
               for (int Lz = -1; Lz <= 1; Lz++) {
                 for (int Ly = 7; Ly >= 0; Ly--) {
@@ -429,7 +468,7 @@ void World::GenerationWorkerLoop() {
                   std::shared_ptr<Chunk> c =
                       getChunk(targetX + Lx, Ly, targetZ + Lz);
                   if (c && c->meshDirty) { // setBlock sets meshDirty=true
-                    QueueMeshUpdate(c, false);
+                    QueueMeshUpdate(c);
                   }
                 }
               }
@@ -518,9 +557,9 @@ void World::loadChunks(const glm::vec3 &playerPos, int renderDistance,
           for (int y = 0; y < chunksY; ++y) {
             float priority = basePriority;
 
-            // Minor adjustments to order within the column (Surface first, then
-            // others) This ensures they are grouped but critical ones processed
-            // first
+            // Minor adjustments to order within the column (Surface first,
+            // then others) This ensures they are grouped but critical ones
+            // processed first
             int distToSurface = std::abs(y - 2); // Assume Y=2 is center
             priority -= (float)distToSurface *
                         0.1f; // Tiny penalty for being away from center
@@ -647,15 +686,17 @@ void World::unloadChunks(const glm::vec3 &playerPos, int renderDistance) {
       for (int i = 0; i < 6; ++i) {
         if (auto neighbor = chunkToUnload->getNeighbor(dirs[i])) {
           neighbor->neighbors[opps[i]].reset();
-          chunkToUnload->neighbors[dirs[i]].reset();
+          neighbor
+              ->updateSealedStatus(); // Neighbors are now unsealed on this face
         }
       }
 
       // Remove from mesh queue if present
       {
         std::lock_guard<std::mutex> lock(queueMutex);
-        meshSet.erase(chunkToUnload.get());
-        // Note: Can't easily remove from deque, but meshSet prevents processing
+        meshPriorityMap.erase(chunkToUnload.get());
+        // Note: Can't easily remove from deque, but erasing from map
+        // prevents processing
       }
 
       // Remove from upload queue if present (CRITICAL!)
@@ -753,7 +794,7 @@ void World::insertChunk(std::shared_ptr<Chunk> chunk) {
   }
 
   // Queue for mesh update immediately so it shows up
-  QueueMeshUpdate(chunk, true);
+  QueueMeshUpdate(chunk, 1000000.0f);
 }
 
 std::shared_ptr<Chunk> World::getChunk(int chunkX, int chunkY, int chunkZ) {
@@ -939,7 +980,7 @@ void World::setBlock(int x, int y, int z, BlockType type) {
 
     // Mark for lighting recalculation (done in worker thread)
     c->needsLightingUpdate = true;
-    QueueMeshUpdate(c, true); // High priority for instant visual feedback
+    QueueMeshUpdate(c, 1000000.0f); // High priority for instant visual feedback
 
     // Update neighbor chunks
     int nDx[] = {-1, 1, 0, 0, 0, 0};
@@ -951,15 +992,16 @@ void World::setBlock(int x, int y, int z, BlockType type) {
           getChunk(cx + nDx[i], cy + nDy[i], cz + nDz[i]);
       if (n) {
         n->needsLightingUpdate = true;
-        QueueMeshUpdate(n, true);
+        QueueMeshUpdate(n, 1000000.0f);
       }
     }
 
     // If we placed a light source, or removed one, we must update neighbors
     // that light might reach Simple but expensive approach: Update all 6
-    // neighbors + diagonals? For now, let's just stick to immediate neighbors
-    // Light propagation is handled in spreadLight() which pushes to queues.
-    // It sets meshDirty. But now meshDirty does nothing unless we check it.
+    // neighbors + diagonals? For now, let's just stick to immediate
+    // neighbors Light propagation is handled in spreadLight() which pushes
+    // to queues. It sets meshDirty. But now meshDirty does nothing unless
+    // we check it.
     // TODO: Ideally spreadLight should call QueueMeshUpdate instead of just
     // setting dirty. But spreadLight operates on many chunks.
 
@@ -970,8 +1012,8 @@ void World::setBlock(int x, int y, int z, BlockType type) {
   // Check for light propagation downwards (Sky Light)
   // If we placed a block, we blocked sky light.
   // If we removed a block, we opened sky light.
-  // This is handled by calculateSunlight -> but we need to propagate to lower
-  // chunks
+  // This is handled by calculateSunlight -> but we need to propagate to
+  // lower chunks
   if (c) {
     if (type == AIR) {
       // Block removed - sunlight might go down
@@ -980,7 +1022,7 @@ void World::setBlock(int x, int y, int z, BlockType type) {
         lower->calculateSunlight();
         lower->calculateBlockLight();
         lower->spreadLight();
-        QueueMeshUpdate(lower, true);
+        QueueMeshUpdate(lower, 1000000.0f);
       }
     } else {
       // Block placed - might shadow lower chunk
@@ -989,10 +1031,10 @@ void World::setBlock(int x, int y, int z, BlockType type) {
         lower->calculateSunlight();
         lower->calculateBlockLight();
         lower->spreadLight();
-        QueueMeshUpdate(lower, true);
+        QueueMeshUpdate(lower, 1000000.0f);
 
-        // Also update neighbors of this lower chunk, as light might have spread
-        // to them
+        // Also update neighbors of this lower chunk, as light might have
+        // spread to them
         int nDx[] = {-1, 1, 0, 0};
         int nDz[] = {0, 0, -1, 1};
         for (int i = 0; i < 4; ++i) {
@@ -1027,7 +1069,10 @@ void World::setBlock(int x, int y, int z, BlockType type) {
 }
 
 int World::render(Shader &shader, const glm::mat4 &viewProjection,
-                  const glm::vec3 &cameraPos, int renderDistInput) {
+                  const glm::vec3 &cameraPos, const glm::vec3 &cameraFront,
+                  int renderDistInput) {
+  m_CameraPos = cameraPos;
+  m_CameraFront = cameraFront;
   // Collect Visible Chunks under lock
   std::vector<std::shared_ptr<Chunk>> visibleChunks;
   visibleChunks.reserve(chunks.size());
@@ -1068,19 +1113,25 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection,
 
             std::shared_ptr<Chunk> c = it->second;
 
+            // Vertical Culling
             glm::vec3 min(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE);
             glm::vec3 max = min + glm::vec3(CHUNK_SIZE);
 
-            bool visible = isAABBInFrustum(min, max, planes);
+            if (!isAABBInFrustum(min, max, planes)) {
+              continue;
+            }
 
+            // Mesh triggers
             if (c->meshDirty) {
-              QueueMeshUpdate(c, visible);
+              QueueMeshUpdate(c, 10000.0f); // High priority if in view
               c->meshDirty = false;
             }
 
-            if (visible) {
-              visibleChunks.push_back(c);
-            }
+            // Skip rendering empty or buried chunks
+            if (c->isAllAir || c->isSealed)
+              continue;
+
+            visibleChunks.push_back(c);
           }
         }
       }
@@ -1091,10 +1142,6 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection,
   int count = 0;
 
   // Pass 1: Opaque
-  // Optimization: Sort Front-to-Back for opaque (minimizes overdraw)
-  // Sort by distance (front to back for opaque? actually opaque doesn't
-  // strictly need it but helps early Z. Transparent MUST be back to front.)
-  // Let's sort front-to-back for opaque optimization
   {
     PROFILE_SCOPE("Sort Chunks");
     std::sort(visibleChunks.begin(), visibleChunks.end(),
@@ -1111,26 +1158,9 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection,
   }
 
   // Render Opaque
-  // Shader setup...
-  shader.use();
-  // Argument name is 'viewProjection'.
-  // We should assume shader needs VP.
-  // Actually shader code likely uses "projection" and "view" separate or "vp"?
-  // Let's rely on main setup or uniform name.
-  // Actually: src/main.cpp passes "cullMatrix" (P*V) as 2nd arg.
-  // Chunk::render just uses it? No, checking Chunk::render...
-  // Chunk::render doesn't use it. It sets "model".
-  // World::render has shader reference.
-  // Wait, looking at World.cpp original code...
-
-  // Original code didn't set "view" or "projection" here?
-  // Ah, lines 926+ in original file might set them?
-  // I replaced loop.
-  // Let's check where I am editing.
-
-  // Render Opaque
   {
     PROFILE_SCOPE("Render Opaque");
+    shader.use();
     for (const auto &c : visibleChunks) {
       if (c) {
         c->render(shader, viewProjection, 0); // Opaque
@@ -1140,32 +1170,17 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection,
   }
 
   // Pass 2: Transparent
-  // SORT Back-to-Front for correct transparency blending
-  // We reuse the list but reverse it?
-  // Actually, we just iterate backwards if we sorted Front-to-Back above.
-  // Or just re-sort/reverse.
-  // Iterating backwards is cheapest.
-
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glDepthMask(GL_FALSE); // Disable depth write for transparent pass
 
-  // Iterate backwards (Far to Near)
+  // Sort and Draw Transparent (Far to Near)
   {
-    PROFILE_SCOPE("Transp Sort");
+    PROFILE_SCOPE("Transp Pass");
     for (auto it = visibleChunks.rbegin(); it != visibleChunks.rend(); ++it) {
       const auto &c = *it;
       if (c) {
         c->sortAndUploadTransparent(cameraPos);
-      }
-    }
-  }
-
-  {
-    PROFILE_SCOPE("Transp Draw");
-    for (auto it = visibleChunks.rbegin(); it != visibleChunks.rend(); ++it) {
-      const auto &c = *it;
-      if (c) {
         c->render(shader, viewProjection, 1); // Transparent
       }
     }
@@ -1192,8 +1207,8 @@ bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist,
   for (auto &pair : chunks) {
     Chunk *c = pair.second.get();
     glm::ivec3 hitPos, prePos;
-    // Transform origin for chunk is handled inside Chunk::raycast now? No, I
-    // updated it to do the subtraction. So we just pass global origin.
+    // Transform origin for chunk is handled inside Chunk::raycast now? No,
+    // I updated it to do the subtraction. So we just pass global origin.
 
     // Optimization: Check distance to chunk center first
     glm::vec3 chunkCenter =
@@ -1210,11 +1225,12 @@ bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist,
     if (c->raycast(origin, direction, maxDist, hitPos, prePos)) {
       // Calculate distance to hitPos (global)
       // hitPos is block coord (int). Center? Corner?
-      // Chunk::raycast returns the block coords (chunk-local + chunkPos*size).
-      // Wait, Chunk::raycast returns *chunk local* coords in my previous edit?
-      // "outputPos = glm::ivec3(x, y, z);" where x,y,z are loop vars 0..15.
-      // YES. I need to convert them to global coords here or in Chunk::raycast.
-      // Let's ensure Chunk::raycast returns global coords or we convert them.
+      // Chunk::raycast returns the block coords (chunk-local +
+      // chunkPos*size). Wait, Chunk::raycast returns *chunk local* coords
+      // in my previous edit? "outputPos = glm::ivec3(x, y, z);" where x,y,z
+      // are loop vars 0..15. YES. I need to convert them to global coords
+      // here or in Chunk::raycast. Let's ensure Chunk::raycast returns
+      // global coords or we convert them.
 
       // Checking Chunk.cpp edit:
       // "glm::vec3 localOrigin = origin - glm::vec3(chunkPosition *
@@ -1230,8 +1246,8 @@ bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist,
       // Or exact distance?
       // Chunk::raycast logic steps along the ray.
       // It doesn't return the exact float intersection.
-      // However, since we step from origin, the 'd' (distance) is implicitly
-      // roughly known. But Chunk::raycast doesn't return 'd'.
+      // However, since we step from origin, the 'd' (distance) is
+      // implicitly roughly known. But Chunk::raycast doesn't return 'd'.
 
       // We can calculate distance from origin to center of block.
       glm::vec3 blockCenter =
@@ -1298,15 +1314,15 @@ void World::renderDebugBorders(Shader &shader,
   shader.setBool("useTexture", false);
 
   // Disable generic attribute 3 if it was enabled, or just set its value?
-  // Using glVertexAttrib3f sets the constant value for the attribute when the
-  // array is disabled. Ensure array 3 is disabled.
+  // Using glVertexAttrib3f sets the constant value for the attribute when
+  // the array is disabled. Ensure array 3 is disabled.
   glDisableVertexAttribArray(3);
   // Set Lighting (Sky=1, Block=1, AO=0 -> Max Brightness)
   glVertexAttrib3f(3, 1.0f, 1.0f, 0.0f);
 
   // Frustum Culling (reuse helper)
-  auto planes = extractPlanes(
-      viewProjection); // Need to move extractPlanes to be accessible or copy it
+  auto planes = extractPlanes(viewProjection); // Need to move extractPlanes
+                                               // to be accessible or copy it
   // It's defined as a static helper in this file? check line 441. Yes.
 
   std::lock_guard<std::mutex> lock(worldMutex);

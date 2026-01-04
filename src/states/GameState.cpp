@@ -581,7 +581,7 @@ void GameState::Render(Application *app) {
   {
     PROFILE_SCOPE("Render Chunks");
     app->GetWorld()->render(*m_Shader, cullMatrix, app->GetCamera().Position,
-                            m_DbgRenderDistance);
+                            app->GetCamera().Front, m_DbgRenderDistance);
   }
 
   if (m_DbgWireframe)

@@ -32,6 +32,10 @@ public:
   // Thread Safety
   std::mutex chunkMutex;
 
+  glm::vec3 getCenter() const {
+    return glm::vec3(chunkPosition * CHUNK_SIZE) + glm::vec3(CHUNK_SIZE / 2.0f);
+  }
+
   // Generates vertex data on CPU (Thread-Safe if mutex passed or blocks
   // read-only)
   std::vector<float> generateGeometry(int &outOpaqueCount);
@@ -45,6 +49,12 @@ public:
   bool meshDirty; // Flag for light updates
   bool needsLightingUpdate =
       false; // Flag to recalculate lighting before mesh gen
+
+  bool isAllAir = false;    // All blocks are AIR
+  bool isAllOpaque = false; // All blocks are solid/opaque
+  bool isSealed = false;    // Completely buried (opaque + neighbors opaque)
+
+  void updateSealedStatus();
 
   // Neighbor Pointers (Weakly linked to prevent access to unloaded chunks)
   // Indexes: 0=Front(Z+), 1=Back(Z-), 2=Left(X-), 3=Right(X+), 4=Top(Y+),

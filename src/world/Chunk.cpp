@@ -89,8 +89,39 @@ void Chunk::setBlockNoMeshUpdate(int x, int y, int z, BlockType type) {
   if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_SIZE || z < 0 ||
       z >= CHUNK_SIZE)
     return;
-  blocks[x][y][z].block = BlockRegistry::getInstance().getBlock(type);
+
+  Block *oldBlock = blocks[x][y][z].block;
+  Block *newBlock = BlockRegistry::getInstance().getBlock(type);
+
+  if (oldBlock == newBlock)
+    return;
+
+  bool oldOpaque = oldBlock->isOpaque();
+  bool newOpaque = newBlock->isOpaque();
+
+  blocks[x][y][z].block = newBlock;
   blocks[x][y][z].metadata = 0; // Reset metadata on block change!
+
+  // Maintain Verticality Flags
+  if (type != BlockType::AIR) {
+    isAllAir = false;
+  }
+  if (!newOpaque) {
+    isAllOpaque = false;
+  }
+
+  // If opacity changed, we might have unsealed this chunk or neighbors
+  if (oldOpaque != newOpaque) {
+    updateSealedStatus();
+    // Also notify neighbors to update THEIR sealed status
+    for (int i = 0; i < 6; ++i) {
+      auto n = getNeighbor(i);
+      if (n) {
+        n->updateSealedStatus();
+        n->meshDirty = true;
+      }
+    }
+  }
 }
 
 uint8_t Chunk::getSkyLight(int x, int y, int z) const {
@@ -150,20 +181,33 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
   // Thread safety: Lock while reading blocks
   std::lock_guard<std::mutex> lock(chunkMutex);
 
+  // Early Exit 1: All Air (No mesh)
+  if (isAllAir) {
+    outOpaqueCount = 0;
+    return {};
+  }
+
+  // Early Exit 2: Sealed (Completely underground)
+  if (isSealed) {
+    outOpaqueCount = 0;
+    return {};
+  }
+
   std::vector<float> opaqueVertices;
   std::vector<float> transparentVertices;
   // Pre-allocate decent amount
   opaqueVertices.reserve(4096);
   transparentVertices.reserve(1024);
 
-  // Cache Diagonal Neighbors (For corner liquid height)
-  // Indices: 0:LB(X-1,Z-1), 1:RB(X+1,Z-1), 2:LF(X-1,Z+1), 3:RF(X+1,Z+1)
+  // Cache Neighbors (Both cardinal and diagonal for performance)
+  std::shared_ptr<Chunk> cardNeighbors[6];
   std::shared_ptr<Chunk> diagNeighbors[4] = {nullptr, nullptr, nullptr,
                                              nullptr};
 
+  for (int i = 0; i < 6; ++i)
+    cardNeighbors[i] = getNeighbor(i);
+
   if (world) {
-    // Locking world once to get chunks is better than locking constantly in
-    // getHeight Actually World::getChunk locks internally, so we just call it.
     int cx = chunkPosition.x;
     int cy = chunkPosition.y;
     int cz = chunkPosition.z;
@@ -329,7 +373,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
               }
 
               std::shared_ptr<Chunk> n =
-                  (ni == -1) ? std::shared_ptr<Chunk>() : getNeighbor(ni);
+                  (ni == -1) ? std::shared_ptr<Chunk>() : cardNeighbors[ni];
               if (n) {
                 ChunkBlock nb = n->getBlock(nnx, nny, nnz);
                 if (nb.isActive()) {
@@ -448,7 +492,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                        nny >= CHUNK_SIZE || nnz < 0 || nnz >= CHUNK_SIZE);
 
                   if (!isDiagonal && ni != -1) {
-                    if (auto n = getNeighbor(ni)) {
+                    if (auto n = cardNeighbors[ni]) {
                       ChunkBlock cb = n->getBlock(nnx, nny, nnz);
                       if (cb.isOpaque())
                         return true;
@@ -576,22 +620,22 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                   int nbz = bz;
 
                   if (bx >= CHUNK_SIZE) {
-                    targetChunk = getNeighbor(DIR_RIGHT);
+                    targetChunk = cardNeighbors[DIR_RIGHT];
                     nbx -= CHUNK_SIZE;
                   } else if (bx < 0) {
-                    targetChunk = getNeighbor(DIR_LEFT);
+                    targetChunk = cardNeighbors[DIR_LEFT];
                     nbx += CHUNK_SIZE;
                   } else if (by >= CHUNK_SIZE) {
-                    targetChunk = getNeighbor(DIR_TOP);
+                    targetChunk = cardNeighbors[DIR_TOP];
                     nby -= CHUNK_SIZE;
                   } else if (by < 0) {
-                    targetChunk = getNeighbor(DIR_BOTTOM);
+                    targetChunk = cardNeighbors[DIR_BOTTOM];
                     nby += CHUNK_SIZE;
                   } else if (bz >= CHUNK_SIZE) {
-                    targetChunk = getNeighbor(DIR_FRONT);
+                    targetChunk = cardNeighbors[DIR_FRONT];
                     nbz -= CHUNK_SIZE;
                   } else if (bz < 0) {
-                    targetChunk = getNeighbor(DIR_BACK);
+                    targetChunk = cardNeighbors[DIR_BACK];
                     nbz += CHUNK_SIZE;
                   }
 
@@ -746,22 +790,22 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                     int nby = aby;
                     int nbz = abz;
                     if (abx >= CHUNK_SIZE) {
-                      targetChunk = getNeighbor(DIR_RIGHT);
+                      targetChunk = cardNeighbors[DIR_RIGHT];
                       nbx -= CHUNK_SIZE;
                     } else if (abx < 0) {
-                      targetChunk = getNeighbor(DIR_LEFT);
+                      targetChunk = cardNeighbors[DIR_LEFT];
                       nbx += CHUNK_SIZE;
                     } else if (aby >= CHUNK_SIZE) {
-                      targetChunk = getNeighbor(DIR_TOP);
+                      targetChunk = cardNeighbors[DIR_TOP];
                       nby -= CHUNK_SIZE;
                     } else if (aby < 0) {
-                      targetChunk = getNeighbor(DIR_BOTTOM);
+                      targetChunk = cardNeighbors[DIR_BOTTOM];
                       nby += CHUNK_SIZE;
                     } else if (abz >= CHUNK_SIZE) {
-                      targetChunk = getNeighbor(DIR_FRONT);
+                      targetChunk = cardNeighbors[DIR_FRONT];
                       nbz -= CHUNK_SIZE;
                     } else if (abz < 0) {
-                      targetChunk = getNeighbor(DIR_BACK);
+                      targetChunk = cardNeighbors[DIR_BACK];
                       nbz += CHUNK_SIZE;
                     }
 
@@ -2708,6 +2752,10 @@ bool Chunk::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist,
 
 void Chunk::calculateSunlight() {
   std::lock_guard<std::mutex> lock(chunkMutex);
+
+  // Cache Top Neighbor
+  std::shared_ptr<Chunk> topNeighbor = getNeighbor(DIR_TOP);
+
   // 1. Reset Sky Light
   for (int x = 0; x < CHUNK_SIZE; ++x)
     for (int y = 0; y < CHUNK_SIZE; ++y)
@@ -2715,104 +2763,63 @@ void Chunk::calculateSunlight() {
         blocks[x][y][z].skyLight = 0;
 
   // 2. Sunlight Column Calculation (Y-Down)
-  for (int x = 0; x < CHUNK_SIZE; ++x) {
-    for (int z = 0; z < CHUNK_SIZE; ++z) {
-      // 2a. Determine if column start has access to sky
-      int gx = chunkPosition.x * CHUNK_SIZE + x;
-      int gz = chunkPosition.z * CHUNK_SIZE + z;
+  if (world) {
+    std::lock_guard<std::mutex> colLock(world->columnMutex);
+    auto it = world->columns.find({chunkPosition.x, chunkPosition.z});
+    ChunkColumn *col =
+        (it != world->columns.end()) ? it->second.get() : nullptr;
 
-      // 2a. Determine if column start has access to sky
-      // gx and gz are already declared above
+    for (int x = 0; x < CHUNK_SIZE; ++x) {
+      for (int z = 0; z < CHUNK_SIZE; ++z) {
+        bool exposedToSky = false;
+        int incomingLight = 0;
 
-      bool exposedToSky = false; // Default false
-      int incomingLight = 0;
+        if (col) {
+          int h = col->heightMap[x][z];
+          int topGY = chunkPosition.y * CHUNK_SIZE + (CHUNK_SIZE - 1);
 
-      // FIX: Use World Heightmap to determine Sky Exposure independently of
-      // neighbors
-      if (world) {
-        int h = world->getHeight(gx, gz);
-        // Check top block of this column (y=31)
-        // Global Y of top block:
-        int topGY = chunkPosition.y * CHUNK_SIZE + (CHUNK_SIZE - 1);
+          if (topGY > h) {
+            exposedToSky = true;
+            incomingLight = 15;
+          }
+        }
 
-        if (topGY > h) {
+        // Fallback/Neighbor Logic
+        if (!exposedToSky && topNeighbor) {
+          int nLight = topNeighbor->getSkyLight(x, 0, z);
+          if (nLight == 15) {
+            ChunkBlock nb = topNeighbor->getBlock(x, 0, z);
+            if (!nb.isActive() || !nb.isOpaque()) {
+              exposedToSky = true;
+              incomingLight = 15;
+            }
+          } else if (nLight > 0) {
+            exposedToSky = true;
+            incomingLight = nLight;
+          }
+        }
+
+        // Fallback for "High Enough" if heightmap failed or N/A
+        if (!exposedToSky && chunkPosition.y >= 6) {
           exposedToSky = true;
           incomingLight = 15;
         }
-      }
 
-      // Fallback/Neighbor Logic
-      if (!exposedToSky) {
-        Chunk *current = this;
-
-        // Check neighbors[DIR_TOP]
-        if (auto n = current->getNeighbor(DIR_TOP)) {
-
-          // Only check bottom face of neighbor for light
-          // We can't easily iterate neighbor columns without locking or
-          // overhead, but we can check the *bottom* block of the neighbor.
-          // Neighbor(x, 0, z)
-
-          int nLight = n->getSkyLight(
-              x, 0, z); // This might be stale if neighbor not updated?
-          // But if neighbor is above heightmap, it should be 15.
-
-          if (nLight == 15) {
-            exposedToSky = true;
-            incomingLight = 15;
-          } else {
-            incomingLight = nLight;
-            if (incomingLight > 0)
-              exposedToSky = true;
-          }
-        }
-      }
-
-      // Fallback for "High Enough" if heightmap failed or N/A
-      if (!exposedToSky &&
-          chunkPosition.y >= 6) { // Increased from 4 to 6 (y=192) to be safe?
-        exposedToSky = true;
-        incomingLight = 15;
-      }
-
-      if (exposedToSky) {
-        int currentLight = incomingLight;
-        for (int y = CHUNK_SIZE - 1; y >= 0; --y) {
-          if (blocks[x][y][z].isOpaque()) {
-            break;
-          } else {
-            // Attenuate light in water
-            if (blocks[x][y][z].getType() == WATER) {
-              currentLight -= 2;
-              if (currentLight < 0)
-                currentLight = 0;
+        if (exposedToSky) {
+          int currentLight = incomingLight;
+          for (int y = CHUNK_SIZE - 1; y >= 0; --y) {
+            if (blocks[x][y][z].isOpaque()) {
+              break;
+            } else {
+              if (blocks[x][y][z].getType() == WATER) {
+                currentLight -= 2;
+                if (currentLight < 0)
+                  currentLight = 0;
+              }
+              blocks[x][y][z].skyLight = currentLight;
             }
-            blocks[x][y][z].skyLight = currentLight;
-
-            // Queue for spreading if not full brightness?
-            // Actually, if we attenuate, we might want to queue it to
-            // spread the darkness/light? The spreadLight function handles
-            // outward spread. The column is the source. Note: skyQueue is
-            // not accessible here. This line is commented out to maintain
-            // syntactical correctness. if(currentLight > 0) {
-            //     skyQueue.push(glm::ivec3(x, y, z));
-            // }
           }
         }
-
-        // If top block was Water, the column below it should also be lit?
-        // The loop goes Y-Down.
-        // Loop continues until isOpaque().
-        // So if top is Water, it is NOT opaque.
-        // blocks[x][y][z].skyLight = 15;
-        // Loop continues.
-        // Next block (below water) is Water. Not Opaque. skyLight = 15.
-        // Next block is Stone. Opaque. Break.
-        // Stone gets 0 (default).
-        // So the water column will be fully lit (15).
-        // However, should water attenuate light? (Darker deeper down).
-        // Minecraft does decrease light by 3 per water block.
-        // For now, full light is fine to fix "Pitch Black".
       }
     }
   }
@@ -3070,6 +3077,22 @@ void Chunk::spreadLight() {
       }
     }
   }
+}
+void Chunk::updateSealedStatus() {
+  if (!isAllOpaque) {
+    isSealed = false;
+    return;
+  }
+
+  bool allNeighborsOpaque = true;
+  for (int i = 0; i < 6; ++i) {
+    auto n = getNeighbor(i);
+    if (!n || !n->isAllOpaque) {
+      allNeighborsOpaque = false;
+      break;
+    }
+  }
+  isSealed = allNeighborsOpaque;
 }
 
 // Helper for Ambient Occlusion

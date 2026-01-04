@@ -712,6 +712,34 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
     PROFILE_SCOPE_CONDITIONAL("ChunkGen_PostProcess", m_ProfilingEnabled);
     CleanupFloatingIslands(chunk);
   }
+
+  // 6. Calculate Verticality Flags (for culling)
+  bool allAir = true;
+  bool allOpaque = true;
+  Block *airBlock = BlockRegistry::getInstance().getBlock(BlockType::AIR);
+
+  for (int x = 0; x < CHUNK_SIZE; ++x) {
+    for (int y = 0; y < CHUNK_SIZE; ++y) {
+      for (int z = 0; z < CHUNK_SIZE; ++z) {
+        Block *b = chunk.blocks[x][y][z].block;
+        if (b != airBlock) {
+          allAir = false;
+        }
+        if (!b->isOpaque()) {
+          allOpaque = false;
+        }
+        if (!allAir && !allOpaque)
+          break;
+      }
+      if (!allAir && !allOpaque)
+        break;
+    }
+    if (!allAir && !allOpaque)
+      break;
+  }
+
+  chunk.isAllAir = allAir;
+  chunk.isAllOpaque = allOpaque;
 }
 
 // Region-based decoration (for cross-chunk features like large trees)

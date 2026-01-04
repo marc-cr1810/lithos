@@ -269,7 +269,8 @@ void MenuState::Render(Application *app) {
     // Use large render distance for preview (256 chunks radius covers ~8000
     // blocks)
     m_PreviewWorld->render(*m_PreviewShader, projection * view,
-                           m_PreviewCamera.Position, 256);
+                           m_PreviewCamera.Position, m_PreviewCamera.Front,
+                           256);
 
     glDisable(GL_DEPTH_TEST);
     m_PreviewFBO->Unbind();

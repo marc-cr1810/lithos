@@ -77,7 +77,8 @@ public:
 
   // Returns number of chunks rendered
   int render(Shader &shader, const glm::mat4 &viewProjection,
-             const glm::vec3 &cameraPos, int renderDistance);
+             const glm::vec3 &cameraPos, const glm::vec3 &cameraFront,
+             int renderDistance);
 
   // Raycast against all chunks (or optimization)
   // Returns true and fills info if hit
@@ -91,7 +92,7 @@ public:
 
   // Threading
   void Update(); // Main Thread
-  void QueueMeshUpdate(std::shared_ptr<Chunk> c, bool priority = false);
+  void QueueMeshUpdate(std::shared_ptr<Chunk> c, float priority = -1.0f);
 
   struct key_hash_pair {
     std::size_t operator()(const std::pair<int, int> &k) const {
@@ -118,12 +119,21 @@ private:
   std::atomic<bool> shutdown;
   std::condition_variable condition;
 
+  struct MeshTask {
+    std::shared_ptr<Chunk> chunk;
+    float priority;
+
+    bool operator<(const MeshTask &other) const {
+      return priority < other.priority; // Max-heap: Higher priority first
+    }
+  };
+
   std::mutex queueMutex;
-  std::deque<std::shared_ptr<Chunk>>
-      meshQueue; // Low priority (chunk generation)
-  std::deque<std::shared_ptr<Chunk>>
-      meshQueueHighPrio;               // High priority (block breaks)
-  std::unordered_set<Chunk *> meshSet; // For deduplication across both queues
+  std::priority_queue<MeshTask> meshQueue;
+  std::unordered_map<Chunk *, float>
+      meshPriorityMap; // For deduplication & priority tracking
+  glm::vec3 m_CameraPos = glm::vec3(0.0f);
+  glm::vec3 m_CameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
 
   std::mutex uploadMutex;
   std::vector<std::tuple<std::shared_ptr<Chunk>, std::vector<float>, int>>
