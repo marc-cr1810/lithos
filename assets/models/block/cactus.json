@@ -2,10 +2,10 @@
 	"format_version": "26.0",
 	"credit": "Made with Blockbench",
 	"textures": {
-		"0": "assets:block/cactus_side",
-		"1": "assets:block/cactus_top",
-		"2": "assets:block/cactus_bottom",
-		"particle": "assets:block/cactus_side"
+		"0": "assets:block/plant/cactus/cactus_side",
+		"1": "assets:block/plant/cactus/cactus_top",
+		"2": "assets:block/plant/cactus/cactus_bottom",
+		"particle": "assets:block/plant/cactus/cactus_side"
 	},
 	"elements": [
 		{

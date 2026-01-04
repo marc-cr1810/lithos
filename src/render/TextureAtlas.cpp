@@ -32,13 +32,17 @@ void TextureAtlas::Load(const std::string &directory) {
   }
 
   LOG_RESOURCE_INFO("Loading textures from {}...", directory);
+  fs::path baseDir(directory);
 
-  for (const auto &entry : fs::directory_iterator(directory)) {
+  for (const auto &entry : fs::recursive_directory_iterator(directory)) {
     if (entry.path().extension() == ".png") {
       std::string path = entry.path().string();
       std::string filename = entry.path().filename().string();
-      // Remove extension for name
-      std::string name = entry.path().stem().string();
+      // Use relative path from baseDir for name, without extension
+      std::string name =
+          fs::relative(entry.path(), baseDir).replace_extension("").string();
+      // Standardize to forward slashes for cross-compatibility and consistency
+      std::replace(name.begin(), name.end(), '\\', '/');
 
       // Load Image
       int w, h, c;

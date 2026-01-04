@@ -190,11 +190,18 @@ public:
     // Resolve Model Textures
     if (customModel) {
       for (const auto &[key, texParams] : customModel->textures) {
-        // texParams is string like "block/spruce_log"
+        // texParams is string like "assets:block/plant/cactus/cactus_side"
         std::string name = texParams;
-        size_t lastSlash = name.find_last_of("/\\:");
-        if (lastSlash != std::string::npos) {
-          name = name.substr(lastSlash + 1);
+        // Strip "assets:block/" if it exists
+        const std::string prefix = "assets:block/";
+        if (name.compare(0, prefix.length(), prefix) == 0) {
+          name = name.substr(prefix.length());
+        } else {
+          // Fallback for names without prefix - use just the basename
+          size_t lastSlash = name.find_last_of("/\\:");
+          if (lastSlash != std::string::npos) {
+            name = name.substr(lastSlash + 1);
+          }
         }
 
         float u, v;
