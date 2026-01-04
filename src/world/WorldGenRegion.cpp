@@ -1,5 +1,6 @@
 #include "WorldGenRegion.h"
 #include "Chunk.h"
+#include <iostream>
 
 WorldGenRegion::WorldGenRegion(World *world, int cx, int cz)
     : world(world), centerX(cx), centerZ(cz) {
@@ -26,6 +27,25 @@ WorldGenRegion::WorldGenRegion(World *world, int cx, int cz)
     }
   }
   // If world is nullptr (benchmark mode), columns remain nullptr
+  // If world is nullptr (benchmark mode), columns remain nullptr
+}
+
+WorldGenRegion::~WorldGenRegion() {
+  if (!world)
+    return;
+
+  // Batch update modified chunks
+  for (Chunk *chunk : modifiedChunks) {
+    if (chunk) {
+      chunk->meshDirty = true;
+      chunk->needsLightingUpdate = true;
+      // We don't queue update here, as World::Decorate handles triggering
+      // light/mesh updates for the region after decoration returns. But setting
+      // the flags ensures they ARE picked up. Wait, World::Decorate calls
+      // QueueMeshUpdate based on meshDirty flags? Yes, "if (c && c->meshDirty)
+      // QueueMeshUpdate(c, false);"
+    }
+  }
 }
 
 const ChunkColumn *WorldGenRegion::getColumn(int dx, int dz) const {
@@ -107,7 +127,19 @@ void WorldGenRegion::setBlock(int x, int y, int z, BlockType type) {
     return; // Column not loaded
   }
 
-  std::shared_ptr<Chunk> chunk = world->getChunk(colX, chunkY, colZ);
+  // Optimization: use cache
+  std::shared_ptr<Chunk> chunk = nullptr;
+  auto key = std::make_tuple(colX, chunkY, colZ);
+  auto it = chunkCache.find(key);
+  if (it != chunkCache.end()) {
+    chunk = it->second;
+  } else {
+    chunk = world->getChunk(colX, chunkY, colZ);
+    if (chunk) {
+      chunkCache[key] = chunk;
+    }
+  }
+
   if (!chunk) {
     return; // Chunk not loaded
   }
@@ -123,8 +155,12 @@ void WorldGenRegion::setBlock(int x, int y, int z, BlockType type) {
     return;
   }
 
-  chunk->setBlock(lx, ly, lz, type);
-  chunk->needsLightingUpdate = true;
+  // FAST PATH: Check if block is arguably the same (optimization)
+  // But setBlockNoMeshUpdate is fast enough.
+  chunk->setBlockNoMeshUpdate(lx, ly, lz, type);
+
+  // Track modified
+  modifiedChunks.insert(chunk.get());
 }
 
 Block *WorldGenRegion::getBlockPtr(int x, int y, int z) const {
