@@ -40,10 +40,21 @@ public:
   BlockType getBlock(int x, int y, int z) const;
 
   /**
+   * Get Block* at world coordinates (delegates to appropriate column/chunk)
+   */
+  Block *getBlockPtr(int x, int y, int z) const;
+
+  /**
    * Set block at world coordinates (delegates to appropriate column/chunk)
    * Thread-safe via world's chunkMutex
    */
   void setBlock(int x, int y, int z, BlockType type);
+
+  /**
+   * Set block at world coordinates using Block pointer
+   * Thread-safe via world's chunkMutex
+   */
+  void setBlock(int x, int y, int z, Block *block);
 
   /**
    * Get center column X coordinate

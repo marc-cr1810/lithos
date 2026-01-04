@@ -15,6 +15,9 @@ struct ChunkColumn {
   float forestNoiseMap[CHUNK_SIZE][CHUNK_SIZE];
   float bushNoiseMap[CHUNK_SIZE][CHUNK_SIZE];
 
+  // Cave height distortion for irregular cave ceilings
+  uint8_t caveHeightDistort[CHUNK_SIZE * CHUNK_SIZE];
+
   // Helper
   int getHeight(int localX, int localZ) const {
     if (localX < 0 || localX >= CHUNK_SIZE || localZ < 0 ||

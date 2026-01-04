@@ -8,6 +8,7 @@
 #include "FloraDecorator.h"
 #include "OreDecorator.h"
 #include "TreeDecorator.h"
+#include "WorldGenRegion.h"
 #include "gen/NoiseManager.h"
 #include <algorithm>
 #include <glm/glm.hpp>
@@ -114,6 +115,13 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
     PROFILE_SCOPE_CONDITIONAL("ChunkGen_Noise_Beach", m_ProfilingEnabled);
     noiseManager.GenBeach(beachMap.data(), startX, startZ, CHUNK_SIZE,
                           CHUNK_SIZE);
+  }
+
+  // Generate cave height distortion
+  {
+    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Cave_HeightDistortion",
+                              m_ProfilingEnabled);
+    caveGenerator->GenerateHeightDistortion(column, cx, cz);
   }
 
   // 2. Process Columns
@@ -684,11 +692,11 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
     }
   }
 
-  // 3. Caves
-  {
-    PROFILE_SCOPE_CONDITIONAL("ChunkGen_Caves", m_ProfilingEnabled);
-    caveGenerator->GenerateCaves(chunk, column, noiseManager);
-  }
+  // 3. Caves (Now handled during decoration phase for cross-chunk support)
+  // {
+  //   PROFILE_SCOPE_CONDITIONAL("ChunkGen_Caves", m_ProfilingEnabled);
+  //   caveGenerator->GenerateCaves(chunk, column, noiseManager);
+  // }
 
   // 4. Decorators
   {
@@ -708,6 +716,13 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
 void WorldGenerator::Decorate(WorldGenRegion &region,
                               const ChunkColumn &column) {
   PROFILE_SCOPE_CONDITIONAL("WorldGen_Decorate_Region", m_ProfilingEnabled);
+
+  // Generate caves first (cross-chunk carving)
+  {
+    PROFILE_SCOPE_CONDITIONAL("WorldGen_Decorate_Caves", m_ProfilingEnabled);
+    caveGenerator->GenerateCaves(region, region.getCenterX(),
+                                 region.getCenterZ());
+  }
 
   for (auto *decorator : decorators) {
     if (decorator) {

@@ -125,3 +125,85 @@ void WorldGenRegion::setBlock(int x, int y, int z, BlockType type) {
 
   chunk->setBlock(lx, ly, lz, type);
 }
+
+Block *WorldGenRegion::getBlockPtr(int x, int y, int z) const {
+  // Null-safety for benchmark mode
+  if (!world) {
+    return BlockRegistry::getInstance().getBlock(BlockType::AIR);
+  }
+
+  int colX = (x >= 0) ? (x / CHUNK_SIZE) : ((x - CHUNK_SIZE + 1) / CHUNK_SIZE);
+  int colZ = (z >= 0) ? (z / CHUNK_SIZE) : ((z - CHUNK_SIZE + 1) / CHUNK_SIZE);
+  int chunkY =
+      (y >= 0) ? (y / CHUNK_SIZE) : ((y - CHUNK_SIZE + 1) / CHUNK_SIZE);
+
+  int dx = colX - centerX;
+  int dz = colZ - centerZ;
+
+  // Out of bounds check
+  if (dx < -1 || dx > 1 || dz < -1 || dz > 1) {
+    return BlockRegistry::getInstance().getBlock(BlockType::AIR);
+  }
+
+  ChunkColumn *col = columns[dx + 1][dz + 1];
+  if (!col) {
+    return BlockRegistry::getInstance().getBlock(BlockType::AIR);
+  }
+
+  std::shared_ptr<Chunk> chunk = world->getChunk(colX, chunkY, colZ);
+  if (!chunk) {
+    return BlockRegistry::getInstance().getBlock(BlockType::AIR);
+  }
+
+  int lx = x - colX * CHUNK_SIZE;
+  int ly = y - chunkY * CHUNK_SIZE;
+  int lz = z - colZ * CHUNK_SIZE;
+
+  if (lx < 0 || lx >= CHUNK_SIZE || ly < 0 || ly >= CHUNK_SIZE || lz < 0 ||
+      lz >= CHUNK_SIZE) {
+    return BlockRegistry::getInstance().getBlock(BlockType::AIR);
+  }
+
+  return chunk->getBlock(lx, ly, lz).block;
+}
+
+void WorldGenRegion::setBlock(int x, int y, int z, Block *block) {
+  // Null-safety for benchmark mode
+  if (!world) {
+    return;
+  }
+
+  int colX = (x >= 0) ? (x / CHUNK_SIZE) : ((x - CHUNK_SIZE + 1) / CHUNK_SIZE);
+  int colZ = (z >= 0) ? (z / CHUNK_SIZE) : ((z - CHUNK_SIZE + 1) / CHUNK_SIZE);
+  int chunkY =
+      (y >= 0) ? (y / CHUNK_SIZE) : ((y - CHUNK_SIZE + 1) / CHUNK_SIZE);
+
+  int dx = colX - centerX;
+  int dz = colZ - centerZ;
+
+  // Out of bounds check
+  if (dx < -1 || dx > 1 || dz < -1 || dz > 1) {
+    return;
+  }
+
+  ChunkColumn *col = columns[dx + 1][dz + 1];
+  if (!col) {
+    return;
+  }
+
+  std::shared_ptr<Chunk> chunk = world->getChunk(colX, chunkY, colZ);
+  if (!chunk) {
+    return;
+  }
+
+  int lx = x - colX * CHUNK_SIZE;
+  int ly = y - chunkY * CHUNK_SIZE;
+  int lz = z - colZ * CHUNK_SIZE;
+
+  if (lx < 0 || lx >= CHUNK_SIZE || ly < 0 || ly >= CHUNK_SIZE || lz < 0 ||
+      lz >= CHUNK_SIZE) {
+    return;
+  }
+
+  chunk->setBlock(lx, ly, lz, static_cast<BlockType>(block->getId()));
+}
