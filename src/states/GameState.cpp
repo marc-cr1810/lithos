@@ -485,9 +485,14 @@ void GameState::Update(Application *app, float dt) {
   // Raycast
   {
     PROFILE_SCOPE("Raycast");
+    auto &input = app->GetRegistry().get<InputComponent>(m_PlayerEntity);
+    float reachDistance = 5.0f;
+    if (input.flyMode || input.noclip) {
+      reachDistance = 50.0f;
+    }
     m_Hit = app->GetWorld()->raycast(app->GetCamera().Position,
-                                     app->GetCamera().Front, 5.0f, m_HitPos,
-                                     m_PrePos);
+                                     app->GetCamera().Front, reachDistance,
+                                     m_HitPos, m_PrePos);
   }
 }
 
