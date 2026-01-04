@@ -1,0 +1,88 @@
+{
+    "cavesPerChunk": 0.75,
+    "chunkRange": 5,
+    "tunnelSizes": {
+        "horizontalMin": 1.0,
+        "horizontalMax": 3.0,
+        "verticalMin": 0.75,
+        "verticalMax": 1.15,
+        "comment": "Base size multipliers for tunnel dimensions"
+    },
+    "specialCaves": {
+        "wideFlatChance": 0.04,
+        "tallNarrowChance": 0.01,
+        "extraBranchyChance": 0.02,
+        "largeNearLavaChance": 0.3,
+        "comment": "Probabilities for special cave types"
+    },
+    "curviness": {
+        "normal": 0.1,
+        "high": 0.5,
+        "veryLow": 0.035,
+        "highChance": 0.03,
+        "veryLowChance": 0.01,
+        "comment": "Controls how much tunnels wind and turn"
+    },
+    "branching": {
+        "horizontalBranchBase": 25,
+        "horizontalBranchExtraBranchy": 12,
+        "verticalShaftChance": 60,
+        "maxBranchDepth": 3,
+        "verticalShaftMinY": 60,
+        "verticalShaftMinRadius": 3.0,
+        "comment": "Controls cave branching behavior. Lower numbers = more branches"
+    },
+    "sizing": {
+        "baseHorizontal": 1.5,
+        "baseVertical": 1.5,
+        "minHorizontal": 1.0,
+        "minVertical": 0.6,
+        "sizeChangeSpeed": 0.15,
+        "comment": "Dynamic size adjustment parameters"
+    },
+    "lava": {
+        "lavaY": 11,
+        "largeCavernMinY": 19,
+        "largeCavernMaxY": -5,
+        "largeCavernMinRadius": 4.0,
+        "largeCavernMinVertRadius": 2.0,
+        "comment": "Lava layer settings and large cavern requirements"
+    },
+    "iteration": {
+        "maxIterationBase": 160,
+        "maxIterationVariance": 0.25,
+        "comment": "How long tunnels can be. maxIterationBase * chunkRange = max tunnel length"
+    },
+    "distortion": {
+        "heightDistortOctaves": 3,
+        "heightDistortFrequency": 0.05,
+        "heightDistortStrength": 0.1,
+        "comment": "Noise settings for cave ceiling irregularity"
+    },
+    "hotSprings": {
+        "minY": -5,
+        "maxY": 16,
+        "minHorizontalRadius": 4.0,
+        "minVerticalRadius": 2.0,
+        "minGeologicActivity": 128,
+        "comment": "Requirements for hot spring generation in caves"
+    },
+    "angleVariation": {
+        "initialVerticalAngleRange": 0.25,
+        "verticalAngleDamping": 0.8,
+        "verticalAngleChangeFactor": 3.0,
+        "horizontalAngleChangeFactor": 1.0,
+        "majorDirectionChangeChance": 0.003,
+        "minorDirectionChangeChance": 0.0076,
+        "comment": "Controls how tunnel direction changes over time"
+    },
+    "randomEvents": {
+        "goWideChance": 0.006,
+        "goThinChance": 0.006,
+        "goFlatChance": 0.005,
+        "goReallyWideChance": 0.0009,
+        "goReallyTallChance": 0.0009,
+        "largeLavaCavernChance": 0.01,
+        "comment": "Probabilities for random tunnel variations"
+    }
+}

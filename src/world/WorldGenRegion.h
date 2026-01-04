@@ -4,7 +4,10 @@
 #include "Block.h"
 #include "ChunkColumn.h"
 #include "World.h"
+#include <map>
 #include <mutex>
+#include <set>
+#include <tuple>
 
 /**
  * WorldGenRegion provides safe cross-chunk block access for decoration.
@@ -21,6 +24,11 @@ public:
    * @param cz - Center column Z coordinate
    */
   WorldGenRegion(World *world, int cx, int cz);
+
+  /**
+   * Destructor: Triggers batch mesh updates for modified chunks.
+   */
+  ~WorldGenRegion();
 
   /**
    * Get the center ChunkColumn (cached data like heightMap, biomeMap, etc.)
@@ -40,10 +48,21 @@ public:
   BlockType getBlock(int x, int y, int z) const;
 
   /**
+   * Get Block* at world coordinates (delegates to appropriate column/chunk)
+   */
+  Block *getBlockPtr(int x, int y, int z) const;
+
+  /**
    * Set block at world coordinates (delegates to appropriate column/chunk)
    * Thread-safe via world's chunkMutex
    */
   void setBlock(int x, int y, int z, BlockType type);
+
+  /**
+   * Set block at world coordinates using Block pointer
+   * Thread-safe via world's chunkMutex
+   */
+  void setBlock(int x, int y, int z, Block *block);
 
   /**
    * Get center column X coordinate
@@ -75,7 +94,15 @@ private:
   int centerX, centerZ; // Column coordinates
 
   // 3x3 grid of columns: columns[dx+1][dz+1] where dx,dz in {-1,0,1}
+  // 3x3 grid of columns: columns[dx+1][dz+1] where dx,dz in {-1,0,1}
   ChunkColumn *columns[3][3];
+
+  // Optimization: Track modified chunks to batch mesh updates
+  mutable std::set<Chunk *> modifiedChunks;
+  mutable std::map<std::tuple<int, int, int>, std::shared_ptr<Chunk>>
+      chunkCache;
+
+  void markChunkModified(Chunk *chunk);
 };
 
 #endif // WORLDGENREGION_H

@@ -6,7 +6,6 @@
         {
             "widthLoss": 0.05,
             "dieAt": {
-                "dist": "gaussian",
                 "avg": 0.14,
                 "var": 0.04
             },

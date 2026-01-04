@@ -80,13 +80,17 @@ ChunkBlock Chunk::getBlock(int x, int y, int z) const {
 }
 
 void Chunk::setBlock(int x, int y, int z, BlockType type) {
+  setBlockNoMeshUpdate(x, y, z, type);
+  meshDirty = true;
+}
+
+void Chunk::setBlockNoMeshUpdate(int x, int y, int z, BlockType type) {
   std::lock_guard<std::mutex> lock(chunkMutex);
   if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_SIZE || z < 0 ||
       z >= CHUNK_SIZE)
     return;
   blocks[x][y][z].block = BlockRegistry::getInstance().getBlock(type);
   blocks[x][y][z].metadata = 0; // Reset metadata on block change!
-  meshDirty = true;
 }
 
 uint8_t Chunk::getSkyLight(int x, int y, int z) const {

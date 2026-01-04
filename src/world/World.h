@@ -48,7 +48,7 @@ class WorldGenerator; // Forward declaration
 
 class World {
 public:
-  World(const WorldGenConfig &config);
+  World(const WorldGenConfig &config, bool silent = false);
   ~World();
 
   void addChunk(int x, int y, int z); // Chunk coords

@@ -54,28 +54,28 @@ bool isAABBInFrustum(const glm::vec3 &min, const glm::vec3 &max,
   return true;
 }
 
-World::World(const WorldGenConfig &config)
-    : shutdown(false), config(config), worldSeed(config.seed) {
-  LOG_WORLD_INFO("World initialized with Seed: {}", worldSeed);
+World::World(const WorldGenConfig &config, bool silent)
+    : config(config), shutdown(false) {
+  worldSeed = config.seed;
+
+  // Start mesh worker threads
+  int threadCount = std::thread::hardware_concurrency();
+  if (threadCount < 2)
+    threadCount = 2;
+  for (int i = 0; i < threadCount; ++i) {
+    meshThreads.emplace_back(&World::WorkerLoop, this);
+  }
+
+  // Start generation worker threads
+  for (int i = 0; i < threadCount; ++i) {
+    genThreads.emplace_back(&World::GenerationWorkerLoop, this);
+  }
 
   m_Generator = std::make_unique<WorldGenerator>(config);
   m_Generator->GenerateFixedMaps();
 
-  // Start Mesh Threads
-  int numMeshThreads = std::thread::hardware_concurrency();
-  if (numMeshThreads < 1)
-    numMeshThreads = 1;
-
-  for (int i = 0; i < numMeshThreads; ++i) {
-    meshThreads.emplace_back(&World::WorkerLoop, this);
-  }
-
-  // Start Generation Threads (e.g., 2-4 threads)
-  int numGenThreads = std::thread::hardware_concurrency() / 2;
-  if (numGenThreads < 1)
-    numGenThreads = 1;
-  for (int i = 0; i < numGenThreads; ++i) {
-    genThreads.emplace_back(&World::GenerationWorkerLoop, this);
+  if (!silent) {
+    LOG_WORLD_INFO("World initialized with Seed: {}", worldSeed);
   }
 }
 
@@ -405,6 +405,35 @@ void World::GenerationWorkerLoop() {
             // Create WorldGenRegion and decorate
             WorldGenRegion region(this, targetX, targetZ);
             generator.Decorate(region, *target);
+
+            // 1. Recalculate Lighting synchronously Top-Down TO prevent cutoffs
+            for (int Lx = -1; Lx <= 1; Lx++) {
+              for (int Lz = -1; Lz <= 1; Lz++) {
+                for (int Ly = 7; Ly >= 0; Ly--) {
+                  std::shared_ptr<Chunk> c =
+                      getChunk(targetX + Lx, Ly, targetZ + Lz);
+                  if (c && c->needsLightingUpdate) {
+                    c->calculateSunlight();
+                    c->calculateBlockLight();
+                    c->spreadLight();
+                    c->needsLightingUpdate = false;
+                  }
+                }
+              }
+            }
+
+            // 2. Queue for meshing (now that lighting is valid)
+            for (int Lx = -1; Lx <= 1; Lx++) {
+              for (int Lz = -1; Lz <= 1; Lz++) {
+                for (int Ly = 0; Ly < 8; Ly++) {
+                  std::shared_ptr<Chunk> c =
+                      getChunk(targetX + Lx, Ly, targetZ + Lz);
+                  if (c && c->meshDirty) { // setBlock sets meshDirty=true
+                    QueueMeshUpdate(c, false);
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -1016,7 +1045,7 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection,
 
     // Vertical range usually 0..7 for 256 height
     int minY = 0;
-    int maxY = 256 / CHUNK_SIZE;
+    int maxY = (config.worldHeight + CHUNK_SIZE - 1) / CHUNK_SIZE;
 
     {
       PROFILE_SCOPE("Culling & Vis List");
@@ -1024,7 +1053,8 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection,
         for (int z = cz - renderDist; z <= cz + renderDist; ++z) {
           // 1. Cull Column First
           glm::vec3 colMin(x * CHUNK_SIZE, 0, z * CHUNK_SIZE);
-          glm::vec3 colMax(colMin.x + CHUNK_SIZE, 256, colMin.z + CHUNK_SIZE);
+          glm::vec3 colMax(colMin.x + CHUNK_SIZE, config.worldHeight,
+                           colMin.z + CHUNK_SIZE);
 
           if (!isAABBInFrustum(colMin, colMax, planes)) {
             continue; // Skip whole column
