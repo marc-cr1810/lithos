@@ -195,9 +195,11 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
 
   std::vector<float> opaqueVertices;
   std::vector<float> transparentVertices;
-  // Pre-allocate decent amount
-  opaqueVertices.reserve(4096);
-  transparentVertices.reserve(1024);
+  // Pre-allocate based on typical chunk complexity
+  // Each vertex = 13 floats (pos=3, color=4, uv=2, light=3, origin=2)
+  // Typical chunk: ~800-1000 visible faces, 6 verts/face = ~8000-10000 verts
+  opaqueVertices.reserve(12288);     // ~940 faces worth
+  transparentVertices.reserve(3072); // ~235 faces worth
 
   // Cache Neighbors (Both cardinal and diagonal for performance)
   std::shared_ptr<Chunk> cardNeighbors[6];
@@ -216,6 +218,68 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
     diagNeighbors[1] = world->getChunk(cx + 1, cy, cz - 1);
     diagNeighbors[2] = world->getChunk(cx - 1, cy, cz + 1);
     diagNeighbors[3] = world->getChunk(cx + 1, cy, cz + 1);
+  }
+
+  // Border Block Cache - eliminates most world->getBlock() calls
+  // Cache 1-block border from each face neighbor for AO calculations
+  // Layout: borderCache[face][u][v] where face 0-5, u/v are 0-31
+  struct BorderBlock {
+    bool isOpaque;
+    bool isLayered;
+  };
+  BorderBlock borderCache[6][CHUNK_SIZE][CHUNK_SIZE];
+  bool hasBorder[6] = {false, false, false, false, false, false};
+
+  // Initialize border cache from neighbors
+  for (int ni = 0; ni < 6; ++ni) {
+    if (!cardNeighbors[ni])
+      continue;
+    hasBorder[ni] = true;
+
+    // For each neighbor, cache the adjacent face
+    // Face 0 (Front Z+): cache neighbor's Z=0 face
+    // Face 1 (Back Z-): cache neighbor's Z=31 face
+    // Face 2 (Left X-): cache neighbor's X=31 face
+    // Face 3 (Right X+): cache neighbor's X=0 face
+    // Face 4 (Top Y+): cache neighbor's Y=0 face
+    // Face 5 (Bottom Y-): cache neighbor's Y=31 face
+
+    for (int u = 0; u < CHUNK_SIZE; ++u) {
+      for (int v = 0; v < CHUNK_SIZE; ++v) {
+        int nx, ny, nz;
+        if (ni == 0) { // Front: cache Z=0
+          nx = u;
+          ny = v;
+          nz = 0;
+        } else if (ni == 1) { // Back: cache Z=31
+          nx = u;
+          ny = v;
+          nz = CHUNK_SIZE - 1;
+        } else if (ni == 2) { // Left: cache X=31
+          nx = CHUNK_SIZE - 1;
+          ny = v;
+          nz = u;
+        } else if (ni == 3) { // Right: cache X=0
+          nx = 0;
+          ny = v;
+          nz = u;
+        } else if (ni == 4) { // Top: cache Y=0
+          nx = u;
+          ny = 0;
+          nz = v;
+        } else { // Bottom: cache Y=31
+          nx = u;
+          ny = CHUNK_SIZE - 1;
+          nz = v;
+        }
+
+        ChunkBlock cb = cardNeighbors[ni]->getBlock(nx, ny, nz);
+        borderCache[ni][u][v].isOpaque = cb.isOpaque();
+        borderCache[ni][u][v].isLayered =
+            (cb.block &&
+             cb.block->getRenderShape() == Block::RenderShape::LAYERED);
+      }
+    }
   }
 
   // Greedy Meshing
@@ -237,26 +301,27 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
     bool operator!=(const MaskInfo &other) const { return !(*this == other); }
   };
 
-  // normal axis: 0=Z, 1=Z, 2=X, 3=X, 4=Y, 5=Y -> axis index: 2, 2, 0, 0, 1, 1
+  // Static lookup tables for face directions (eliminates branches)
+  static constexpr int FACE_AXIS[6] = {2, 2, 0, 0, 1, 1};   // Z, Z, X, X, Y, Y
+  static constexpr int FACE_U_AXIS[6] = {0, 0, 2, 2, 0, 0}; // X, X, Z, Z, X, X
+  static constexpr int FACE_V_AXIS[6] = {1, 1, 1, 1, 2, 2}; // Y, Y, Y, Y, Z, Z
+  static constexpr int FACE_NORMAL[6][3] = {
+      {0, 0, 1},  // Front (Z+)
+      {0, 0, -1}, // Back (Z-)
+      {-1, 0, 0}, // Left (X-)
+      {1, 0, 0},  // Right (X+)
+      {0, 1, 0},  // Top (Y+)
+      {0, -1, 0}  // Bottom (Y-)
+  };
 
   for (int faceDir = 0; faceDir < 6; ++faceDir) {
-    int axis = (faceDir <= 1) ? 2 : ((faceDir <= 3) ? 0 : 1);
-    int uAxis = (axis == 0) ? 2 : ((axis == 1) ? 0 : 0);
-    int vAxis = (axis == 0) ? 1 : ((axis == 1) ? 2 : 1);
+    int axis = FACE_AXIS[faceDir];
+    int uAxis = FACE_U_AXIS[faceDir];
+    int vAxis = FACE_V_AXIS[faceDir];
 
-    int nX = 0, nY = 0, nZ = 0;
-    if (faceDir == 0)
-      nZ = 1;
-    else if (faceDir == 1)
-      nZ = -1;
-    else if (faceDir == 2)
-      nX = -1;
-    else if (faceDir == 3)
-      nX = 1;
-    else if (faceDir == 4)
-      nY = 1;
-    else if (faceDir == 5)
-      nY = -1;
+    int nX = FACE_NORMAL[faceDir][0];
+    int nY = FACE_NORMAL[faceDir][1];
+    int nZ = FACE_NORMAL[faceDir][2];
 
     auto getAt = [&](int u, int v, int d) -> ChunkBlock {
       int p[3];
@@ -444,6 +509,16 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             }
 
             if (!occluded) {
+              // Helper: Check if block occludes for AO purposes
+              auto isOpaqueForAO = [](const ChunkBlock &cb) -> bool {
+                if (cb.isOpaque())
+                  return true;
+                // Special case: Layered blocks cast contact shadows
+                if (cb.block->getRenderShape() == Block::RenderShape::LAYERED)
+                  return true;
+                return false;
+              };
+
               auto sampleAO = [&](int u1, int v1, int u2, int v2, int u3,
                                   int v3) -> uint8_t {
                 auto check = [&](int u, int v) -> bool {
@@ -454,15 +529,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                   int nz = lz + nZ;
                   if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 &&
                       ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
-                    ChunkBlock cb = blocks[nx][ny][nz];
-                    if (cb.isOpaque())
-                      return true;
-                    // Special case: Layered Blocks act as opaque for AO to cast
-                    // contact shadows
-                    if (cb.block->getRenderShape() ==
-                        Block::RenderShape::LAYERED)
-                      return true;
-                    return false;
+                    return isOpaqueForAO(blocks[nx][ny][nz]);
                   }
 
                   int ni = -1;
@@ -492,14 +559,23 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                        nny >= CHUNK_SIZE || nnz < 0 || nnz >= CHUNK_SIZE);
 
                   if (!isDiagonal && ni != -1) {
-                    if (auto n = cardNeighbors[ni]) {
-                      ChunkBlock cb = n->getBlock(nnx, nny, nnz);
-                      if (cb.isOpaque())
-                        return true;
-                      if (cb.block->getRenderShape() ==
-                          Block::RenderShape::LAYERED)
-                        return true;
-                      return false;
+                    // Use border cache if available (much faster than chunk
+                    // lookup)
+                    if (hasBorder[ni]) {
+                      // Map neighbor coords to border cache [u][v] indices
+                      int bu, bv;
+                      if (ni == DIR_FRONT || ni == DIR_BACK) {
+                        bu = nnx;
+                        bv = nny;
+                      } else if (ni == DIR_LEFT || ni == DIR_RIGHT) {
+                        bu = nnz;
+                        bv = nny;
+                      } else { // TOP or BOTTOM
+                        bu = nnx;
+                        bv = nnz;
+                      }
+                      return borderCache[ni][bu][bv].isOpaque ||
+                             borderCache[ni][bu][bv].isLayered;
                     }
                   }
 
@@ -514,15 +590,11 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 bool s1 = check(u1, v1);
                 bool s2 = check(u2, v2);
                 bool c = check(u3, v3);
-                if (s1 && s2)
-                  return 3;
-                return (s1 ? 1 : 0) + (s2 ? 1 : 0) + (c ? 1 : 0);
+                return vertexAO(s1, s2, c);
               };
               uint8_t aos[4];
               aos[0] = sampleAO(u - 1, v, u, v - 1, u - 1, v - 1);
               aos[1] = sampleAO(u + 1, v, u, v - 1, u + 1, v - 1);
-              aos[2] = sampleAO(u + 1, v, u, v + 1, u + 1, v + 1);
-              aos[3] = sampleAO(u - 1, v, u, v + 1, u - 1, v + 1);
               aos[2] = sampleAO(u + 1, v, u, v + 1, u + 1, v + 1);
               aos[3] = sampleAO(u - 1, v, u, v + 1, u - 1, v + 1);
               mask[u][v] = {b.block,    skyVal,
@@ -1155,13 +1227,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
           bool s1 = getOpaque(s1x, s1y, s1z);
           bool s2 = getOpaque(s2x, s2y, s2z);
           bool c = getOpaque(cx, cy, cz);
-          if (s1 && s2)
-            return 3; // Corner fully occluded -> 3 (Darkest)
-          // 0 occluders -> 0 (Brightest)
-          // 1 occluder -> 1
-          // 2 occluders -> 2
-          // 3 occluders -> 3
-          return (s1 + s2 + c);
+          return vertexAO(s1, s2, c);
         };
 
         auto pushVert = [&](float vx, float vy, float vz, float u, float v,
@@ -3098,9 +3164,17 @@ void Chunk::updateSealedStatus() {
 // Helper for Ambient Occlusion
 // side1, side2 are the two blocks next to the vertex on the face plane
 // corner is the block diagonally from the vertex
+// Optimized with lookup table: 3 bools -> 8 possible states -> direct mapping
 int Chunk::vertexAO(bool side1, bool side2, bool corner) {
-  if (side1 && side2) {
-    return 3;
-  }
-  return (side1 ? 1 : 0) + (side2 ? 1 : 0) + (corner ? 1 : 0);
+  static constexpr uint8_t AO_LOOKUP[8] = {
+      0, // 000: no occlusion
+      1, // 001: corner only
+      1, // 010: side2 only
+      2, // 011: side2 + corner
+      1, // 100: side1 only
+      2, // 101: side1 + corner
+      3, // 110: both sides (full occlusion)
+      3  // 111: all three
+  };
+  return AO_LOOKUP[(side1 << 2) | (side2 << 1) | corner];
 }

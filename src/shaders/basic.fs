@@ -57,9 +57,9 @@ void main()
     float blockLevel = Lighting.y;
     
     // Phase 4: AO
+    // Optimized: Intensity tuned to avoid needing clamp
     float aoVal = Lighting.z; // 0, 1, 2, 3
-    float aoFactor = 1.0 - (aoVal * 0.25); // 1.0, 0.75, 0.5, 0.25
-    aoFactor = max(0.1, aoFactor); // Clamp
+    float aoFactor = 1.0 - (aoVal * 0.22); // Range: 1.0 to 0.34
     
     float lightVal = max(sunLevel, blockLevel);
     lightVal = max(0.2, lightVal); // Ambient min
