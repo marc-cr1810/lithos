@@ -2,7 +2,7 @@
 	"code": "rockstrata",
 	"variants": [
 		{
-			"blockcode": "lithos:kimberlite",
+			"blockcode": "lithos:rock_kimberlite",
 			"amplitudes": [
 				100
 			],
@@ -16,7 +16,7 @@
 			"rockGroup": "Volcanic"
 		},
 		{
-			"blockcode": "lithos:basalt",
+			"blockcode": "lithos:rock_basalt",
 			"amplitudes": [
 				4,
 				2,
@@ -36,7 +36,7 @@
 			"rockGroup": "Volcanic"
 		},
 		{
-			"blockcode": "lithos:claystone",
+			"blockcode": "lithos:rock_claystone",
 			"amplitudes": [
 				5,
 				2.5,
@@ -59,7 +59,7 @@
 			"rockGroup": "Sedimentary"
 		},
 		{
-			"blockcode": "lithos:sandstone",
+			"blockcode": "lithos:rock_sandstone",
 			"amplitudes": [
 				5,
 				2.5,
@@ -82,7 +82,7 @@
 			"rockGroup": "Sedimentary"
 		},
 		{
-			"blockcode": "lithos:shale",
+			"blockcode": "lithos:rock_shale",
 			"amplitudes": [
 				5,
 				2.5,
@@ -105,7 +105,7 @@
 			"rockGroup": "Sedimentary"
 		},
 		{
-			"blockcode": "lithos:conglomerate",
+			"blockcode": "lithos:rock_conglomerate",
 			"amplitudes": [
 				5,
 				2.5,
@@ -128,7 +128,7 @@
 			"rockGroup": "Sedimentary"
 		},
 		{
-			"blockcode": "lithos:limestone",
+			"blockcode": "lithos:rock_limestone",
 			"amplitudes": [
 				4,
 				2,
@@ -148,7 +148,7 @@
 			"rockGroup": "Sedimentary"
 		},
 		{
-			"blockcode": "lithos:chert",
+			"blockcode": "lithos:rock_chert",
 			"amplitudes": [
 				4,
 				2,
@@ -168,7 +168,7 @@
 			"rockGroup": "Sedimentary"
 		},
 		{
-			"blockcode": "lithos:chalk",
+			"blockcode": "lithos:rock_chalk",
 			"amplitudes": [
 				4,
 				2,
@@ -188,7 +188,7 @@
 			"rockGroup": "Sedimentary"
 		},
 		{
-			"blockcode": "lithos:bauxite",
+			"blockcode": "lithos:rock_bauxite",
 			"amplitudes": [
 				4,
 				2,
@@ -208,7 +208,7 @@
 			"rockGroup": "Metamorphic"
 		},
 		{
-			"blockcode": "lithos:slate",
+			"blockcode": "lithos:rock_slate",
 			"amplitudes": [
 				2.9,
 				1.6,
@@ -231,7 +231,7 @@
 			"rockGroup": "Metamorphic"
 		},
 		{
-			"blockcode": "lithos:phyllite",
+			"blockcode": "lithos:rock_phyllite",
 			"amplitudes": [
 				2.9,
 				1.6,
@@ -254,7 +254,7 @@
 			"rockGroup": "Metamorphic"
 		},
 		{
-			"blockcode": "lithos:andesite",
+			"blockcode": "lithos:rock_andesite",
 			"amplitudes": [
 				2.9,
 				1.6,
@@ -277,7 +277,7 @@
 			"rockGroup": "Igneous"
 		},
 		{
-			"blockcode": "lithos:peridotite",
+			"blockcode": "lithos:rock_peridotite",
 			"amplitudes": [
 				2.9,
 				1.6,
@@ -300,7 +300,7 @@
 			"rockGroup": "Igneous"
 		},
 		{
-			"blockcode": "lithos:basalt",
+			"blockcode": "lithos:rock_basalt",
 			"amplitudes": [
 				10,
 				5,
@@ -323,7 +323,7 @@
 			"rockGroup": "Igneous"
 		},
 		{
-			"blockcode": "lithos:granite",
+			"blockcode": "lithos:rock_granite",
 			"amplitudes": [
 				2.9,
 				1.6,

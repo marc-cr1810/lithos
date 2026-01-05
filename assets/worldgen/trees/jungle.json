@@ -92,9 +92,9 @@
         }
     ],
     "treeBlocks": {
-        "logBlockCode": "lithos:jungle_log",
-        "leavesBlockCode": "lithos:jungle_leaves",
-        "leavesBranchyBlockCode": "lithos:jungle_leaves",
+        "logBlockCode": "lithos:log_jungle",
+        "leavesBlockCode": "lithos:leaves_jungle",
+        "leavesBranchyBlockCode": "lithos:leaves_jungle",
         "vinesBlockCode": "lithos:air",
         "vinesEndBlockCode": "lithos:air",
         "mossDecorCode": "lithos:air"

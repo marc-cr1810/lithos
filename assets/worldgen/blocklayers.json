@@ -2,7 +2,7 @@
     "surfaceRules": [
         {
             "comment": "Snow Caps (High Altitude)",
-            "block": "lithos:snow",
+            "block": "lithos:snow_block",
             "condition": {
                 "minY": 0.40625,
                 "minTemp": -50.0,
