@@ -8,6 +8,8 @@
     "class": "PlantBlock",
     "blockMaterial": "Leaves",
     "drawType": "cube",
+    "opaque": false,
+    "renderBackfaces": true,
     "resistance": 0.2,
     "sounds": {
         "place": "grass_place",

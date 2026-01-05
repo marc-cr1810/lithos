@@ -17,6 +17,10 @@
             ]
         }
     ],
+    "idByType": {
+        "*_oak": 9,
+        "*_spruce": 25
+    },
     "textures": {
         "all": "wood/planks/{wood}_planks"
     },

@@ -1,0 +1,20 @@
+{
+    "code": "clay",
+    "id": 40,
+    "creativeInventory": {
+        "terrain": [
+            "*"
+        ]
+    },
+    "blockMaterial": "Soil",
+    "drawType": "cube",
+    "resistance": 0.6,
+    "sounds": {
+        "place": "grass_place",
+        "breakSound": "grass_break",
+        "walk": "grass_walk"
+    },
+    "textures": {
+        "all": "soil/clay"
+    }
+}
