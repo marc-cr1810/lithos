@@ -1,0 +1,32 @@
+{
+	"tabConfigs": [
+		{
+			"code": "general",
+			"listOrder": 0
+		},
+		{
+			"code": "flora",
+			"listOrder": 1
+		},
+		{
+			"code": "terrain",
+			"listOrder": 2
+		},
+		{
+			"code": "decorative",
+			"listOrder": 3
+		},
+		{
+			"code": "clutter",
+			"listOrder": 4
+		},
+		{
+			"code": "construction",
+			"listOrder": 5
+		},
+		{
+			"code": "liquids",
+			"listOrder": 6
+		}
+	]
+}

@@ -1,0 +1,17 @@
+{
+    "code": "glowstone",
+    "class": "SolidBlock",
+    "blockMaterial": "Stone",
+    "drawType": "cube",
+    "sounds": {
+        "place": "game/step/stone",
+        "break": "game/step/glass",
+        "hit": "game/step/stone"
+    },
+    "textures": {
+        "all": "stone/rock/glowstone"
+    },
+    "emission": 15,
+    "lightAbsorption": 0,
+    "id": 8
+}

@@ -1,0 +1,15 @@
+{
+    "code": "gold_ore",
+    "class": "SolidBlock",
+    "blockMaterial": "Stone",
+    "drawType": "cube",
+    "sounds": {
+        "place": "game/step/stone",
+        "break": "game/step/stone",
+        "hit": "game/step/stone"
+    },
+    "textures": {
+        "all": "stone/ore/gold_ore"
+    },
+    "id": 59
+}

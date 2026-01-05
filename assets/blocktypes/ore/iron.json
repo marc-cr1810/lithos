@@ -1,8 +1,8 @@
 {
     "code": "ore-iron",
     "id": 7,
-    "blockmaterial": "Stone",
-    "drawtype": "cube",
+    "blockMaterial": "Stone",
+    "drawType": "cube",
     "resistance": 3.0,
     "sounds": {
         "place": "stone-hit",

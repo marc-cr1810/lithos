@@ -1,0 +1,15 @@
+{
+    "code": "snow_block",
+    "class": "SolidBlock",
+    "blockMaterial": "Snow",
+    "drawType": "cube",
+    "sounds": {
+        "place": "game/step/snow",
+        "break": "game/step/snow",
+        "hit": "game/step/snow"
+    },
+    "textures": {
+        "all": "liquid/snow"
+    },
+    "id": 13
+}

@@ -1,8 +1,8 @@
 {
     "code": "stone",
     "id": 3,
-    "blockmaterial": "Stone",
-    "drawtype": "cube",
+    "blockMaterial": "Stone",
+    "drawType": "cube",
     "resistance": 1.5,
     "sounds": {
         "place": "stone-hit",

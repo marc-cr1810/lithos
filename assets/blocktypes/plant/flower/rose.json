@@ -1,8 +1,8 @@
 {
     "code": "rose",
     "class": "PlantBlock",
-    "blockmaterial": "Plant",
-    "drawtype": "cross",
+    "blockMaterial": "Plant",
+    "drawType": "cross",
     "replaceable": 1,
     "solid": false,
     "id": 20,

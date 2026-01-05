@@ -1,0 +1,15 @@
+{
+    "code": "mud",
+    "class": "SolidBlock",
+    "blockMaterial": "Soil",
+    "drawType": "cube",
+    "sounds": {
+        "place": "grass-place",
+        "break": "grass-break",
+        "walk": "grass-walk"
+    },
+    "textures": {
+        "all": "soil/mud"
+    },
+    "id": 32
+}

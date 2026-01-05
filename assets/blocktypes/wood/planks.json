@@ -1,0 +1,23 @@
+{
+    "code": "planks",
+    "variantGroups": [
+        {
+            "code": "wood",
+            "states": [
+                "oak",
+                "spruce"
+            ]
+        }
+    ],
+    "textures": {
+        "all": "wood/planks/{wood}_planks"
+    },
+    "blockMaterial": "Wood",
+    "sounds": {
+        "place": "game/step/wood",
+        "break": "game/step/wood",
+        "hit": "game/step/wood",
+        "walk": "game/step/wood"
+    },
+    "resistance": 2.0
+}

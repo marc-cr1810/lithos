@@ -3,10 +3,10 @@
 #include "blocks/AirBlock.h"
 #include "blocks/FallingBlock.h"
 #include "blocks/LayeredBlock.h"
-#include "blocks/LightBlock.h"
+// #include "blocks/LightBlock.h"
 #include "blocks/LiquidBlock.h"
 #include "blocks/LogBlock.h"
-#include "blocks/MetadataBlock.h"
+// #include "blocks/MetadataBlock.h"
 #include "blocks/PlantBlock.h"
 #include "blocks/SlabBlock.h"
 #include "blocks/SolidBlock.h"
@@ -91,11 +91,14 @@ BlockRegistry::BlockRegistry() {
   registerBlock(iron);
   */
 
+  /*
   Block *glow = new LightBlock(BlockType::GLOWSTONE, "Glowstone", 15);
   glow->setResourceId("lithos:glowstone");
   glow->setTexture("stone/rock/glowstone");
   registerBlock(glow);
+  */
 
+  /*
   Block *water = new LiquidBlock(BlockType::WATER, "Water");
   water->setResourceId("lithos:water");
   water->setTexture("liquid/water_still");
@@ -113,6 +116,7 @@ BlockRegistry::BlockRegistry() {
   lava->setTexture(2, "liquid/lava_flow");
   lava->setTexture(3, "liquid/lava_flow");
   registerBlock(lava);
+  */
 
   /*
   Block *sand = new FallingBlock(BlockType::SAND, "Sand");
@@ -126,6 +130,7 @@ BlockRegistry::BlockRegistry() {
   registerBlock(gravel);
   */
 
+  /*
   Block *snow = new SolidBlock(BlockType::SNOW, "Snow");
   snow->setResourceId("lithos:snow");
   snow->setTexture("liquid/snow");
@@ -145,6 +150,7 @@ BlockRegistry::BlockRegistry() {
   cactus->setTexture(5, "plant/cactus/cactus_bottom");
   cactus->setOpaque(false);
   registerBlock(cactus);
+  */
 
   /*
   Block *spruceLog = new LogBlock(BlockType::SPRUCE_LOG, "Spruce Log");
@@ -201,6 +207,7 @@ BlockRegistry::BlockRegistry() {
   registerBlock(cobblestone);
   */
 
+  /*
   // Wood planks with metadata support: 0 = oak, 1 = spruce
   MetadataBlock *woodPlanks =
       new MetadataBlock(BlockType::WOOD_PLANKS, "Wood Planks");
@@ -208,8 +215,10 @@ BlockRegistry::BlockRegistry() {
   woodPlanks->setTextureForMetadata(0, "wood/planks/oak_planks");
   woodPlanks->setTextureForMetadata(1, "wood/planks/spruce_planks");
   registerBlock((Block *)woodPlanks);
+  */
 
   // Custom Mesh Blocks
+  /*
   Block *stoneSlab = new SlabBlock(BlockType::STONE_SLAB, "Stone Slab");
   stoneSlab->setResourceId("lithos:stone_slab");
   stoneSlab->setTexture("stone/rock/stone");
@@ -219,6 +228,7 @@ BlockRegistry::BlockRegistry() {
   woodStairs->setResourceId("lithos:oak_stairs");
   woodStairs->setTexture("wood/planks/oak_planks");
   registerBlock(woodStairs);
+  */
 
   /*
   // Geological Blocks
@@ -245,6 +255,7 @@ BlockRegistry::BlockRegistry() {
   registerBlock(granite);
   */
 
+  /*
   // New Logs
   Block *acaciaLog = new LogBlock(BlockType::ACACIA_LOG, "Acacia Log");
   acaciaLog->setResourceId("lithos:acacia_log");
@@ -295,7 +306,8 @@ BlockRegistry::BlockRegistry() {
   acaciaLeaves->setTexture("plant/leaves/acacia_leaves");
   registerBlock(acaciaLeaves);
 
-  Block *birchLeaves = new PlantBlock(BlockType::BIRCH_LEAVES, "Birch Leaves");
+  Block *birchLeaves =
+      new PlantBlock(BlockType::BIRCH_LEAVES, "Birch Leaves");
   birchLeaves->setResourceId("lithos:birch_leaves");
   birchLeaves->setTexture("plant/leaves/birch_leaves");
   registerBlock(birchLeaves);
@@ -470,11 +482,14 @@ BlockRegistry::BlockRegistry() {
   peat->setResourceId("lithos:peat");
   peat->setTexture("soil/peat");
   registerBlock(peat);
+    */
 
+  /*
   Block *snowLayer = new LayeredBlock(BlockType::SNOW_LAYER, "Snow Layer", 8);
   snowLayer->setResourceId("lithos:snow_layer");
   snowLayer->setTexture("liquid/snow");
   registerBlock(snowLayer);
+  */
 
   // Dynamic Model Loading
   for (auto &pair : blocks) {

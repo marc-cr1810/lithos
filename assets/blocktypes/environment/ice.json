@@ -1,0 +1,16 @@
+{
+    "code": "ice",
+    "class": "SolidBlock",
+    "blockMaterial": "Ice",
+    "drawType": "cube",
+    "sounds": {
+        "place": "game/step/glass",
+        "break": "game/step/glass",
+        "hit": "game/step/glass"
+    },
+    "textures": {
+        "all": "liquid/ice"
+    },
+    "opaque": false,
+    "id": 14
+}

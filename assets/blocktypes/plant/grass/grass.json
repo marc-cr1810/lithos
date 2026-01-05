@@ -1,11 +1,11 @@
 {
     "code": "grass",
     "class": "PlantBlock",
-    "blockmaterial": "Plant",
-    "drawtype": "cross",
+    "blockMaterial": "Plant",
+    "drawType": "cross",
     "replaceable": 1,
     "solid": false,
-    "variantgroups": [
+    "variantGroups": [
         {
             "code": "type",
             "states": [

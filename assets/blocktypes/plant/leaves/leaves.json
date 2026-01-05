@@ -1,20 +1,24 @@
 {
     "code": "leaves",
     "class": "PlantBlock",
-    "blockmaterial": "Leaves",
-    "drawtype": "cube",
+    "blockMaterial": "Leaves",
+    "drawType": "cube",
     "resistance": 0.2,
     "sounds": {
         "place": "grass-place",
         "break": "grass-break",
         "walk": "grass-walk"
     },
-    "variantgroups": [
+    "variantGroups": [
         {
             "code": "wood",
             "states": [
                 "oak",
-                "spruce"
+                "spruce",
+                "acacia",
+                "birch",
+                "dark_oak",
+                "jungle"
             ]
         }
     ],
@@ -23,6 +27,10 @@
     },
     "idByType": {
         "*-oak": 5,
-        "*-spruce": 17
+        "*-spruce": 17,
+        "*-acacia": 106,
+        "*-birch": 107,
+        "*-dark_oak": 108,
+        "*-jungle": 109
     }
 }

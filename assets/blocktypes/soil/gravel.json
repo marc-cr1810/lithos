@@ -2,8 +2,8 @@
     "code": "gravel",
     "id": 12,
     "class": "FallingBlock",
-    "blockmaterial": "Sand",
-    "drawtype": "cube",
+    "blockMaterial": "Sand",
+    "drawType": "cube",
     "resistance": 0.6,
     "sounds": {
         "place": "gravel-place",

@@ -1,9 +1,9 @@
 {
     "code": "rock",
     "class": "Block",
-    "blockmaterial": "Stone",
-    "drawtype": "cube",
-    "variantgroups": [
+    "blockMaterial": "Stone",
+    "drawType": "cube",
+    "variantGroups": [
         {
             "code": "type",
             "states": [
@@ -12,7 +12,31 @@
                 "andesite",
                 "basalt",
                 "diorite",
-                "granite"
+                "granite",
+                "sandstone",
+                "tuff",
+                "anthracite",
+                "bauxite",
+                "chalk",
+                "chert",
+                "claystone",
+                "conglomerate",
+                "green_marble",
+                "halite",
+                "kimberlite",
+                "limestone",
+                "mantle",
+                "peridotite",
+                "phyllite",
+                "pink_marble",
+                "scoria",
+                "shale",
+                "slate",
+                "suevite",
+                "white_marble",
+                "gneiss",
+                "schist",
+                "rhyolite"
             ]
         }
     ],
@@ -42,6 +66,80 @@
         "*-basalt": {
             "all": "stone/rock/basalt_side",
             "verticals": "stone/rock/basalt_top"
+        },
+        "*-sandstone": {
+            "all": "stone/sand/sandstone",
+            "up": "stone/sand/sandstone_top",
+            "down": "stone/sand/sandstone_bottom"
+        },
+        "*-tuff": {
+            "all": "stone/rock/tuff"
+        },
+        "*-anthracite": {
+            "all": "stone/rock/anthracite"
+        },
+        "*-bauxite": {
+            "all": "stone/rock/bauxite"
+        },
+        "*-chalk": {
+            "all": "stone/rock/chalk"
+        },
+        "*-chert": {
+            "all": "stone/rock/chert"
+        },
+        "*-claystone": {
+            "all": "stone/rock/claystone"
+        },
+        "*-conglomerate": {
+            "all": "stone/rock/conglomerate"
+        },
+        "*-green_marble": {
+            "all": "stone/rock/green_marble"
+        },
+        "*-halite": {
+            "all": "stone/rock/halite"
+        },
+        "*-kimberlite": {
+            "all": "stone/rock/kimberlite"
+        },
+        "*-limestone": {
+            "all": "stone/rock/limestone"
+        },
+        "*-mantle": {
+            "all": "stone/rock/mantle"
+        },
+        "*-peridotite": {
+            "all": "stone/rock/peridotite"
+        },
+        "*-phyllite": {
+            "all": "stone/rock/phyllite"
+        },
+        "*-pink_marble": {
+            "all": "stone/rock/pink_marble"
+        },
+        "*-scoria": {
+            "all": "stone/rock/scoria"
+        },
+        "*-shale": {
+            "all": "stone/rock/shale"
+        },
+        "*-slate": {
+            "all": "stone/rock/slate"
+        },
+        "*-suevite": {
+            "all": "stone/rock/suevite"
+        },
+        "*-white_marble": {
+            "all": "stone/rock/white_marble"
+        },
+        "*-gneiss": {
+            "all": "stone/rock/gneiss"
+        },
+        "*-schist": {
+            "all": "stone/rock/schist"
+        },
+        "*-rhyolite": {
+            "all": "stone/rock/rhyolite"
         }
     },
     "idByType": {
@@ -50,7 +148,31 @@
         "*-andesite": 28,
         "*-basalt": 29,
         "*-diorite": 30,
-        "*-granite": 31
+        "*-granite": 31,
+        "*-sandstone": 34,
+        "*-tuff": 35,
+        "*-anthracite": 36,
+        "*-bauxite": 37,
+        "*-chalk": 38,
+        "*-chert": 39,
+        "*-claystone": 41,
+        "*-conglomerate": 42,
+        "*-green_marble": 43,
+        "*-halite": 44,
+        "*-kimberlite": 45,
+        "*-limestone": 46,
+        "*-mantle": 47,
+        "*-peridotite": 48,
+        "*-phyllite": 49,
+        "*-pink_marble": 50,
+        "*-scoria": 51,
+        "*-shale": 52,
+        "*-slate": 53,
+        "*-suevite": 54,
+        "*-white_marble": 55,
+        "*-gneiss": 56,
+        "*-schist": 57,
+        "*-rhyolite": 58
     },
     "sounds": {
         "place": "game/step/stone",

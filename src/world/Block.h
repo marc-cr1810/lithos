@@ -292,7 +292,8 @@ public:
 
   virtual bool isSelectable() const { return isSolid_; }
   virtual bool isOpaque() const { return isOpaque_; }
-  virtual uint8_t getEmission() const { return 0; }
+  virtual uint8_t getEmission() const { return emission_; }
+  void setEmission(uint8_t e) { emission_ = e; }
   virtual bool isReplaceable() const { return isReplaceable_; }
   void setReplaceable(bool r) { isReplaceable_ = r; }
 
@@ -353,6 +354,7 @@ protected:
   bool isReplaceable_ = false;
   float resistance = 1.0f;
   RenderLayer renderLayer = RenderLayer::OPAQUE;
+  uint8_t emission_ = 0;
 
   std::string textureNames[6];
   float uMin[6];

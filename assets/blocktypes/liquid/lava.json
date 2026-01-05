@@ -1,0 +1,15 @@
+{
+    "code": "lava",
+    "class": "LiquidBlock",
+    "blockMaterial": "Liquid",
+    "drawType": "liquid",
+    "sounds": {
+        "place": "lava-place",
+        "break": "lava-break",
+        "walk": "lava-walk"
+    },
+    "textures": {
+        "all": "liquid/lava"
+    },
+    "id": 10
+}

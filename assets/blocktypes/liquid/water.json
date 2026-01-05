@@ -1,0 +1,15 @@
+{
+    "code": "water",
+    "class": "LiquidBlock",
+    "blockMaterial": "Liquid",
+    "drawType": "liquid",
+    "sounds": {
+        "place": "water-place",
+        "break": "water-break",
+        "walk": "water-walk"
+    },
+    "textures": {
+        "all": "liquid/water"
+    },
+    "id": 9
+}

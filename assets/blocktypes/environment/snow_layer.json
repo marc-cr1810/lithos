@@ -1,0 +1,18 @@
+{
+    "code": "snow_layer",
+    "class": "LayeredBlock",
+    "blockMaterial": "Snow",
+    "drawType": "json",
+    "textures": {
+        "all": "liquid/snow"
+    },
+    "sounds": {
+        "place": "game/step/snow",
+        "break": "game/step/snow",
+        "hit": "game/step/snow",
+        "walk": "game/step/snow"
+    },
+    "id": 63,
+    "emission": 0,
+    "lightAbsorption": 0
+}

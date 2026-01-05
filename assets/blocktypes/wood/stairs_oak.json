@@ -1,0 +1,17 @@
+{
+    "code": "stairs_oak",
+    "class": "StairBlock",
+    "blockMaterial": "Wood",
+    "drawType": "json",
+    "textures": {
+        "all": "wood/planks/oak_planks"
+    },
+    "sounds": {
+        "place": "game/step/wood",
+        "break": "game/step/wood",
+        "hit": "game/step/wood",
+        "walk": "game/step/wood"
+    },
+    "id": 27,
+    "resistance": 2.0
+}

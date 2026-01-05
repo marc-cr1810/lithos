@@ -54,17 +54,17 @@ struct BlockDefinition {
   std::string code;
   int id = -1; // Optional: Force a specific ID (for legacy/migration)
   std::string blockClass; // Optional custom C++ class name
-  std::vector<VariantGroup> variantgroups;
+  std::vector<VariantGroup> variantGroups;
 
   // Rendering
-  std::string drawtype = "cube";
+  std::string drawType = "cube";
   ShapeDef shape;
   std::unordered_map<std::string, TextureDef> textures;
   std::unordered_map<std::string, std::unordered_map<std::string, TextureDef>>
       texturesByType;
 
   // Material & Physics
-  std::string blockmaterial = "Stone";
+  std::string blockMaterial = "Stone";
   float resistance = 1.0f;
   int replaceable = 0;
   int lightAbsorption = 15;
@@ -74,31 +74,31 @@ struct BlockDefinition {
   SoundsDef sounds;
 
   // Collision & Selection
-  BoundingBox collisionbox;
-  BoundingBox selectionbox;
+  BoundingBox collisionBox;
+  BoundingBox selectionBox;
   bool hasCustomCollisionBox = false;
   bool hasCustomSelectionBox = false;
 
   // Rendering flags
   bool isSolid = true;
   bool isOpaque = true;
-  std::unordered_map<std::string, bool> sideopaque; // per-face opacity
-  std::unordered_map<std::string, bool> sidesolid;  // per-face solidity
+  std::unordered_map<std::string, bool> sideOpaque; // per-face opacity
+  std::unordered_map<std::string, bool> sideSolid;  // per-face solidity
 
   // Behaviors
   std::vector<BehaviorDef> behaviors;
 
   // Conditional properties (byType patterns)
-  std::unordered_map<std::string, std::string> drawtypeByType;
+  std::unordered_map<std::string, std::string> drawTypeByType;
   std::unordered_map<std::string, int> idByType;
   std::unordered_map<std::string, float> resistanceByType;
   std::unordered_map<std::string, ShapeDef> shapeByType;
   std::unordered_map<std::string, std::unordered_map<std::string, bool>>
-      sideopaqueByType;
+      sideOpaqueByType;
   std::unordered_map<std::string, std::unordered_map<std::string, bool>>
-      sidesolidByType;
-  std::unordered_map<std::string, BoundingBox> collisionboxByType;
-  std::unordered_map<std::string, BoundingBox> selectionboxByType;
+      sideSolidByType;
+  std::unordered_map<std::string, BoundingBox> collisionBoxByType;
+  std::unordered_map<std::string, BoundingBox> selectionBoxByType;
 };
 
 } // namespace BlockDef

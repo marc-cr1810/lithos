@@ -1,20 +1,26 @@
 {
     "code": "log",
     "class": "LogBlock",
-    "blockmaterial": "Wood",
-    "drawtype": "cube",
+    "blockMaterial": "Wood",
+    "drawType": "cube",
     "resistance": 2.0,
     "sounds": {
         "place": "wood-place",
         "break": "wood-break",
         "walk": "wood-walk"
     },
-    "variantgroups": [
+    "variantGroups": [
         {
             "code": "wood",
             "states": [
                 "oak",
-                "spruce"
+                "spruce",
+                "acacia",
+                "birch",
+                "dark_oak",
+                "jungle",
+                "mangrove",
+                "pale_oak"
             ]
         }
     ],
@@ -25,6 +31,12 @@
     },
     "idByType": {
         "*-oak": 4,
-        "*-spruce": 16
+        "*-spruce": 16,
+        "*-acacia": 100,
+        "*-birch": 101,
+        "*-dark_oak": 102,
+        "*-jungle": 103,
+        "*-mangrove": 104,
+        "*-pale_oak": 105
     }
 }

@@ -1,0 +1,15 @@
+{
+    "code": "terra_preta",
+    "class": "SolidBlock",
+    "blockMaterial": "Soil",
+    "drawType": "cube",
+    "sounds": {
+        "place": "grass-place",
+        "break": "grass-break",
+        "walk": "grass-walk"
+    },
+    "textures": {
+        "all": "soil/terra_preta"
+    },
+    "id": 61
+}

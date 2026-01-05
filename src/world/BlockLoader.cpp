@@ -1,11 +1,16 @@
 #include "BlockLoader.h"
 #include "../debug/Logger.h"
 #include "blocks/FallingBlock.h"
+#include "blocks/LayeredBlock.h"
 #include "blocks/LiquidBlock.h"
 #include "blocks/LogBlock.h"
 #include "blocks/PlantBlock.h"
+#include "blocks/SlabBlock.h"
 #include "blocks/SolidBlock.h"
+#include "blocks/StairBlock.h"
+#include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
@@ -99,8 +104,8 @@ BlockDef::BlockDefinition BlockLoader::parseJSON(const nlohmann::json &j) {
   }
 
   // Variant groups
-  if (j.contains("variantgroups")) {
-    for (const auto &vg : j.at("variantgroups")) {
+  if (j.contains("variantGroups")) {
+    for (const auto &vg : j.at("variantGroups")) {
       BlockDef::VariantGroup group;
       if (vg.contains("code")) {
         group.code = vg.at("code").get<std::string>();
@@ -114,24 +119,24 @@ BlockDef::BlockDefinition BlockLoader::parseJSON(const nlohmann::json &j) {
         group.loadFromProperties =
             vg.at("loadFromProperties").get<std::string>();
       }
-      def.variantgroups.push_back(group);
+      def.variantGroups.push_back(group);
     }
   }
 
-  // Drawtype
-  if (j.contains("drawtype")) {
-    def.drawtype = j.at("drawtype").get<std::string>();
+  // DrawType
+  if (j.contains("drawType")) {
+    def.drawType = j.at("drawType").get<std::string>();
   }
-  if (j.contains("drawtypeByType")) {
-    for (auto it = j.at("drawtypeByType").begin();
-         it != j.at("drawtypeByType").end(); ++it) {
-      def.drawtypeByType[it.key()] = it.value().get<std::string>();
+  if (j.contains("drawTypeByType")) {
+    for (auto it = j.at("drawTypeByType").begin();
+         it != j.at("drawTypeByType").end(); ++it) {
+      def.drawTypeByType[it.key()] = it.value().get<std::string>();
     }
   }
 
   // Block material
-  if (j.contains("blockmaterial")) {
-    def.blockmaterial = j.at("blockmaterial").get<std::string>();
+  if (j.contains("blockMaterial")) {
+    def.blockMaterial = j.at("blockMaterial").get<std::string>();
   }
 
   // Resistance
@@ -153,6 +158,9 @@ BlockDef::BlockDefinition BlockLoader::parseJSON(const nlohmann::json &j) {
   // Light
   if (j.contains("lightAbsorption")) {
     def.lightAbsorption = j.at("lightAbsorption").get<int>();
+  }
+  if (j.contains("emission")) {
+    def.emission = j.at("emission").get<int>();
   }
 
   // Textures
@@ -265,7 +273,7 @@ std::vector<std::string>
 BlockLoader::expandVariants(const BlockDef::BlockDefinition &def) {
   std::vector<std::string> variants;
 
-  if (def.variantgroups.empty()) {
+  if (def.variantGroups.empty()) {
     // No variants, just use the base code
     variants.push_back(def.code);
     return variants;
@@ -275,11 +283,11 @@ BlockLoader::expandVariants(const BlockDef::BlockDefinition &def) {
   variants.push_back(def.code);
 
   // Expand each variant group
-  for (const auto &group : def.variantgroups) {
+  for (const auto &group : def.variantGroups) {
     std::vector<std::string> newVariants;
     for (const auto &existingVariant : variants) {
       for (const auto &state : group.states) {
-        std::string newVariant = existingVariant + "-" + state;
+        std::string newVariant = existingVariant + "_" + state;
         newVariants.push_back(newVariant);
       }
     }
@@ -295,8 +303,8 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
                                        uint8_t blockId) {
 
   // Determine drawtype for this variant
-  std::string drawtype =
-      resolveProperty(def.drawtype, def.drawtypeByType, variantCode);
+  std::string drawType =
+      resolveProperty(def.drawType, def.drawTypeByType, variantCode);
 
   // Determine resistance for this variant
   float resistance =
@@ -328,9 +336,15 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
     block = new LiquidBlock(finalId, variantCode);
   } else if (def.blockClass == "LogBlock") {
     block = new LogBlock(finalId, variantCode);
-  } else if (drawtype == "cross" || def.blockClass == "PlantBlock") {
+  } else if (def.blockClass == "LayeredBlock") {
+    block = new LayeredBlock(finalId, variantCode);
+  } else if (def.blockClass == "SlabBlock") {
+    block = new SlabBlock(finalId, variantCode);
+  } else if (def.blockClass == "StairBlock") {
+    block = new StairBlock(finalId, variantCode);
+  } else if (drawType == "cross" || def.blockClass == "PlantBlock") {
     block = new PlantBlock(finalId, variantCode);
-  } else if (drawtype == "cube" || drawtype == "json") {
+  } else if (drawType == "cube" || drawType == "json") {
     block = new SolidBlock(finalId, variantCode);
   } else {
     // Default to solid block
@@ -447,11 +461,11 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
   }
 
   // Set render shape
-  if (drawtype == "cross") {
+  if (drawType == "cross") {
     block->setRenderShape(Block::RenderShape::CROSS);
-  } else if (drawtype == "cube") {
+  } else if (drawType == "cube") {
     block->setRenderShape(Block::RenderShape::CUBE);
-  } else if (drawtype == "json" && !def.shape.base.empty()) {
+  } else if (drawType == "json" && !def.shape.base.empty()) {
     // Load custom model if specified
     // This would require model path resolution
   }
@@ -461,7 +475,8 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
   block->setOpaque(def.isOpaque);
   block->setSolid(def.isSolid);
   block->setReplaceable(def.replaceable > 0);
-  if (drawtype == "cross") {
+  block->setEmission(def.emission);
+  if (drawType == "cross") {
     block->setOpaque(false);
   }
 
@@ -494,10 +509,10 @@ std::string BlockLoader::substituteVariables(const std::string &str,
                                              const std::string &variantCode) {
   std::string result = str;
   // Simple placeholder substitution
-  // Determine variant value (part after first hyphen)
-  size_t hyphen = variantCode.find('-');
-  if (hyphen != std::string::npos) {
-    std::string variantVal = variantCode.substr(hyphen + 1);
+  // Determine variant value (part after first underscore)
+  size_t underscore = variantCode.find('_');
+  if (underscore != std::string::npos) {
+    std::string variantVal = variantCode.substr(underscore + 1);
 
     // Replace {wood}, {start}, {whatever} with the variant value
     // We assume there's only one main variant variable for now

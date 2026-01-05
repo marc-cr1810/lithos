@@ -9,6 +9,7 @@ public:
   bool isSolid() const override { return false; }
   bool isOpaque() const override { return false; }
   bool isActive() const override { return false; }
+  bool isSelectable() const override { return false; }
   bool isReplaceable() const override { return true; }
 };
 

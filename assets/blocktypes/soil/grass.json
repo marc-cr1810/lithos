@@ -1,8 +1,8 @@
 {
     "code": "grass",
     "id": 2,
-    "blockmaterial": "Soil",
-    "drawtype": "cube",
+    "blockMaterial": "Soil",
+    "drawType": "cube",
     "resistance": 0.6,
     "sounds": {
         "place": "grass-hit",

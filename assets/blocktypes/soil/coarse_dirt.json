@@ -1,0 +1,15 @@
+{
+    "code": "coarse_dirt",
+    "class": "SolidBlock",
+    "blockMaterial": "Soil",
+    "drawType": "cube",
+    "sounds": {
+        "place": "grass-place",
+        "break": "grass-break",
+        "walk": "grass-walk"
+    },
+    "textures": {
+        "all": "soil/coarse_dirt"
+    },
+    "id": 60
+}

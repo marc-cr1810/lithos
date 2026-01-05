@@ -2,8 +2,8 @@
     "code": "sand",
     "id": 11,
     "class": "FallingBlock",
-    "blockmaterial": "Sand",
-    "drawtype": "cube",
+    "blockMaterial": "Sand",
+    "drawType": "cube",
     "resistance": 0.5,
     "sounds": {
         "place": "sand-place",

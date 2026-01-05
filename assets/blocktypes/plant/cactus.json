@@ -1,0 +1,21 @@
+{
+    "code": "cactus",
+    "class": "SolidBlock",
+    "blockMaterial": "Plant",
+    "drawType": "cube",
+    "sounds": {
+        "place": "game/step/cloth",
+        "break": "game/step/cloth",
+        "hit": "game/step/cloth"
+    },
+    "textures": {
+        "all": "plant/cactus/cactus_side",
+        "up": "plant/cactus/cactus_top",
+        "down": "plant/cactus/cactus_bottom"
+    },
+    "opaque": false,
+    "shape": {
+        "base": "pixelbox"
+    },
+    "id": 15
+}
