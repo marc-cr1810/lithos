@@ -1,12 +1,17 @@
 {
     "code": "water",
+    "creativeInventory": {
+        "liquids": [
+            "*"
+        ]
+    },
     "class": "LiquidBlock",
     "blockMaterial": "Liquid",
     "drawType": "liquid",
     "sounds": {
-        "place": "water-place",
-        "breakSound": "water-break",
-        "walk": "water-walk"
+        "place": "water_place",
+        "breakSound": "water_break",
+        "walk": "water_walk"
     },
     "textures": {
         "all": "liquid/water"

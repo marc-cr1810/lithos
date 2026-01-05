@@ -1,5 +1,10 @@
 {
     "code": "cactus",
+    "creativeInventory": {
+        "flora": [
+            "*"
+        ]
+    },
     "class": "SolidBlock",
     "blockMaterial": "Plant",
     "drawType": "cube",
@@ -17,5 +22,5 @@
     "shape": {
         "base": "pixelbox"
     },
-    "id": 15
+    "id": 18
 }

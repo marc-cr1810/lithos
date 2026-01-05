@@ -302,6 +302,11 @@ public:
 
   virtual bool isActive() const { return true; }
 
+  void addCreativeTab(const std::string &tab) { creativeTabs.push_back(tab); }
+  const std::vector<std::string> &getCreativeTabs() const {
+    return creativeTabs;
+  }
+
   enum class RenderLayer { OPAQUE, CUTOUT, TRANSPARENT };
   virtual RenderLayer getRenderLayer() const { return renderLayer; }
   void setRenderLayer(RenderLayer layer) { renderLayer = layer; }
@@ -355,6 +360,7 @@ protected:
   float resistance = 1.0f;
   RenderLayer renderLayer = RenderLayer::OPAQUE;
   uint8_t emission_ = 0;
+  std::vector<std::string> creativeTabs;
 
   std::string textureNames[6];
   float uMin[6];
@@ -400,6 +406,17 @@ public:
   Block *getBlock(uint8_t id);
   Block *getBlock(const std::string &resourceId);
 
+  struct CreativeTab {
+    std::string code;
+    int listOrder;
+    std::vector<Block *> blocks;
+  };
+
+  const std::vector<CreativeTab> &getCreativeTabs() const {
+    return creativeTabs;
+  }
+  void addBlockToTab(const std::string &tabCode, Block *block);
+
   // New: resolve all blocks
   void resolveUVs(const TextureAtlas &atlas) {
     for (auto &pair : blocks) {
@@ -412,6 +429,7 @@ private:
   ~BlockRegistry();
 
   std::unordered_map<uint8_t, Block *> blocks;
+  std::vector<CreativeTab> creativeTabs;
   Block *defaultBlock; // Air
 };
 

@@ -779,98 +779,69 @@ void GameState::RenderUI(Application *app) {
   if (m_ShowCreativeMenu) {
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
                             ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(600, 400));
+    ImGui::SetNextWindowSize(ImVec2(700, 500));
 
     if (ImGui::Begin("Creative Menu", nullptr,
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                          ImGuiWindowFlags_NoResize)) {
-      ImGui::Text("Creative Menu");
+      ImGui::Text("Creative Inventory");
       ImGui::Separator();
 
-      // Scrollable Area
-      ImGui::BeginChild("Scrolling");
+      auto &registry = BlockRegistry::getInstance();
+      const auto &tabs = registry.getCreativeTabs();
 
-      int buttonsPerRow = 8;
-      int blocks[] = {DIRT,
-                      GRASS,
-                      STONE,
-                      WOOD,
-                      LEAVES,
-                      COAL_ORE,
-                      IRON_ORE,
-                      GLOWSTONE,
-                      WATER,
-                      LAVA,
-                      SAND,
-                      GRAVEL,
-                      SNOW,
-                      ICE,
-                      CACTUS,
-                      SPRUCE_LOG,
-                      SPRUCE_LEAVES,
-                      TALL_GRASS,
-                      ACACIA_LOG,
-                      ACACIA_LEAVES,
-                      BIRCH_LOG,
-                      BIRCH_LEAVES,
-                      DARK_OAK_LOG,
-                      DARK_OAK_LEAVES,
-                      JUNGLE_LOG,
-                      JUNGLE_LEAVES,
-                      MANGROVE_LOG,
-                      PALE_OAK_LOG,
-                      DEAD_BUSH,
-                      ROSE,
-                      DRY_SHORT_GRASS,
-                      DRY_TALL_GRASS,
-                      OBSIDIAN,
-                      COBBLESTONE,
-                      WOOD_PLANKS,
-                      SNOW_LAYER,
-                      ANTHRACITE,
-                      BAUXITE,
-                      CHALK,
-                      CHERT,
-                      CLAY,
-                      CLAYSTONE,
-                      CONGLOMERATE,
-                      GREEN_MARBLE,
-                      HALITE,
-                      KIMBERLITE,
-                      LIMESTONE,
-                      MANTLE,
-                      PERIDOTITE,
-                      PHYLLITE,
-                      PINK_MARBLE,
-                      SCORIA,
-                      SHALE,
-                      SLATE,
-                      SUEVITE,
-                      WHITE_MARBLE,
-                      SCHIST,
-                      RHYOLITE,
-                      GOLD_ORE,
-                      GNEISS};
-      int numBlocks = sizeof(blocks) / sizeof(blocks[0]);
+      if (ImGui::BeginTabBar("CreativeTabs")) {
+        for (int i = 0; i < tabs.size(); ++i) {
+          if (ImGui::BeginTabItem(tabs[i].code.c_str())) {
+            m_CurrentTabIdx = i;
 
-      for (int i = 0; i < numBlocks; ++i) {
-        if (i > 0 && i % buttonsPerRow != 0)
-          ImGui::SameLine();
-        std::string label = BlockIdToName(blocks[i]);
-        if (ImGui::Button((label + "##inv").c_str(), ImVec2(60, 60))) {
-          m_SelectedBlock = (BlockType)blocks[i];
-          m_SelectedBlockMetadata = 0;
+            ImGui::BeginChild("ScrollingBlocks", ImVec2(0, -40), true);
+
+            const auto &blocksInTab = tabs[i].blocks;
+            int buttonsPerRow = 8;
+            float buttonSize = 70.0f;
+
+            for (size_t j = 0; j < blocksInTab.size(); ++j) {
+              Block *block = blocksInTab[j];
+              if (j % buttonsPerRow != 0)
+                ImGui::SameLine();
+
+              std::string label = block->getResourceId();
+              // Remove "lithos:" prefix if present for cleaner display
+              std::string displayName = label;
+              if (displayName.substr(0, 7) == "lithos:") {
+                displayName = displayName.substr(7);
+              }
+
+              if (ImGui::Button(
+                      (displayName + "##" + std::to_string(j)).c_str(),
+                      ImVec2(buttonSize, buttonSize))) {
+                m_SelectedBlock = (BlockType)block->getId();
+                m_SelectedBlockMetadata = 0;
+              }
+
+              if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("%s (ID: %d)", label.c_str(), block->getId());
+              }
+
+              if (m_SelectedBlock == block->getId()) {
+                ImGui::GetWindowDrawList()->AddRect(
+                    ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
+                    IM_COL32(255, 255, 0, 255), 3.0f, 0, 2.0f);
+              }
+            }
+
+            ImGui::EndChild();
+            ImGui::EndTabItem();
+          }
         }
-        if (ImGui::IsItemHovered()) {
-          ImGui::SetTooltip("%s", label.c_str());
-        }
-        if ((int)m_SelectedBlock == blocks[i] && m_SelectedBlockMetadata == 0) {
-          ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(),
-                                              ImGui::GetItemRectMax(),
-                                              IM_COL32(255, 255, 0, 255), 3.0f);
-        }
+        ImGui::EndTabBar();
       }
-      ImGui::EndChild();
+
+      ImGui::Separator();
+      if (ImGui::Button("Close", ImVec2(100, 30))) {
+        m_ShowCreativeMenu = false;
+      }
     }
     ImGui::End();
   }

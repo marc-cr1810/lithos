@@ -1,5 +1,10 @@
 {
     "code": "rose",
+    "creativeInventory": {
+        "flora": [
+            "*"
+        ]
+    },
     "class": "PlantBlock",
     "blockMaterial": "Plant",
     "drawType": "cross",

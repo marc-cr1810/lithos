@@ -12,8 +12,11 @@
 #include "blocks/SolidBlock.h"
 #include "blocks/StairBlock.h"
 #include "debug/Logger.h"
+#include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <nlohmann/json.hpp>
 
 BlockRegistry &BlockRegistry::getInstance() {
   static BlockRegistry instance;
@@ -24,6 +27,29 @@ BlockRegistry::BlockRegistry() {
   // Default to Air to avoid crashes
   defaultBlock = new AirBlock();
   blocks[BlockType::AIR] = defaultBlock;
+
+  // Load Creative Tabs
+  std::ifstream f("assets/config/creative_tabs.json");
+  if (f.is_open()) {
+    nlohmann::json j;
+    f >> j;
+    if (j.contains("tabConfigs")) {
+      for (const auto &tc : j.at("tabConfigs")) {
+        CreativeTab tab;
+        tab.code = tc.at("code").get<std::string>();
+        tab.listOrder = tc.at("listOrder").get<int>();
+        creativeTabs.push_back(tab);
+      }
+      // Sort by listOrder
+      std::sort(creativeTabs.begin(), creativeTabs.end(),
+                [](const CreativeTab &a, const CreativeTab &b) {
+                  return a.listOrder < b.listOrder;
+                });
+    }
+  } else {
+    LOG_WARN(
+        "Creative tabs config not found: assets/config/creative_tabs.json");
+  }
 
   // Load JSON block definitions first
   LOG_INFO("Loading JSON block definitions...");
@@ -40,6 +66,26 @@ BlockRegistry::BlockRegistry() {
 
   registerBlock(new AirBlock()); // Air doesn't strictly need ID if it's
                                  // default? Or "lithos:air"
+
+  // NOW register blocks to creative tabs (after all blocks are loaded)
+  // This must be done AFTER block loading to avoid static initialization
+  // deadlock
+  LOG_INFO("Registering blocks to creative tabs...");
+  for (auto &pair : blocks) {
+    Block *block = pair.second;
+    const auto &creativeTabsList = block->getCreativeTabs();
+
+    for (const std::string &tabCode : creativeTabsList) {
+      // Find the tab and add the block
+      for (auto &tab : creativeTabs) {
+        if (tab.code == tabCode) {
+          tab.blocks.push_back(block);
+          break;
+        }
+      }
+    }
+  }
+  LOG_INFO("Creative tab registration complete");
 
   /*
   Block *dirt = new SolidBlock(BlockType::DIRT, "Dirt");
@@ -518,6 +564,23 @@ BlockRegistry::BlockRegistry() {
 
 void BlockRegistry::registerBlock(Block *block) {
   blocks[block->getId()] = block;
+}
+
+void BlockRegistry::addBlockToTab(const std::string &tabCode, Block *block) {
+  LOG_INFO("            -> addBlockToTab called with tab: {}", tabCode);
+  LOG_INFO("            -> creativeTabs size: {}", creativeTabs.size());
+  for (auto &tab : creativeTabs) {
+    LOG_INFO("            -> Checking creativeTabs entry: {}", tab.code);
+    if (tab.code == tabCode) {
+      LOG_INFO("            -> Match found! Adding block to tab");
+      tab.blocks.push_back(block);
+      LOG_INFO("            -> Calling block->addCreativeTab");
+      block->addCreativeTab(tabCode);
+      LOG_INFO("            -> block->addCreativeTab returned");
+      return;
+    }
+  }
+  LOG_WARN("            -> No matching tab found for: {}", tabCode);
 }
 
 Block *BlockRegistry::getBlock(uint8_t id) {

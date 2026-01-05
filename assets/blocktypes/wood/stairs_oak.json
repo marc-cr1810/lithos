@@ -1,5 +1,10 @@
 {
     "code": "stairs_oak",
+    "creativeInventory": {
+        "construction": [
+            "*"
+        ]
+    },
     "class": "StairBlock",
     "blockMaterial": "Wood",
     "drawType": "json",

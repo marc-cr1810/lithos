@@ -1,5 +1,13 @@
 {
     "code": "rock",
+    "creativeInventory": {
+        "terrain": [
+            "*"
+        ],
+        "construction": [
+            "*_cobblestone"
+        ]
+    },
     "class": "Block",
     "blockMaterial": "Stone",
     "drawType": "cube",
@@ -43,136 +51,136 @@
     "attributes": {
         "handbook": {
             "groupBy": [
-                "rock-*"
+                "rock_*"
             ]
         }
     },
     "texturesByType": {
-        "*-obsidian": {
+        "*_obsidian": {
             "all": "stone/rock/obsidian"
         },
-        "*-cobblestone": {
+        "*_cobblestone": {
             "all": "stone/rock/cobblestone"
         },
-        "*-andesite": {
+        "*_andesite": {
             "all": "stone/rock/andesite"
         },
-        "*-diorite": {
+        "*_diorite": {
             "all": "stone/rock/diorite"
         },
-        "*-granite": {
+        "*_granite": {
             "all": "stone/rock/granite"
         },
-        "*-basalt": {
+        "*_basalt": {
             "all": "stone/rock/basalt_side",
             "verticals": "stone/rock/basalt_top"
         },
-        "*-sandstone": {
+        "*_sandstone": {
             "all": "stone/sand/sandstone",
             "up": "stone/sand/sandstone_top",
             "down": "stone/sand/sandstone_bottom"
         },
-        "*-tuff": {
+        "*_tuff": {
             "all": "stone/rock/tuff"
         },
-        "*-anthracite": {
+        "*_anthracite": {
             "all": "stone/rock/anthracite"
         },
-        "*-bauxite": {
+        "*_bauxite": {
             "all": "stone/rock/bauxite"
         },
-        "*-chalk": {
+        "*_chalk": {
             "all": "stone/rock/chalk"
         },
-        "*-chert": {
+        "*_chert": {
             "all": "stone/rock/chert"
         },
-        "*-claystone": {
+        "*_claystone": {
             "all": "stone/rock/claystone"
         },
-        "*-conglomerate": {
+        "*_conglomerate": {
             "all": "stone/rock/conglomerate"
         },
-        "*-green_marble": {
+        "*_green_marble": {
             "all": "stone/rock/green_marble"
         },
-        "*-halite": {
+        "*_halite": {
             "all": "stone/rock/halite"
         },
-        "*-kimberlite": {
+        "*_kimberlite": {
             "all": "stone/rock/kimberlite"
         },
-        "*-limestone": {
+        "*_limestone": {
             "all": "stone/rock/limestone"
         },
-        "*-mantle": {
+        "*_mantle": {
             "all": "stone/rock/mantle"
         },
-        "*-peridotite": {
+        "*_peridotite": {
             "all": "stone/rock/peridotite"
         },
-        "*-phyllite": {
+        "*_phyllite": {
             "all": "stone/rock/phyllite"
         },
-        "*-pink_marble": {
+        "*_pink_marble": {
             "all": "stone/rock/pink_marble"
         },
-        "*-scoria": {
+        "*_scoria": {
             "all": "stone/rock/scoria"
         },
-        "*-shale": {
+        "*_shale": {
             "all": "stone/rock/shale"
         },
-        "*-slate": {
+        "*_slate": {
             "all": "stone/rock/slate"
         },
-        "*-suevite": {
+        "*_suevite": {
             "all": "stone/rock/suevite"
         },
-        "*-white_marble": {
+        "*_white_marble": {
             "all": "stone/rock/white_marble"
         },
-        "*-gneiss": {
+        "*_gneiss": {
             "all": "stone/rock/gneiss"
         },
-        "*-schist": {
+        "*_schist": {
             "all": "stone/rock/schist"
         },
-        "*-rhyolite": {
+        "*_rhyolite": {
             "all": "stone/rock/rhyolite"
         }
     },
     "idByType": {
-        "*-obsidian": 23,
-        "*-cobblestone": 24,
-        "*-andesite": 28,
-        "*-basalt": 29,
-        "*-diorite": 30,
-        "*-granite": 31,
-        "*-sandstone": 34,
-        "*-tuff": 35,
-        "*-anthracite": 36,
-        "*-bauxite": 37,
-        "*-chalk": 38,
-        "*-chert": 39,
-        "*-claystone": 41,
-        "*-conglomerate": 42,
-        "*-green_marble": 43,
-        "*-halite": 44,
-        "*-kimberlite": 45,
-        "*-limestone": 46,
-        "*-mantle": 47,
-        "*-peridotite": 48,
-        "*-phyllite": 49,
-        "*-pink_marble": 50,
-        "*-scoria": 51,
-        "*-shale": 52,
-        "*-slate": 53,
-        "*-suevite": 54,
-        "*-white_marble": 55,
-        "*-gneiss": 56,
-        "*-schist": 57,
-        "*-rhyolite": 58
+        "*_obsidian": 23,
+        "*_cobblestone": 24,
+        "*_andesite": 28,
+        "*_basalt": 29,
+        "*_diorite": 30,
+        "*_granite": 31,
+        "*_sandstone": 34,
+        "*_tuff": 35,
+        "*_anthracite": 36,
+        "*_bauxite": 37,
+        "*_chalk": 38,
+        "*_chert": 39,
+        "*_claystone": 41,
+        "*_conglomerate": 42,
+        "*_green_marble": 43,
+        "*_halite": 44,
+        "*_kimberlite": 45,
+        "*_limestone": 46,
+        "*_mantle": 47,
+        "*_peridotite": 48,
+        "*_phyllite": 49,
+        "*_pink_marble": 50,
+        "*_scoria": 51,
+        "*_shale": 52,
+        "*_slate": 53,
+        "*_suevite": 54,
+        "*_white_marble": 55,
+        "*_gneiss": 56,
+        "*_schist": 57,
+        "*_rhyolite": 58
     },
     "sounds": {
         "place": "game/step/stone",

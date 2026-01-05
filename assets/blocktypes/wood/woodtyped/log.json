@@ -1,13 +1,21 @@
 {
     "code": "log",
+    "creativeInventory": {
+        "general": [
+            "*"
+        ],
+        "construction": [
+            "*"
+        ]
+    },
     "class": "LogBlock",
     "blockMaterial": "Wood",
     "drawType": "cube",
     "resistance": 2.0,
     "sounds": {
-        "place": "wood-place",
-        "breakSound": "wood-break",
-        "walk": "wood-walk"
+        "place": "wood_place",
+        "breakSound": "wood_break",
+        "walk": "wood_walk"
     },
     "variantGroups": [
         {
@@ -30,13 +38,13 @@
         "down": "wood/treetrunk/{wood}_log_top"
     },
     "idByType": {
-        "*-oak": 4,
-        "*-spruce": 16,
-        "*-acacia": 100,
-        "*-birch": 101,
-        "*-dark_oak": 102,
-        "*-jungle": 103,
-        "*-mangrove": 104,
-        "*-pale_oak": 105
+        "*_oak": 4,
+        "*_spruce": 16,
+        "*_acacia": 100,
+        "*_birch": 101,
+        "*_dark_oak": 102,
+        "*_jungle": 103,
+        "*_mangrove": 104,
+        "*_pale_oak": 105
     }
 }

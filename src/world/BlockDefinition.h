@@ -88,6 +88,9 @@ struct BlockDefinition {
   // Behaviors
   std::vector<BehaviorDef> behaviors;
 
+  // Creative Inventory
+  std::unordered_map<std::string, std::vector<std::string>> creativeInventory;
+
   // Conditional properties (byType patterns)
   std::unordered_map<std::string, std::string> drawTypeByType;
   std::unordered_map<std::string, int> idByType;

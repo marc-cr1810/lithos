@@ -1,13 +1,18 @@
 {
-    "code": "ore-iron",
+    "code": "ore_iron",
+    "creativeInventory": {
+        "terrain": [
+            "*"
+        ]
+    },
     "id": 7,
     "blockMaterial": "Stone",
     "drawType": "cube",
     "resistance": 3.0,
     "sounds": {
-        "place": "stone-hit",
-        "breakSound": "stone-hit",
-        "walk": "stone-walk"
+        "place": "stone_hit",
+        "breakSound": "stone_hit",
+        "walk": "stone_walk"
     },
     "textures": {
         "all": "stone/ore/iron_ore"

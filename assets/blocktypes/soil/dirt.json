@@ -1,13 +1,18 @@
 {
     "code": "dirt",
     "id": 1,
+    "creativeInventory": {
+        "terrain": [
+            "*"
+        ]
+    },
     "blockMaterial": "Soil",
     "drawType": "cube",
     "resistance": 0.5,
     "sounds": {
-        "place": "dirt-hit",
-        "walk": "dirt-walk",
-        "breakSound": "dirt-hit"
+        "place": "dirt_hit",
+        "walk": "dirt_walk",
+        "breakSound": "dirt_hit"
     },
     "textures": {
         "all": "soil/dirt"

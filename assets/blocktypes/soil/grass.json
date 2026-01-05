@@ -1,13 +1,18 @@
 {
     "code": "grass",
     "id": 2,
+    "creativeInventory": {
+        "terrain": [
+            "*"
+        ]
+    },
     "blockMaterial": "Soil",
     "drawType": "cube",
     "resistance": 0.6,
     "sounds": {
-        "place": "grass-hit",
-        "walk": "grass-walk",
-        "breakSound": "grass-hit"
+        "place": "grass_hit",
+        "walk": "grass_walk",
+        "breakSound": "grass_hit"
     },
     "textures": {
         "up": {

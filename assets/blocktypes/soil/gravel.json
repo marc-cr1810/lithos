@@ -1,14 +1,19 @@
 {
     "code": "gravel",
     "id": 12,
+    "creativeInventory": {
+        "terrain": [
+            "*"
+        ]
+    },
     "class": "FallingBlock",
     "blockMaterial": "Sand",
     "drawType": "cube",
     "resistance": 0.6,
     "sounds": {
-        "place": "gravel-place",
-        "breakSound": "gravel-break",
-        "walk": "gravel-walk"
+        "place": "gravel_place",
+        "breakSound": "gravel_break",
+        "walk": "gravel_walk"
     },
     "textures": {
         "all": "stone/gravel/gravel"

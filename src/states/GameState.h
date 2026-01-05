@@ -44,6 +44,7 @@ private:
   bool m_IsDebugMode = false;
   bool m_ShowProfiler = false;
   bool m_ShowCreativeMenu = false;
+  int m_CurrentTabIdx = 0;
   entt::entity m_PlayerEntity;
 
   // Interaction

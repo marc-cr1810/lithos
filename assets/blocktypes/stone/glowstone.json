@@ -1,5 +1,10 @@
 {
     "code": "glowstone",
+    "creativeInventory": {
+        "general": [
+            "*"
+        ]
+    },
     "class": "SolidBlock",
     "blockMaterial": "Stone",
     "drawType": "cube",

@@ -29,6 +29,7 @@ BlockLoader::loadFromDirectory(const std::filesystem::path &dir) {
   // Recursively find all .json files
   for (const auto &entry : std::filesystem::recursive_directory_iterator(dir)) {
     if (entry.is_regular_file() && entry.path().extension() == ".json") {
+      LOG_INFO("Loading block JSON: {}", entry.path().string());
       auto fileBlocks = loadFromFile(entry.path());
       blocks.insert(blocks.end(), fileBlocks.begin(), fileBlocks.end());
     }
@@ -51,16 +52,21 @@ BlockLoader::loadFromFile(const std::filesystem::path &path) {
   json j;
   try {
     f >> j;
+    LOG_INFO("  -> JSON parsed successfully");
   } catch (const std::exception &e) {
     LOG_ERROR("JSON parsing error in {}: {}", path.string(), e.what());
     return blocks;
   }
 
   try {
+    LOG_INFO("  -> Parsing block definition...");
     BlockDef::BlockDefinition def = parseJSON(j);
+    LOG_INFO("  -> Expanding variants...");
     std::vector<std::string> variants = expandVariants(def);
+    LOG_INFO("  -> Creating {} variant(s)...", variants.size());
 
     for (const auto &variant : variants) {
+      LOG_INFO("    -> Creating block for variant: {}", variant);
       Block *block = createBlockFromDefinition(def, variant, nextBlockId++);
       if (block) {
         blocks.push_back(block);
@@ -147,6 +153,22 @@ BlockDef::BlockDefinition BlockLoader::parseJSON(const nlohmann::json &j) {
     for (auto it = j.at("resistanceByType").begin();
          it != j.at("resistanceByType").end(); ++it) {
       def.resistanceByType[it.key()] = it.value().get<float>();
+    }
+  }
+
+  // Creative Inventory
+  if (j.contains("creativeInventory")) {
+    for (auto it = j.at("creativeInventory").begin();
+         it != j.at("creativeInventory").end(); ++it) {
+      std::vector<std::string> patterns;
+      if (it.value().is_array()) {
+        for (const auto &pattern : it.value()) {
+          patterns.push_back(pattern.get<std::string>());
+        }
+      } else {
+        patterns.push_back(it.value().get<std::string>());
+      }
+      def.creativeInventory[it.key()] = patterns;
     }
   }
 
@@ -357,7 +379,21 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
   }
 
   // Set resource ID
+  LOG_INFO("      -> Setting resource ID");
   block->setResourceId("lithos:" + variantCode);
+
+  // Store which creative tabs this block belongs to (for later registration)
+  // We don't call BlockRegistry::getInstance() here to avoid deadlock
+  LOG_INFO("      -> Storing creative tab memberships (count: {})",
+           def.creativeInventory.size());
+  for (const auto &[tabCode, patterns] : def.creativeInventory) {
+    for (const auto &pattern : patterns) {
+      if (matchesPattern(pattern, variantCode)) {
+        block->addCreativeTab(tabCode);
+        break; // Only add once per tab
+      }
+    }
+  }
 
   // Apply textures
   // First check for texturesByType

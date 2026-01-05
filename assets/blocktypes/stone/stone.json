@@ -1,13 +1,18 @@
 {
     "code": "stone",
+    "creativeInventory": {
+        "terrain": [
+            "*"
+        ]
+    },
     "id": 3,
     "blockMaterial": "Stone",
     "drawType": "cube",
     "resistance": 1.5,
     "sounds": {
-        "place": "stone-hit",
-        "walk": "stone-walk",
-        "breakSound": "stone-hit"
+        "place": "stone_hit",
+        "walk": "stone_walk",
+        "breakSound": "stone_hit"
     },
     "textures": {
         "all": "stone/rock/stone"

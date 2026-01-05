@@ -1,5 +1,10 @@
 {
     "code": "gold_ore",
+    "creativeInventory": {
+        "terrain": [
+            "*"
+        ]
+    },
     "class": "SolidBlock",
     "blockMaterial": "Stone",
     "drawType": "cube",

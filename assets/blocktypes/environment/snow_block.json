@@ -1,5 +1,10 @@
 {
     "code": "snow_block",
+    "creativeInventory": {
+        "terrain": [
+            "*"
+        ]
+    },
     "class": "SolidBlock",
     "blockMaterial": "Snow",
     "drawType": "cube",

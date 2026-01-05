@@ -1,12 +1,17 @@
 {
     "code": "podzol",
+    "creativeInventory": {
+        "terrain": [
+            "*"
+        ]
+    },
     "class": "SolidBlock",
     "blockMaterial": "Soil",
     "drawType": "cube",
     "sounds": {
-        "place": "grass-place",
-        "breakSound": "grass-break",
-        "walk": "grass-walk"
+        "place": "grass_place",
+        "breakSound": "grass_break",
+        "walk": "grass_walk"
     },
     "textures": {
         "up": "soil/podzol_top",

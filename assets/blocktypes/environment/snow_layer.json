@@ -1,5 +1,10 @@
 {
     "code": "snow_layer",
+    "creativeInventory": {
+        "terrain": [
+            "*"
+        ]
+    },
     "class": "LayeredBlock",
     "blockMaterial": "Snow",
     "drawType": "json",

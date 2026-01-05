@@ -1,14 +1,19 @@
 {
     "code": "sand",
     "id": 11,
+    "creativeInventory": {
+        "terrain": [
+            "*"
+        ]
+    },
     "class": "FallingBlock",
     "blockMaterial": "Sand",
     "drawType": "cube",
     "resistance": 0.5,
     "sounds": {
-        "place": "sand-place",
-        "breakSound": "sand-break",
-        "walk": "sand-walk"
+        "place": "sand_place",
+        "breakSound": "sand_break",
+        "walk": "sand_walk"
     },
     "textures": {
         "all": "stone/sand/sand"

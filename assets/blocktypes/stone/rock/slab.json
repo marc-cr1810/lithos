@@ -1,5 +1,10 @@
 {
     "code": "stone_slab",
+    "creativeInventory": {
+        "construction": [
+            "*"
+        ]
+    },
     "class": "SlabBlock",
     "blockMaterial": "Stone",
     "drawType": "json",
