@@ -176,7 +176,7 @@
     },
     "sounds": {
         "place": "game/step/stone",
-        "break": "game/step/stone",
+        "breakSound": "game/step/stone",
         "hit": "game/step/stone"
     }
 }

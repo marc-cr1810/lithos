@@ -7,7 +7,7 @@
     "sounds": {
         "place": "dirt-hit",
         "walk": "dirt-walk",
-        "break": "dirt-hit"
+        "breakSound": "dirt-hit"
     },
     "textures": {
         "all": "soil/dirt"

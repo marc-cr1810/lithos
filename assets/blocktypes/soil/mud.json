@@ -5,7 +5,7 @@
     "drawType": "cube",
     "sounds": {
         "place": "grass-place",
-        "break": "grass-break",
+        "breakSound": "grass-break",
         "walk": "grass-walk"
     },
     "textures": {

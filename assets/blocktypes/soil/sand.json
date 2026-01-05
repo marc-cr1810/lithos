@@ -7,7 +7,7 @@
     "resistance": 0.5,
     "sounds": {
         "place": "sand-place",
-        "break": "sand-break",
+        "breakSound": "sand-break",
         "walk": "sand-walk"
     },
     "textures": {

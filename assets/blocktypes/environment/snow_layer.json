@@ -8,7 +8,7 @@
     },
     "sounds": {
         "place": "game/step/snow",
-        "break": "game/step/snow",
+        "breakSound": "game/step/snow",
         "hit": "game/step/snow",
         "walk": "game/step/snow"
     },

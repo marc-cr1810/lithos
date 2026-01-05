@@ -5,7 +5,7 @@
     "drawType": "liquid",
     "sounds": {
         "place": "water-place",
-        "break": "water-break",
+        "breakSound": "water-break",
         "walk": "water-walk"
     },
     "textures": {

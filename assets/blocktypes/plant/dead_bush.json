@@ -11,7 +11,7 @@
     },
     "sounds": {
         "place": "game/step/grass",
-        "break": "game/step/grass",
+        "breakSound": "game/step/grass",
         "hit": "game/step/grass"
     }
 }

@@ -5,7 +5,7 @@
     "drawType": "cube",
     "sounds": {
         "place": "game/step/cloth",
-        "break": "game/step/cloth",
+        "breakSound": "game/step/cloth",
         "hit": "game/step/cloth"
     },
     "textures": {

@@ -7,7 +7,7 @@
     "sounds": {
         "place": "stone-hit",
         "walk": "stone-walk",
-        "break": "stone-hit"
+        "breakSound": "stone-hit"
     },
     "textures": {
         "all": "stone/rock/stone"

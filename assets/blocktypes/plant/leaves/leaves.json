@@ -6,7 +6,7 @@
     "resistance": 0.2,
     "sounds": {
         "place": "grass-place",
-        "break": "grass-break",
+        "breakSound": "grass-break",
         "walk": "grass-walk"
     },
     "variantGroups": [

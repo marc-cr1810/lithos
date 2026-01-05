@@ -225,8 +225,8 @@ BlockDef::BlockDefinition BlockLoader::parseJSON(const nlohmann::json &j) {
     if (s.contains("hit")) {
       def.sounds.hit = s.at("hit").get<std::string>();
     }
-    if (s.contains("break")) {
-      def.sounds.breakSound = s.at("break").get<std::string>();
+    if (s.contains("breakSound")) {
+      def.sounds.breakSound = s.at("breakSound").get<std::string>();
     }
   }
 
@@ -365,8 +365,25 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
   for (const auto &[pattern, texMap] : def.texturesByType) {
     if (matchesPattern(pattern, variantCode)) {
       foundTypeTextures = true;
-      // Apply textures from this pattern
+      // 1. Apply 'all' first if it exists in this pattern
+      if (texMap.count("all")) {
+        const auto &texDef = texMap.at("all");
+        std::string texturePath = substituteVariables(texDef.base, variantCode);
+        block->setTexture(texturePath);
+        for (int i = 0; i < 6; ++i) {
+          for (size_t k = 0; k < texDef.overlays.size(); ++k) {
+            std::string overlayPath =
+                substituteVariables(texDef.overlays[k], variantCode);
+            block->setOverlayTexture(i, overlayPath);
+          }
+        }
+      }
+
+      // 2. Apply specific faces for this pattern
       for (const auto &[face, texDef] : texMap) {
+        if (face == "all")
+          continue;
+
         std::string texturePath = substituteVariables(texDef.base, variantCode);
 
         // Function to apply texture and overlays for a face index
@@ -379,18 +396,7 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
           }
         };
 
-        if (face == "all") {
-          block->setTexture(texturePath);
-          // Overlays for 'all' is tricky if setOverlayTexture requires face
-          // index. Usually per-face. Let's assume 'all' applies to 0-5.
-          for (int i = 0; i < 6; ++i) {
-            for (size_t k = 0; k < texDef.overlays.size(); ++k) {
-              std::string overlayPath =
-                  substituteVariables(texDef.overlays[k], variantCode);
-              block->setOverlayTexture(i, overlayPath);
-            }
-          }
-        } else if (face == "north") {
+        if (face == "north") {
           applyTex(1);
         } else if (face == "south") {
           applyTex(0);
@@ -416,10 +422,27 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
 
   // If no type-specific textures found, use default textures
   if (!foundTypeTextures) {
+    // 1. Apply 'all' first if it exists
+    if (def.textures.count("all")) {
+      const auto &texDef = def.textures.at("all");
+      std::string texturePath = substituteVariables(texDef.base, variantCode);
+      block->setTexture(texturePath);
+      for (int i = 0; i < 6; ++i) {
+        for (size_t k = 0; k < texDef.overlays.size(); ++k) {
+          std::string overlayPath =
+              substituteVariables(texDef.overlays[k], variantCode);
+          block->setOverlayTexture(i, overlayPath);
+        }
+      }
+    }
+
+    // 2. Apply specific faces
     for (const auto &[face, texDef] : def.textures) {
+      if (face == "all")
+        continue;
+
       std::string texturePath = substituteVariables(texDef.base, variantCode);
 
-      // Function to apply texture and overlays for a face index
       auto applyTex = [&](int faceIdx) {
         block->setTexture(faceIdx, texturePath);
         for (size_t i = 0; i < texDef.overlays.size(); ++i) {
@@ -429,16 +452,7 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
         }
       };
 
-      if (face == "all") {
-        block->setTexture(texturePath);
-        for (int i = 0; i < 6; ++i) {
-          for (size_t k = 0; k < texDef.overlays.size(); ++k) {
-            std::string overlayPath =
-                substituteVariables(texDef.overlays[k], variantCode);
-            block->setOverlayTexture(i, overlayPath);
-          }
-        }
-      } else if (face == "north") {
+      if (face == "north") {
         applyTex(1);
       } else if (face == "south") {
         applyTex(0);

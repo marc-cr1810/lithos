@@ -7,7 +7,7 @@
     "resistance": 0.6,
     "sounds": {
         "place": "gravel-place",
-        "break": "gravel-break",
+        "breakSound": "gravel-break",
         "walk": "gravel-walk"
     },
     "textures": {

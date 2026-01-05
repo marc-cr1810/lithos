@@ -7,7 +7,7 @@
     "sounds": {
         "place": "grass-hit",
         "walk": "grass-walk",
-        "break": "grass-hit"
+        "breakSound": "grass-hit"
     },
     "textures": {
         "up": {

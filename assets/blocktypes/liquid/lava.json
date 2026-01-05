@@ -5,7 +5,7 @@
     "drawType": "liquid",
     "sounds": {
         "place": "lava-place",
-        "break": "lava-break",
+        "breakSound": "lava-break",
         "walk": "lava-walk"
     },
     "textures": {

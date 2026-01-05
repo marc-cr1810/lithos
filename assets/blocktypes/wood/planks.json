@@ -15,7 +15,7 @@
     "blockMaterial": "Wood",
     "sounds": {
         "place": "game/step/wood",
-        "break": "game/step/wood",
+        "breakSound": "game/step/wood",
         "hit": "game/step/wood",
         "walk": "game/step/wood"
     },
