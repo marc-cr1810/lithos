@@ -1,0 +1,28 @@
+{
+    "code": "leaves",
+    "class": "PlantBlock",
+    "blockmaterial": "Leaves",
+    "drawtype": "cube",
+    "resistance": 0.2,
+    "sounds": {
+        "place": "grass-place",
+        "break": "grass-break",
+        "walk": "grass-walk"
+    },
+    "variantgroups": [
+        {
+            "code": "wood",
+            "states": [
+                "oak",
+                "spruce"
+            ]
+        }
+    ],
+    "textures": {
+        "all": "plant/leaves/{wood}_leaves"
+    },
+    "idByType": {
+        "*-oak": 5,
+        "*-spruce": 17
+    }
+}

@@ -170,6 +170,7 @@ add_executable(lithos
     src/world/World.cpp
     src/world/blocks/LiquidBlock.cpp
     src/world/BlockRegistry.cpp
+    src/world/BlockLoader.cpp
     src/world/gen/NoiseManager.cpp
     src/world/gen/Landform.cpp
     src/world/gen/RockStrata.cpp

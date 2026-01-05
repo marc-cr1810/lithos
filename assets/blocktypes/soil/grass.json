@@ -1,0 +1,26 @@
+{
+    "code": "grass",
+    "id": 2,
+    "blockmaterial": "Soil",
+    "drawtype": "cube",
+    "resistance": 0.6,
+    "sounds": {
+        "place": "grass-hit",
+        "walk": "grass-walk",
+        "break": "grass-hit"
+    },
+    "textures": {
+        "up": {
+            "base": "soil/grass_block_top"
+        },
+        "down": {
+            "base": "soil/dirt"
+        },
+        "horizontals": {
+            "base": "soil/grass_block_side",
+            "overlays": [
+                "soil/grass_block_side_overlay"
+            ]
+        }
+    }
+}

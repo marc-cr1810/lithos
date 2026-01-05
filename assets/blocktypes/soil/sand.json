@@ -1,0 +1,16 @@
+{
+    "code": "sand",
+    "id": 11,
+    "class": "FallingBlock",
+    "blockmaterial": "Sand",
+    "drawtype": "cube",
+    "resistance": 0.5,
+    "sounds": {
+        "place": "sand-place",
+        "break": "sand-break",
+        "walk": "sand-walk"
+    },
+    "textures": {
+        "all": "stone/sand/sand"
+    }
+}

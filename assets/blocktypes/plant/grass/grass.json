@@ -1,0 +1,46 @@
+{
+    "code": "grass",
+    "class": "PlantBlock",
+    "blockmaterial": "Plant",
+    "drawtype": "cross",
+    "replaceable": 1,
+    "solid": false,
+    "variantgroups": [
+        {
+            "code": "type",
+            "states": [
+                "tall-green",
+                "dry-short",
+                "dry-tall"
+            ]
+        }
+    ],
+    "attributes": {
+        "handbook": {
+            "groupBy": [
+                "grass-*"
+            ]
+        }
+    },
+    "texturesByType": {
+        "*-tall-green": {
+            "all": "plant/tallgrass/short_grass"
+        },
+        "*-dry-short": {
+            "all": "plant/tallgrass/short_dry_grass"
+        },
+        "*-dry-tall": {
+            "all": "plant/tallgrass/tall_dry_grass"
+        }
+    },
+    "idByType": {
+        "*-tall-green": 18,
+        "*-dry-short": 21,
+        "*-dry-tall": 22
+    },
+    "sounds": {
+        "place": "game/step/grass",
+        "break": "game/step/grass",
+        "hit": "game/step/grass"
+    }
+}

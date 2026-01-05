@@ -11,7 +11,8 @@
 
 #include "../render/Model.h"
 #include "../render/ModelLoader.h"
-#include "../render/TextureAtlas.h" // Include full definition for resolveUVs
+#include "../render/TextureAtlas.h"
+#include <glm/glm.hpp>
 
 // Keep enum for IDs, useful for generation and serialization
 enum BlockType {
@@ -285,17 +286,24 @@ public:
   }
 
   // Properties
-  virtual bool isSolid() const { return true; }           // Collision
-  virtual bool isSelectable() const { return isSolid(); } // Selection/Raycast
-  virtual bool isOpaque() const {
-    return isOpaque_;
-  } // Visualization/Light Blocking
-  virtual uint8_t getEmission() const { return 0; } // Light source
-  virtual bool isReplaceable() const { return false; }
-  virtual bool isActive() const { return true; } // Replaces != AIR check
+  // Properties
+  virtual bool isSolid() const { return isSolid_; }
+  void setSolid(bool solid) { isSolid_ = solid; }
+
+  virtual bool isSelectable() const { return isSolid_; }
+  virtual bool isOpaque() const { return isOpaque_; }
+  virtual uint8_t getEmission() const { return 0; }
+  virtual bool isReplaceable() const { return isReplaceable_; }
+  void setReplaceable(bool r) { isReplaceable_ = r; }
+
+  virtual float getResistance() const { return resistance; }
+  void setResistance(float r) { resistance = r; }
+
+  virtual bool isActive() const { return true; }
 
   enum class RenderLayer { OPAQUE, CUTOUT, TRANSPARENT };
-  virtual RenderLayer getRenderLayer() const { return RenderLayer::OPAQUE; }
+  virtual RenderLayer getRenderLayer() const { return renderLayer; }
+  void setRenderLayer(RenderLayer layer) { renderLayer = layer; }
 
   enum class RenderShape { CUBE, CROSS, SLAB_BOTTOM, STAIRS, MODEL, LAYERED };
   virtual RenderShape getRenderShape() const { return renderShape; }
@@ -341,6 +349,10 @@ protected:
   std::string name;
   std::string resourceId;
   bool isOpaque_ = true;
+  bool isSolid_ = true;
+  bool isReplaceable_ = false;
+  float resistance = 1.0f;
+  RenderLayer renderLayer = RenderLayer::OPAQUE;
 
   std::string textureNames[6];
   float uMin[6];

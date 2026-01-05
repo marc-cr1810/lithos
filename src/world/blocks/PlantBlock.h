@@ -5,26 +5,26 @@
 
 class PlantBlock : public Block {
 public:
-  PlantBlock(uint8_t id, const std::string &name) : Block(id, name) {}
-  bool isSolid() const override {
+  PlantBlock(uint8_t id, const std::string &name) : Block(id, name) {
+    // defaults for plants
+    isOpaque_ = false;
+    isSolid_ = false;
+    isReplaceable_ = true;
+    renderLayer = RenderLayer::CUTOUT;
+    renderShape = RenderShape::CROSS;
+
     if (id == BlockType::LEAVES || id == BlockType::SPRUCE_LEAVES ||
         id == BlockType::ACACIA_LEAVES || id == BlockType::BIRCH_LEAVES ||
-        id == BlockType::DARK_OAK_LEAVES || id == BlockType::JUNGLE_LEAVES)
-      return true;
-    return false;
+        id == BlockType::DARK_OAK_LEAVES || id == BlockType::JUNGLE_LEAVES) {
+      isSolid_ = true;
+      renderShape = RenderShape::CUBE;
+    }
+    // Other plants stay CROSS/non-solid
   }
-  bool isSelectable() const override { return true; }
-  bool isReplaceable() const override { return true; }
-  bool isOpaque() const override { return false; }
-  RenderLayer getRenderLayer() const override { return RenderLayer::CUTOUT; }
 
-  RenderShape getRenderShape() const override {
-    if (id == BlockType::TALL_GRASS || id == BlockType::DEAD_BUSH ||
-        id == BlockType::ROSE || id == BlockType::DRY_SHORT_GRASS ||
-        id == BlockType::DRY_TALL_GRASS)
-      return RenderShape::CROSS;
-    return RenderShape::CUBE; // Leaves are cubes
-  }
+  bool isSelectable() const override { return true; }
+  // bool isReplaceable() const override { return true; } // Handled by
+  // isReplaceable_
 
   void getColor(float &r, float &g, float &b) const override {
     if (id == BlockType::LEAVES) {

@@ -1,0 +1,30 @@
+{
+    "code": "log",
+    "class": "LogBlock",
+    "blockmaterial": "Wood",
+    "drawtype": "cube",
+    "resistance": 2.0,
+    "sounds": {
+        "place": "wood-place",
+        "break": "wood-break",
+        "walk": "wood-walk"
+    },
+    "variantgroups": [
+        {
+            "code": "wood",
+            "states": [
+                "oak",
+                "spruce"
+            ]
+        }
+    ],
+    "textures": {
+        "all": "wood/bark/{wood}_log",
+        "up": "wood/treetrunk/{wood}_log_top",
+        "down": "wood/treetrunk/{wood}_log_top"
+    },
+    "idByType": {
+        "*-oak": 4,
+        "*-spruce": 16
+    }
+}

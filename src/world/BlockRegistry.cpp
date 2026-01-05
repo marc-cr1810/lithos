@@ -1,4 +1,5 @@
 #include "Block.h"
+#include "BlockLoader.h"
 #include "blocks/AirBlock.h"
 #include "blocks/FallingBlock.h"
 #include "blocks/LayeredBlock.h"
@@ -24,9 +25,23 @@ BlockRegistry::BlockRegistry() {
   defaultBlock = new AirBlock();
   blocks[BlockType::AIR] = defaultBlock;
 
+  // Load JSON block definitions first
+  LOG_INFO("Loading JSON block definitions...");
+  std::filesystem::path blockTypesPath = "assets/blocktypes";
+  if (std::filesystem::exists(blockTypesPath)) {
+    auto jsonBlocks = BlockLoader::loadFromDirectory(blockTypesPath);
+    for (Block *block : jsonBlocks) {
+      registerBlock(block);
+    }
+  } else {
+    LOG_WARN("Block definitions directory not found: {}",
+             blockTypesPath.string());
+  }
+
   registerBlock(new AirBlock()); // Air doesn't strictly need ID if it's
                                  // default? Or "lithos:air"
 
+  /*
   Block *dirt = new SolidBlock(BlockType::DIRT, "Dirt");
   dirt->setResourceId("lithos:dirt");
   dirt->setTexture("soil/dirt");
@@ -50,7 +65,9 @@ BlockRegistry::BlockRegistry() {
   stone->setResourceId("lithos:stone");
   stone->setTexture("stone/rock/stone");
   registerBlock(stone);
+  */
 
+  /*
   Block *wood = new LogBlock(BlockType::WOOD, "Oak Log");
   wood->setResourceId("lithos:oak_log");
   wood->setTexture("wood/bark/oak_log");
@@ -72,6 +89,7 @@ BlockRegistry::BlockRegistry() {
   iron->setResourceId("lithos:iron_ore");
   iron->setTexture("stone/ore/iron_ore");
   registerBlock(iron);
+  */
 
   Block *glow = new LightBlock(BlockType::GLOWSTONE, "Glowstone", 15);
   glow->setResourceId("lithos:glowstone");
@@ -96,6 +114,7 @@ BlockRegistry::BlockRegistry() {
   lava->setTexture(3, "liquid/lava_flow");
   registerBlock(lava);
 
+  /*
   Block *sand = new FallingBlock(BlockType::SAND, "Sand");
   sand->setResourceId("lithos:sand");
   sand->setTexture("stone/sand/sand");
@@ -105,6 +124,7 @@ BlockRegistry::BlockRegistry() {
   gravel->setResourceId("lithos:gravel");
   gravel->setTexture("stone/gravel/gravel");
   registerBlock(gravel);
+  */
 
   Block *snow = new SolidBlock(BlockType::SNOW, "Snow");
   snow->setResourceId("lithos:snow");
@@ -126,6 +146,7 @@ BlockRegistry::BlockRegistry() {
   cactus->setOpaque(false);
   registerBlock(cactus);
 
+  /*
   Block *spruceLog = new LogBlock(BlockType::SPRUCE_LOG, "Spruce Log");
   spruceLog->setResourceId("lithos:spruce_log");
   spruceLog->setTexture("wood/bark/spruce_log");
@@ -139,7 +160,9 @@ BlockRegistry::BlockRegistry() {
   spruceLeaves->setResourceId("lithos:spruce_leaves");
   spruceLeaves->setTexture("plant/leaves/spruce_leaves");
   registerBlock(spruceLeaves);
+  */
 
+  /*
   Block *tallGrass = new PlantBlock(BlockType::TALL_GRASS, "Tall Grass");
   tallGrass->setResourceId("lithos:tall_grass");
   tallGrass->setTexture("plant/tallgrass/short_grass");
@@ -176,6 +199,7 @@ BlockRegistry::BlockRegistry() {
   cobblestone->setResourceId("lithos:cobblestone");
   cobblestone->setTexture("stone/rock/cobblestone");
   registerBlock(cobblestone);
+  */
 
   // Wood planks with metadata support: 0 = oak, 1 = spruce
   MetadataBlock *woodPlanks =
@@ -196,6 +220,7 @@ BlockRegistry::BlockRegistry() {
   woodStairs->setTexture("wood/planks/oak_planks");
   registerBlock(woodStairs);
 
+  /*
   // Geological Blocks
   Block *andesite = new SolidBlock(BlockType::ANDESITE, "Andesite");
   andesite->setResourceId("lithos:andesite");
@@ -218,6 +243,7 @@ BlockRegistry::BlockRegistry() {
   granite->setResourceId("lithos:granite");
   granite->setTexture("stone/rock/granite");
   registerBlock(granite);
+  */
 
   // New Logs
   Block *acaciaLog = new LogBlock(BlockType::ACACIA_LOG, "Acacia Log");

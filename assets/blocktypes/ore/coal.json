@@ -1,0 +1,15 @@
+{
+    "code": "ore-coal",
+    "id": 6,
+    "blockmaterial": "Stone",
+    "drawtype": "cube",
+    "resistance": 3.0,
+    "sounds": {
+        "place": "stone-hit",
+        "break": "stone-hit",
+        "walk": "stone-walk"
+    },
+    "textures": {
+        "all": "stone/ore/coal_ore"
+    }
+}

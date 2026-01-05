@@ -1,0 +1,15 @@
+{
+    "code": "dirt",
+    "id": 1,
+    "blockmaterial": "Soil",
+    "drawtype": "cube",
+    "resistance": 0.5,
+    "sounds": {
+        "place": "dirt-hit",
+        "walk": "dirt-walk",
+        "break": "dirt-hit"
+    },
+    "textures": {
+        "all": "soil/dirt"
+    }
+}

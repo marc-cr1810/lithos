@@ -1,0 +1,60 @@
+{
+    "code": "rock",
+    "class": "Block",
+    "blockmaterial": "Stone",
+    "drawtype": "cube",
+    "variantgroups": [
+        {
+            "code": "type",
+            "states": [
+                "obsidian",
+                "cobblestone",
+                "andesite",
+                "basalt",
+                "diorite",
+                "granite"
+            ]
+        }
+    ],
+    "attributes": {
+        "handbook": {
+            "groupBy": [
+                "rock-*"
+            ]
+        }
+    },
+    "texturesByType": {
+        "*-obsidian": {
+            "all": "stone/rock/obsidian"
+        },
+        "*-cobblestone": {
+            "all": "stone/rock/cobblestone"
+        },
+        "*-andesite": {
+            "all": "stone/rock/andesite"
+        },
+        "*-diorite": {
+            "all": "stone/rock/diorite"
+        },
+        "*-granite": {
+            "all": "stone/rock/granite"
+        },
+        "*-basalt": {
+            "all": "stone/rock/basalt_side",
+            "verticals": "stone/rock/basalt_top"
+        }
+    },
+    "idByType": {
+        "*-obsidian": 23,
+        "*-cobblestone": 24,
+        "*-andesite": 28,
+        "*-basalt": 29,
+        "*-diorite": 30,
+        "*-granite": 31
+    },
+    "sounds": {
+        "place": "game/step/stone",
+        "break": "game/step/stone",
+        "hit": "game/step/stone"
+    }
+}
