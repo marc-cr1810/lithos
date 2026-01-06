@@ -8,13 +8,15 @@
     "class": "LiquidBlock",
     "blockMaterial": "Liquid",
     "drawType": "liquid",
+    "renderLayer": "transparent",
+    "opaque": false,
     "sounds": {
         "place": "water_place",
         "breakSound": "water_break",
         "walk": "water_walk"
     },
     "textures": {
-        "all": "liquid/water"
+        "all": "liquid/water_still"
     },
     "id": 9
 }

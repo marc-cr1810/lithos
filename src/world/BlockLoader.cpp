@@ -129,6 +129,11 @@ BlockDef::BlockDefinition BlockLoader::parseJSON(const nlohmann::json &j) {
     }
   }
 
+  // RenderLayer
+  if (j.contains("renderLayer")) {
+    def.renderLayer = j.at("renderLayer").get<std::string>();
+  }
+
   // DrawType
   if (j.contains("drawType")) {
     def.drawType = j.at("drawType").get<std::string>();
@@ -537,9 +542,38 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
     // This would require model path resolution
   }
 
-  // Set opacity based on drawtype/material
+  // Set render layer
+  if (def.renderLayer == "cutout") {
+    block->setRenderLayer(Block::RenderLayer::CUTOUT);
+    block->setOpaque(false); // Default to non-opaque for cutout
+  } else if (def.renderLayer == "transparent") {
+    block->setRenderLayer(Block::RenderLayer::TRANSPARENT);
+    block->setOpaque(false); // Default to non-opaque for transparent
+  } else {
+    block->setRenderLayer(Block::RenderLayer::OPAQUE);
+  }
+
+  // Set opacity based on drawtype/material (Can override defaults from
+  // renderLayer if explicitly set in JSON)
   block->setResistance(resistance);
-  block->setOpaque(def.isOpaque);
+  // Only override isOpaque if it was explicitly present in JSON?
+  // Current logic: def.isOpaque defaults to true.
+  // If JSON had "opaque": false, def.isOpaque is false.
+  // But if JSON didn't have "opaque", def.isOpaque is true.
+  // We want renderLayer="transparent" to imply opaque=false unless specified
+  // otherwise. BUT def.isOpaque is already parsed. Issue: We don't know if
+  // "opaque" was present in JSON or default. FIX: use the fact that we set
+  // opaque=false above, then OR it with the explicit setting? No. Let's rely on
+  // manual "opaque": false in JSON if needed, OR just trust renderLayer? User
+  // wants "Cant the engine just figure it out based on 'opaque'?". User asked
+  // "Why have a renderLayer option?". So if I use renderLayer, I should
+  // probably enforce it. If renderLayer is transparent, it CANNOT be opaque.
+  if (block->getRenderLayer() != Block::RenderLayer::OPAQUE) {
+    block->setOpaque(false);
+  } else {
+    block->setOpaque(def.isOpaque);
+  }
+
   block->setSolid(def.isSolid);
   block->setReplaceable(def.replaceable > 0);
   block->setEmission(def.emission);

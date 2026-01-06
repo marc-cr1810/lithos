@@ -59,6 +59,7 @@ struct BlockDefinition {
 
   // Rendering
   std::string drawType = "cube";
+  std::string renderLayer = "opaque"; // New field
   ShapeDef shape;
   std::unordered_map<std::string, TextureDef> textures;
   std::unordered_map<std::string, std::unordered_map<std::string, TextureDef>>
