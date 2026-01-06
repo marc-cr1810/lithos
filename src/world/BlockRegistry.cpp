@@ -551,8 +551,8 @@ BlockRegistry::BlockRegistry() {
       std::filesystem::path modelPath =
           std::filesystem::path("assets/models/block") / (path + ".json");
       if (std::filesystem::exists(modelPath)) {
-        LOG_RESOURCE_INFO("Loading custom model for {} -> {}", resId,
-                          modelPath.string());
+        LOG_RESOURCE_TRACE("Loading custom model for {} -> {}", resId,
+                           modelPath.string());
         block->setRenderShape(Block::RenderShape::MODEL);
         block->setModel(modelPath);
       }
@@ -567,20 +567,13 @@ void BlockRegistry::registerBlock(Block *block) {
 }
 
 void BlockRegistry::addBlockToTab(const std::string &tabCode, Block *block) {
-  LOG_INFO("            -> addBlockToTab called with tab: {}", tabCode);
-  LOG_INFO("            -> creativeTabs size: {}", creativeTabs.size());
   for (auto &tab : creativeTabs) {
-    LOG_INFO("            -> Checking creativeTabs entry: {}", tab.code);
     if (tab.code == tabCode) {
-      LOG_INFO("            -> Match found! Adding block to tab");
       tab.blocks.push_back(block);
-      LOG_INFO("            -> Calling block->addCreativeTab");
       block->addCreativeTab(tabCode);
-      LOG_INFO("            -> block->addCreativeTab returned");
       return;
     }
   }
-  LOG_WARN("            -> No matching tab found for: {}", tabCode);
 }
 
 Block *BlockRegistry::getBlock(uint8_t id) {

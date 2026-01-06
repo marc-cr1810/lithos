@@ -1,6 +1,7 @@
 #ifndef BLOCK_DEFINITION_H
 #define BLOCK_DEFINITION_H
 
+#include <nlohmann/json.hpp>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -91,6 +92,9 @@ struct BlockDefinition {
   // Creative Inventory
   std::unordered_map<std::string, std::vector<std::string>> creativeInventory;
 
+  // Attributes (Arbitrary JSON data)
+  nlohmann::json attributes;
+
   // Conditional properties (byType patterns)
   std::unordered_map<std::string, std::string> drawTypeByType;
   std::unordered_map<std::string, int> idByType;
@@ -102,6 +106,7 @@ struct BlockDefinition {
       sideSolidByType;
   std::unordered_map<std::string, BoundingBox> collisionBoxByType;
   std::unordered_map<std::string, BoundingBox> selectionBoxByType;
+  std::unordered_map<std::string, nlohmann::json> attributesByType;
 };
 
 } // namespace BlockDef

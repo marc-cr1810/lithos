@@ -29,7 +29,7 @@ BlockLoader::loadFromDirectory(const std::filesystem::path &dir) {
   // Recursively find all .json files
   for (const auto &entry : std::filesystem::recursive_directory_iterator(dir)) {
     if (entry.is_regular_file() && entry.path().extension() == ".json") {
-      LOG_INFO("Loading block JSON: {}", entry.path().string());
+      LOG_DEBUG("Loading block JSON: {}", entry.path().string());
       auto fileBlocks = loadFromFile(entry.path());
       blocks.insert(blocks.end(), fileBlocks.begin(), fileBlocks.end());
     }
@@ -52,25 +52,25 @@ BlockLoader::loadFromFile(const std::filesystem::path &path) {
   json j;
   try {
     f >> j;
-    LOG_INFO("  -> JSON parsed successfully");
+    LOG_DEBUG("  -> JSON parsed successfully");
   } catch (const std::exception &e) {
     LOG_ERROR("JSON parsing error in {}: {}", path.string(), e.what());
     return blocks;
   }
 
   try {
-    LOG_INFO("  -> Parsing block definition...");
+    LOG_DEBUG("  -> Parsing block definition...");
     BlockDef::BlockDefinition def = parseJSON(j);
-    LOG_INFO("  -> Expanding variants...");
+    LOG_DEBUG("  -> Expanding variants...");
     std::vector<std::string> variants = expandVariants(def);
-    LOG_INFO("  -> Creating {} variant(s)...", variants.size());
+    LOG_DEBUG("  -> Creating {} variant(s)...", variants.size());
 
     for (const auto &variant : variants) {
-      LOG_INFO("    -> Creating block for variant: {}", variant);
+      LOG_DEBUG("    -> Creating block for variant: {}", variant);
       Block *block = createBlockFromDefinition(def, variant, nextBlockId++);
       if (block) {
         blocks.push_back(block);
-        LOG_RESOURCE_INFO("Loaded block definition: {}", variant);
+        LOG_TRACE("Loaded block definition: {}", variant);
       }
     }
   } catch (const std::exception &e) {
@@ -288,6 +288,16 @@ BlockDef::BlockDefinition BlockLoader::parseJSON(const nlohmann::json &j) {
     }
   }
 
+  // Attributes
+  if (j.contains("attributes")) {
+    def.attributes = j.at("attributes");
+  }
+  if (j.contains("attributesByType")) {
+    for (const auto &item : j.at("attributesByType").items()) {
+      def.attributesByType[item.key()] = item.value();
+    }
+  }
+
   return def;
 }
 
@@ -331,6 +341,10 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
   // Determine resistance for this variant
   float resistance =
       resolveProperty(def.resistance, def.resistanceByType, variantCode);
+
+  // Determine attributes for this variant
+  nlohmann::json attributes =
+      resolveProperty(def.attributes, def.attributesByType, variantCode);
 
   // Create appropriate block type based on drawtype or behaviors
   Block *block = nullptr;
@@ -379,13 +393,16 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
   }
 
   // Set resource ID
-  LOG_INFO("      -> Setting resource ID");
+  LOG_DEBUG("      -> Setting resource ID");
   block->setResourceId("lithos:" + variantCode);
+
+  // Set attributes
+  block->setAttributes(attributes);
 
   // Store which creative tabs this block belongs to (for later registration)
   // We don't call BlockRegistry::getInstance() here to avoid deadlock
-  LOG_INFO("      -> Storing creative tab memberships (count: {})",
-           def.creativeInventory.size());
+  LOG_DEBUG("      -> Storing creative tab memberships (count: {})",
+            def.creativeInventory.size());
   for (const auto &[tabCode, patterns] : def.creativeInventory) {
     for (const auto &pattern : patterns) {
       if (matchesPattern(pattern, variantCode)) {

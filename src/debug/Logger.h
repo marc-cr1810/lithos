@@ -39,6 +39,7 @@ private:
 
 // Main Logger Macros
 #define LOG_TRACE(...) ::Logger::GetMainLogger()->trace(__VA_ARGS__)
+#define LOG_DEBUG(...) ::Logger::GetMainLogger()->debug(__VA_ARGS__)
 #define LOG_INFO(...) ::Logger::GetMainLogger()->info(__VA_ARGS__)
 #define LOG_WARN(...) ::Logger::GetMainLogger()->warn(__VA_ARGS__)
 #define LOG_ERROR(...) ::Logger::GetMainLogger()->error(__VA_ARGS__)
@@ -46,6 +47,7 @@ private:
 
 // Render Logger Macros
 #define LOG_RENDER_TRACE(...) ::Logger::GetRenderLogger()->trace(__VA_ARGS__)
+#define LOG_RENDER_DEBUG(...) ::Logger::GetRenderLogger()->debug(__VA_ARGS__)
 #define LOG_RENDER_INFO(...) ::Logger::GetRenderLogger()->info(__VA_ARGS__)
 #define LOG_RENDER_WARN(...) ::Logger::GetRenderLogger()->warn(__VA_ARGS__)
 #define LOG_RENDER_ERROR(...) ::Logger::GetRenderLogger()->error(__VA_ARGS__)
@@ -55,6 +57,8 @@ private:
 // Resource Logger Macros
 #define LOG_RESOURCE_TRACE(...)                                                \
   ::Logger::GetResourceLogger()->trace(__VA_ARGS__)
+#define LOG_RESOURCE_DEBUG(...)                                                \
+  ::Logger::GetResourceLogger()->debug(__VA_ARGS__)
 #define LOG_RESOURCE_INFO(...) ::Logger::GetResourceLogger()->info(__VA_ARGS__)
 #define LOG_RESOURCE_WARN(...) ::Logger::GetResourceLogger()->warn(__VA_ARGS__)
 #define LOG_RESOURCE_ERROR(...)                                                \

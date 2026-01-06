@@ -10,13 +10,13 @@
 #include "backends/imgui_impl_opengl3.h"
 #include "imgui.h"
 
+#include "../core/LangRegistry.h"
 #include "../world/Block.h"
 #include "../world/decorators/TreeRegistry.h"
 #include "../world/gen/BlockLayerConfig.h"
 #include "../world/gen/Landform.h"
 #include "../world/gen/RockStrata.h"
-#include <iostream>
-
+#include <filesystem>
 
 void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
   auto app = reinterpret_cast<Application *>(glfwGetWindowUserPointer(window));
@@ -76,6 +76,9 @@ void Application::Init() {
   glCullFace(GL_BACK);
 
   InitImGui();
+
+  // Load Localization
+  LangRegistry::get().loadAll(std::filesystem::path("assets/lang"));
 
   // Load Global Resources
   // Basic Shader

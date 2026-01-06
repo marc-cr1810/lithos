@@ -792,7 +792,9 @@ void GameState::RenderUI(Application *app) {
 
       if (ImGui::BeginTabBar("CreativeTabs")) {
         for (int i = 0; i < tabs.size(); ++i) {
-          if (ImGui::BeginTabItem(tabs[i].code.c_str())) {
+          // Use localized tab name
+          std::string tabName = Lang("tab-" + tabs[i].code);
+          if (ImGui::BeginTabItem(tabName.c_str())) {
             m_CurrentTabIdx = i;
 
             ImGui::BeginChild("ScrollingBlocks", ImVec2(0, -40), true);
@@ -806,12 +808,8 @@ void GameState::RenderUI(Application *app) {
               if (j % buttonsPerRow != 0)
                 ImGui::SameLine();
 
-              std::string label = block->getResourceId();
-              // Remove "lithos:" prefix if present for cleaner display
-              std::string displayName = label;
-              if (displayName.substr(0, 7) == "lithos:") {
-                displayName = displayName.substr(7);
-              }
+              // Use localized display name
+              std::string displayName = block->getDisplayName();
 
               if (ImGui::Button(
                       (displayName + "##" + std::to_string(j)).c_str(),
@@ -821,7 +819,8 @@ void GameState::RenderUI(Application *app) {
               }
 
               if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("%s (ID: %d)", label.c_str(), block->getId());
+                ImGui::SetTooltip("%s (ID: %d)", displayName.c_str(),
+                                  block->getId());
               }
 
               if (m_SelectedBlock == block->getId()) {

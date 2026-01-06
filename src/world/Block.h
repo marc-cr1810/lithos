@@ -5,10 +5,12 @@
 #include <filesystem>
 #include <iostream>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "../core/LangRegistry.h"
 #include "../render/Model.h"
 #include "../render/ModelLoader.h"
 #include "../render/TextureAtlas.h"
@@ -113,6 +115,9 @@ public:
 
   void setResourceId(const std::string &resId) { resourceId = resId; }
   const std::string &getResourceId() const { return resourceId; }
+
+  // Get localized display name
+  std::string getDisplayName() const { return Lang(resourceId); }
 
   // Texture Configuration
   void setTexture(const std::string &texName) {
@@ -350,6 +355,10 @@ public:
 
   void setOpaque(bool o) { isOpaque_ = o; }
 
+  // Attributes
+  void setAttributes(const nlohmann::json &attr) { attributes = attr; }
+  const nlohmann::json &getAttributes() const { return attributes; }
+
 protected:
   uint8_t id;
   std::string name;
@@ -380,6 +389,8 @@ protected:
   std::unordered_map<std::string, std::pair<float, float>> modelTextureUVs;
 
   RenderShape renderShape = RenderShape::CUBE;
+
+  nlohmann::json attributes;
 };
 
 // Singleton blocks
