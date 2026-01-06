@@ -170,6 +170,17 @@ add_executable(lithos
     src/world/OreDecorator.cpp
     src/world/World.cpp
     src/world/blocks/LiquidBlock.cpp
+    src/world/blocks/SolidBlock.cpp
+    src/world/blocks/PlantBlock.cpp
+    src/world/blocks/FallingBlock.cpp
+    src/world/blocks/GrassBlock.cpp
+    src/world/blocks/WaterBlock.cpp
+    src/world/blocks/LavaBlock.cpp
+    src/world/blocks/LeavesBlock.cpp
+    src/world/blocks/LogBlock.cpp
+    src/world/blocks/LayeredBlock.cpp
+    src/world/blocks/SlabBlock.cpp
+    src/world/blocks/StairBlock.cpp
     src/world/BlockRegistry.cpp
     src/world/BlockLoader.cpp
     src/world/BlockFactory.cpp

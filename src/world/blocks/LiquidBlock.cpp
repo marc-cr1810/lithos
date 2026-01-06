@@ -1,5 +1,11 @@
 #include "LiquidBlock.h"
+#include "../BlockRegistrar.h"
 #include "../World.h"
+
+static BlockRegistrar registrar("LiquidBlock",
+                                [](uint8_t id, const std::string &name) {
+                                  return new LiquidBlock(id, name);
+                                });
 
 // Metadata: 0 = Source/Full Strength, 1-7 = Decaying Flow
 
