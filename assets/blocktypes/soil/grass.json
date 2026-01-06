@@ -1,6 +1,7 @@
 {
     "code": "grass",
     "id": 2,
+    "class": "GrassBlock",
     "creativeInventory": {
         "terrain": [
             "*"

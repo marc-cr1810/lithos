@@ -5,7 +5,7 @@
             "*"
         ]
     },
-    "class": "LiquidBlock",
+    "class": "WaterBlock",
     "blockMaterial": "Liquid",
     "drawType": "liquid",
     "renderLayer": "transparent",

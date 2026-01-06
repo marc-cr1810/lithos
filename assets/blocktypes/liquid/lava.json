@@ -5,7 +5,7 @@
             "*"
         ]
     },
-    "class": "LiquidBlock",
+    "class": "LavaBlock",
     "blockMaterial": "Liquid",
     "drawType": "liquid",
     "renderLayer": "opaque",

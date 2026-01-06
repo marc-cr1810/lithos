@@ -1,13 +1,6 @@
 #include "BlockLoader.h"
 #include "../debug/Logger.h"
-#include "blocks/FallingBlock.h"
-#include "blocks/LayeredBlock.h"
-#include "blocks/LiquidBlock.h"
-#include "blocks/LogBlock.h"
-#include "blocks/PlantBlock.h"
-#include "blocks/SlabBlock.h"
-#include "blocks/SolidBlock.h"
-#include "blocks/StairBlock.h"
+#include "BlockFactory.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -371,26 +364,37 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
       (resolvedId != -1) ? static_cast<uint8_t>(resolvedId) : blockId;
 
   // Create block based on class or inferred type
-  if (isFalling || def.blockClass == "FallingBlock") {
-    block = new FallingBlock(finalId, variantCode);
-  } else if (isLiquid || def.blockClass == "LiquidBlock") {
-    block = new LiquidBlock(finalId, variantCode);
-  } else if (def.blockClass == "LogBlock") {
-    block = new LogBlock(finalId, variantCode);
-  } else if (def.blockClass == "LayeredBlock") {
-    block = new LayeredBlock(finalId, variantCode);
-  } else if (def.blockClass == "SlabBlock") {
-    block = new SlabBlock(finalId, variantCode);
-  } else if (def.blockClass == "StairBlock") {
-    block = new StairBlock(finalId, variantCode);
-  } else if (drawType == "cross" || def.blockClass == "PlantBlock") {
-    block = new PlantBlock(finalId, variantCode);
-  } else if (drawType == "cube" || drawType == "json") {
-    block = new SolidBlock(finalId, variantCode);
+  // Determine Class Name
+  std::string className = "SolidBlock"; // Default
+
+  if (!def.blockClass.empty()) {
+    className = def.blockClass;
   } else {
-    // Default to solid block
-    block = new SolidBlock(finalId, variantCode);
+    // Inference Logic for backward compatibility or concise JSON
+    if (isFalling) {
+      className = "FallingBlock";
+    } else if (isLiquid) {
+      if (variantCode == "water")
+        className = "WaterBlock";
+      else if (variantCode == "lava")
+        className = "LavaBlock";
+      else
+        className = "LiquidBlock";
+    } else if (drawType == "cross") {
+      if (variantCode.find("leaves") != std::string::npos)
+        className = "LeavesBlock";
+      else
+        className = "PlantBlock";
+    } else if (drawType == "cube" || drawType == "json") {
+      if (variantCode == "grass")
+        className = "GrassBlock";
+      else
+        className = "SolidBlock";
+    }
   }
+
+  block =
+      BlockFactory::getInstance().createBlock(className, finalId, variantCode);
 
   if (!block) {
     LOG_ERROR("Failed to create block instance for {}", variantCode);

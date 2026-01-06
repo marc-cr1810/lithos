@@ -5,7 +5,7 @@
             "*"
         ]
     },
-    "class": "PlantBlock",
+    "class": "LeavesBlock",
     "blockMaterial": "Leaves",
     "drawType": "cube",
     "opaque": false,
