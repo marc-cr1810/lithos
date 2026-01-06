@@ -181,6 +181,7 @@ add_executable(lithos
     src/world/blocks/LayeredBlock.cpp
     src/world/blocks/SlabBlock.cpp
     src/world/blocks/StairBlock.cpp
+    src/world/blocks/TallGrassBlock.cpp
     src/world/BlockRegistry.cpp
     src/world/BlockLoader.cpp
     src/world/BlockFactory.cpp
