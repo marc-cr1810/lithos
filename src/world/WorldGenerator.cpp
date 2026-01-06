@@ -602,47 +602,72 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
 
         if (surfaceHeight >= startY && surfaceHeight < startY + CHUNK_SIZE) {
           int localSurfaceY = surfaceHeight - startY;
+          float temp = column.temperatureMap[lx][lz];
+          float humid = column.humidityMap[lx][lz];
+          float yNormalized = (float)surfaceHeight / (float)config.worldHeight;
 
-          // Beach around sea level (+/- 2 blocks)
-          bool isBeach = (surfaceHeight >= config.seaLevel - 2 &&
-                          surfaceHeight <= config.seaLevel + 2) &&
-                         (beachInfo > 0.2f);
+          bool placedBeach = false;
 
-          if (isBeach) {
-            chunk.blocks[lx][localSurfaceY][lz].block = sandBlock;
-            chunk.blocks[lx][localSurfaceY][lz].metadata = 0;
-            if (localSurfaceY > 0) {
-              chunk.blocks[lx][localSurfaceY - 1][lz].block = sandstoneBlock;
-              chunk.blocks[lx][localSurfaceY - 1][lz].metadata = 0;
+          // Check for Beach (Only near sea level)
+          if (surfaceHeight >= config.seaLevel - 2 &&
+              surfaceHeight <= config.seaLevel + 2) {
+            uint8_t beachId = BlockLayerConfig::Get().GetBeachBlockId(
+                temp, humid, beachInfo, yNormalized);
+            if (beachId != 0) {
+              Block *beachBlock =
+                  BlockRegistry::getInstance().getBlock(beachId);
+              chunk.blocks[lx][localSurfaceY][lz].block = beachBlock;
+              chunk.blocks[lx][localSurfaceY][lz].metadata = 0;
+
+              // Sandstone/Sub-beach support? For now assuming simple beaches
+              // (sand/gravel) which might want sandstone below. We could query
+              // GetSurfaceBlocks for the beach ID if we wanted sub-rules, or
+              // just place beachBlock below too if simple.
+              if (localSurfaceY > 0) {
+                // Simple fallback: if sand, place sandstone? Or just copy beach
+                // block? Let's use the surface rule system to see if we can get
+                // a "Beach" rule match? No, "beachRules" returned just ID.
+                // Let's just place Sandstone if Sand, else same block.
+                // Or better: Use the same block for depth 1.
+                if (beachId == sandBlock->getId()) {
+                  chunk.blocks[lx][localSurfaceY - 1][lz].block =
+                      sandstoneBlock;
+                } else {
+                  chunk.blocks[lx][localSurfaceY - 1][lz].block = beachBlock;
+                }
+                chunk.blocks[lx][localSurfaceY - 1][lz].metadata = 0;
+              }
+              placedBeach = true;
             }
-          } else {
+          }
+
+          if (!placedBeach) {
             if (surfaceHeight < config.seaLevel) {
-              // Underwater terrain (gravel)
-              chunk.blocks[lx][localSurfaceY][lz].block = gravelBlock;
+              // Underwater terrain
+              uint8_t uwId = BlockLayerConfig::Get().GetUnderwaterBlockId(
+                  temp, humid, yNormalized);
+              if (uwId == 0)
+                uwId = gravelBlock->getId(); // Fallback
+
+              Block *uwBlock = BlockRegistry::getInstance().getBlock(uwId);
+              chunk.blocks[lx][localSurfaceY][lz].block = uwBlock;
               chunk.blocks[lx][localSurfaceY][lz].metadata = 0;
             } else {
               // Land
-              // Use Dynamic Surface Block
-              BlockType surfaceType =
-                  GetSurfaceBlock(wx, surfaceHeight, wz, &column);
+              float patch = noiseManager.GetSurfacePatchNoise(wx, wz);
+              float fertility = humid;
+
+              std::pair<uint8_t, uint8_t> surface =
+                  BlockLayerConfig::Get().GetSurfaceBlocks(
+                      temp, humid, fertility, patch, yNormalized, beachInfo);
+
               Block *surfaceBlock =
-                  BlockRegistry::getInstance().getBlock(surfaceType);
+                  BlockRegistry::getInstance().getBlock(surface.first);
+              Block *subBlock =
+                  BlockRegistry::getInstance().getBlock(surface.second);
 
               chunk.blocks[lx][localSurfaceY][lz].block = surfaceBlock;
               chunk.blocks[lx][localSurfaceY][lz].metadata = 0;
-
-              // Determine Sub-surface block (default dirt)
-              Block *subBlock = dirtBlock;
-              if (surfaceType == BlockType::SAND)
-                subBlock = sandBlock; // Or Sandstone?
-              else if (surfaceType == BlockType::GRAVEL)
-                subBlock = gravelBlock;
-              else if (surfaceType == BlockType::MUD)
-                subBlock = mudBlock;
-              else if (surfaceType == BlockType::COARSE_DIRT)
-                subBlock = coarseDirtBlock;
-              else if (surfaceType == BlockType::PEAT)
-                subBlock = peatBlock;
 
               if (localSurfaceY > 0) {
                 chunk.blocks[lx][localSurfaceY - 1][lz].block = subBlock;
@@ -904,9 +929,10 @@ BlockType WorldGenerator::GetSurfaceBlock(int x, int y, int z,
   float yNormalized = (float)y / (float)config.worldHeight;
   yNormalized = std::max(0.0f, std::min(1.0f, yNormalized));
 
-  uint8_t id = BlockLayerConfig::Get().GetSurfaceBlockId(
-      temp, humid, fertility, patch, yNormalized, beach);
-  return (BlockType)id;
+  std::pair<uint8_t, uint8_t> surface =
+      BlockLayerConfig::Get().GetSurfaceBlocks(temp, humid, fertility, patch,
+                                               yNormalized, beach);
+  return (BlockType)surface.first;
 }
 
 float WorldGenerator::GetTemperature(int x, int z) {

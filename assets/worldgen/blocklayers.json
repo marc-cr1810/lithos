@@ -3,6 +3,7 @@
         {
             "comment": "Snow Caps (High Altitude)",
             "block": "lithos:snow_block",
+            "subSurfaceBlock": "lithos:snow_block",
             "condition": {
                 "minY": 0.40625,
                 "minTemp": -50.0,
@@ -12,6 +13,7 @@
         {
             "comment": "Gravel Patches (High Patch Noise)",
             "block": "lithos:gravel",
+            "subSurfaceBlock": "lithos:gravel",
             "condition": {
                 "minPatchNoise": 0.6
             }
@@ -19,6 +21,7 @@
         {
             "comment": "Coarse Dirt Patches (Low Patch Noise)",
             "block": "lithos:coarse_dirt",
+            "subSurfaceBlock": "lithos:dirt",
             "condition": {
                 "maxPatchNoise": -0.7
             }
@@ -26,6 +29,7 @@
         {
             "comment": "Desert: Hot and Dry",
             "block": "lithos:sand",
+            "subSurfaceBlock": "lithos:rock_sandstone",
             "condition": {
                 "minTemp": 22.0,
                 "maxRain": 0.25
@@ -34,6 +38,7 @@
         {
             "comment": "Jungle: High Fertility (Hot/Wet)",
             "block": "lithos:terra_preta",
+            "subSurfaceBlock": "lithos:dirt",
             "condition": {
                 "minTemp": 22.0,
                 "minFertility": 0.6
@@ -42,6 +47,7 @@
         {
             "comment": "Swamp: Warm and Very Wet",
             "block": "lithos:mud",
+            "subSurfaceBlock": "lithos:mud",
             "condition": {
                 "minTemp": 5.0,
                 "minRain": 0.75
@@ -50,6 +56,7 @@
         {
             "comment": "Bog: Cold and Very Wet",
             "block": "lithos:peat",
+            "subSurfaceBlock": "lithos:mud",
             "condition": {
                 "maxTemp": 5.0,
                 "minRain": 0.75
@@ -58,6 +65,7 @@
         {
             "comment": "Tundra: Cold and Dry",
             "block": "lithos:coarse_dirt",
+            "subSurfaceBlock": "lithos:dirt",
             "condition": {
                 "maxTemp": 5.0,
                 "maxRain": 0.2
@@ -66,6 +74,7 @@
         {
             "comment": "Pine Forest Podzol Patches",
             "block": "lithos:podzol",
+            "subSurfaceBlock": "lithos:dirt",
             "condition": {
                 "minTemp": 10.0,
                 "minRain": 0.4,
@@ -73,11 +82,17 @@
             }
         },
         {
+            "comment": "Default Fallback",
+            "block": "lithos:grass",
+            "subSurfaceBlock": "lithos:dirt",
+            "condition": {}
+        }
+    ],
+    "beachRules": [
+        {
             "comment": "Beach: Sand (High Beach Noise)",
             "block": "lithos:sand",
             "condition": {
-                "minY": 0.19375,
-                "maxY": 0.20625,
                 "minBeachNoise": 0.4
             }
         },
@@ -85,15 +100,22 @@
             "comment": "Beach: Gravel (Moderate Beach Noise)",
             "block": "lithos:gravel",
             "condition": {
-                "minY": 0.19375,
-                "maxY": 0.20625,
                 "minBeachNoise": 0.0,
                 "maxBeachNoise": 0.4
             }
+        }
+    ],
+    "underwaterRules": [
+        {
+            "comment": "Deep Ocean: Gravel",
+            "block": "lithos:gravel",
+            "condition": {
+                "maxY": 0.2
+            }
         },
         {
-            "comment": "Default Fallback",
-            "block": "lithos:grass",
+            "comment": "Normal Seabed: Gravel",
+            "block": "lithos:gravel",
             "condition": {}
         }
     ],

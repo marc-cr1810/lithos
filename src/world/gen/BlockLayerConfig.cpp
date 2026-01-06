@@ -35,121 +35,124 @@ bool BlockLayerConfig::Load(const std::string &path) {
     json j;
     file >> j;
 
-    rules.clear();
+    auto parseRules = [&](const std::string &key,
+                          std::vector<BlockLayerRule> &dest) {
+      if (j.contains(key)) {
+        for (const auto &item : j[key]) {
+          BlockLayerRule rule;
+          if (item.contains("comment"))
+            rule.comment = item["comment"].get<std::string>();
+          if (item.contains("block"))
+            rule.blockResourceId = item["block"].get<std::string>();
+          if (item.contains("subSurfaceBlock"))
+            rule.subSurfaceBlockResourceId =
+                item["subSurfaceBlock"].get<std::string>();
+
+          if (item.contains("condition")) {
+            auto &c = item["condition"];
+            if (c.contains("minTemp"))
+              rule.minTemp = c["minTemp"];
+            if (c.contains("maxTemp"))
+              rule.maxTemp = c["maxTemp"];
+            if (c.contains("minRain"))
+              rule.minRain = c["minRain"];
+            if (c.contains("maxRain"))
+              rule.maxRain = c["maxRain"];
+            if (c.contains("minFertility"))
+              rule.minFertility = c["minFertility"];
+            if (c.contains("maxFertility"))
+              rule.maxFertility = c["maxFertility"];
+            if (c.contains("minPatchNoise"))
+              rule.minPatchNoise = c["minPatchNoise"];
+            if (c.contains("maxPatchNoise"))
+              rule.maxPatchNoise = c["maxPatchNoise"];
+            if (c.contains("minY"))
+              rule.minY = c["minY"];
+            if (c.contains("maxY"))
+              rule.maxY = c["maxY"];
+            if (c.contains("minBeachNoise"))
+              rule.minBeachNoise = c["minBeachNoise"];
+            if (c.contains("maxBeachNoise"))
+              rule.maxBeachNoise = c["maxBeachNoise"];
+          }
+
+          // Resolve IDs immediately
+          Block *b =
+              BlockRegistry::getInstance().getBlock(rule.blockResourceId);
+          if (b)
+            rule.cachedBlockId = b->getId();
+
+          if (!rule.subSurfaceBlockResourceId.empty()) {
+            Block *sb = BlockRegistry::getInstance().getBlock(
+                rule.subSurfaceBlockResourceId);
+            if (sb)
+              rule.cachedSubSurfaceBlockId = sb->getId();
+          } else {
+            // Default sub-surface to Dirt (1)
+            Block *dirt = BlockRegistry::getInstance().getBlock("lithos:dirt");
+            if (dirt)
+              rule.cachedSubSurfaceBlockId = dirt->getId();
+            else
+              rule.cachedSubSurfaceBlockId = 1;
+          }
+
+          dest.push_back(rule);
+        }
+      }
+    };
+
+    surfaceRules.clear();
     liquidRules.clear();
+    beachRules.clear();
+    underwaterRules.clear();
 
-    if (j.contains("surfaceRules") && j["surfaceRules"].is_array()) {
-      for (const auto &item : j["surfaceRules"]) {
-        BlockLayerRule rule;
+    parseRules("surfaceRules", surfaceRules);
+    parseRules("liquidSurfaceRules", liquidRules);
+    parseRules("beachRules", beachRules);
+    parseRules("underwaterRules", underwaterRules);
 
-        if (item.contains("comment"))
-          rule.comment = item["comment"].get<std::string>();
-        if (item.contains("block"))
-          rule.blockResourceId = item["block"].get<std::string>();
+    LOG_INFO("Loaded rules from {}", path);
 
-        // Resolve Block ID immediately
-        Block *block =
-            BlockRegistry::getInstance().getBlock(rule.blockResourceId);
-        if (block) {
-          rule.cachedBlockId = block->getId();
-        } else {
-          LOG_ERROR("BlockLayerConfig: Unknown block {}", rule.blockResourceId);
-          continue; // Skip invalid blocks
-        }
-
-        if (item.contains("condition")) {
-          const auto &cond = item["condition"];
-          if (cond.contains("minTemp"))
-            rule.minTemp = cond["minTemp"].get<float>();
-          if (cond.contains("maxTemp"))
-            rule.maxTemp = cond["maxTemp"].get<float>();
-          if (cond.contains("minRain"))
-            rule.minRain = cond["minRain"].get<float>();
-          if (cond.contains("maxRain"))
-            rule.maxRain = cond["maxRain"].get<float>();
-          if (cond.contains("minFertility"))
-            rule.minFertility = cond["minFertility"].get<float>();
-          if (cond.contains("maxFertility"))
-            rule.maxFertility = cond["maxFertility"].get<float>();
-          if (cond.contains("minPatchNoise"))
-            rule.minPatchNoise = cond["minPatchNoise"].get<float>();
-          if (cond.contains("maxPatchNoise"))
-            rule.maxPatchNoise = cond["maxPatchNoise"].get<float>();
-          if (cond.contains("minY"))
-            rule.minY = cond["minY"].get<float>();
-          if (cond.contains("maxY"))
-            rule.maxY = cond["maxY"].get<float>();
-          if (cond.contains("minBeachNoise"))
-            rule.minBeachNoise = cond["minBeachNoise"].get<float>();
-          if (cond.contains("maxBeachNoise"))
-            rule.maxBeachNoise = cond["maxBeachNoise"].get<float>();
-        }
-
-        rules.push_back(rule);
-      }
-    }
-
-    if (j.contains("liquidSurfaceRules") &&
-        j["liquidSurfaceRules"].is_array()) {
-      for (const auto &item : j["liquidSurfaceRules"]) {
-        BlockLayerRule rule;
-
-        if (item.contains("comment"))
-          rule.comment = item["comment"].get<std::string>();
-        if (item.contains("block"))
-          rule.blockResourceId = item["block"].get<std::string>();
-
-        Block *block =
-            BlockRegistry::getInstance().getBlock(rule.blockResourceId);
-        if (block) {
-          rule.cachedBlockId = block->getId();
-        } else {
-          LOG_ERROR("BlockLayerConfig: Unknown liquid block {}",
-                    rule.blockResourceId);
-          continue;
-        }
-
-        if (item.contains("condition")) {
-          const auto &cond = item["condition"];
-          if (cond.contains("minTemp"))
-            rule.minTemp = cond["minTemp"].get<float>();
-          if (cond.contains("maxTemp"))
-            rule.maxTemp = cond["maxTemp"].get<float>();
-          if (cond.contains("minRain"))
-            rule.minRain = cond["minRain"].get<float>();
-          if (cond.contains("maxRain"))
-            rule.maxRain = cond["maxRain"].get<float>();
-          if (cond.contains("minY"))
-            rule.minY = cond["minY"].get<float>();
-          if (cond.contains("maxY"))
-            rule.maxY = cond["maxY"].get<float>();
-        }
-
-        liquidRules.push_back(rule);
-      }
-    }
-
-    LOG_INFO("Loaded {} surface rules and {} liquid rules from {}",
-             rules.size(), liquidRules.size(), path);
-    return true;
-
-  } catch (const json::exception &e) {
-    LOG_ERROR("JSON Parse Error in {}: {}", path, e.what());
+  } catch (const std::exception &e) {
+    LOG_ERROR("Failed to load blocklayers config: {}", e.what());
     return false;
   }
+  return true;
 }
 
-uint8_t BlockLayerConfig::GetSurfaceBlockId(float temp, float rain,
-                                            float fertility, float patchNoise,
-                                            float yNormalized,
-                                            float beachNoise) const {
-  for (const auto &rule : rules) {
+std::pair<uint8_t, uint8_t>
+BlockLayerConfig::GetSurfaceBlocks(float temp, float rain, float fertility,
+                                   float patchNoise, float yNormalized,
+                                   float beachNoise) const {
+  for (const auto &rule : surfaceRules) {
     if (rule.Matches(temp, rain, fertility, patchNoise, yNormalized,
                      beachNoise)) {
+      return {rule.cachedBlockId, rule.cachedSubSurfaceBlockId};
+    }
+  }
+  // Default: Grass, Dirt
+  return {2, 1};
+}
+
+uint8_t BlockLayerConfig::GetBeachBlockId(float temp, float rain,
+                                          float beachNoise,
+                                          float yNormalized) const {
+  for (const auto &rule : beachRules) {
+    if (rule.Matches(temp, rain, 0.0f, 0.0f, yNormalized, beachNoise)) {
       return rule.cachedBlockId;
     }
   }
-  return 2; // Default to Grass (ID 2) if no rule matches
+  return 0; // No beach
+}
+
+uint8_t BlockLayerConfig::GetUnderwaterBlockId(float temp, float rain,
+                                               float yNormalized) const {
+  for (const auto &rule : underwaterRules) {
+    if (rule.Matches(temp, rain, 0.0f, 0.0f, yNormalized, 0.0f)) {
+      return rule.cachedBlockId;
+    }
+  }
+  return 0; // No underwater override
 }
 
 uint8_t BlockLayerConfig::GetLiquidSurfaceBlockId(float temp, float rain,
