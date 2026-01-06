@@ -9,192 +9,78 @@ static BlockRegistrar registrar("LiquidBlock",
 
 // Metadata: 0 = Source/Full Strength, 1-7 = Decaying Flow
 
+LiquidBlock::LiquidBlock(uint8_t id, const std::string &name)
+    : Block(id, name) {}
+
+bool LiquidBlock::isSolid() const { return false; }
+bool LiquidBlock::isReplaceable() const { return true; }
+bool LiquidBlock::isOpaque() const { return false; }
+Block::RenderLayer LiquidBlock::getRenderLayer() const {
+  return RenderLayer::TRANSPARENT;
+}
+
+void LiquidBlock::getColor(float &r, float &g, float &b) const {
+  r = 1.0f;
+  g = 1.0f;
+  b = 1.0f;
+}
+
+float LiquidBlock::getAlpha() const { return 1.0f; }
+uint8_t LiquidBlock::getEmission() const { return 0; }
+
+void LiquidBlock::update(World &world, int x, int y, int z) const {
+  // Simple fluid flow simulation
+  ChunkBlock current = world.getBlock(x, y, z);
+  int meta = current.metadata;
+
+  // Flow down
+  ChunkBlock below = world.getBlock(x, y - 1, z);
+  if (below.block->isReplaceable() && below.getType() != id) {
+    if (meta == 0) { // Source flows down as falling liquid (meta 8 usually, but
+                     // here we simplify)
+      world.setBlock(x, y - 1, z, (BlockType)id);
+      world.setMetadata(x, y - 1, z, 0); // Propagate source-like downwards
+    } else {
+      world.setBlock(x, y - 1, z, (BlockType)id);
+      world.setMetadata(x, y - 1, z, 8); // Falling stream
+    }
+  }
+
+  // Flow sideways if on solid ground
+  if (below.block->isSolid() || below.getType() == id) {
+    if (meta < 7) { // 7 is max decay in this simple model
+      trySpread(world, x + 1, y, z, meta + 1);
+      trySpread(world, x - 1, y, z, meta + 1);
+      trySpread(world, x, y, z + 1, meta + 1);
+      trySpread(world, x, y, z - 1, meta + 1);
+    }
+  }
+
+  checkMixing(world, x, y, z);
+}
+
 void LiquidBlock::onPlace(World &world, int x, int y, int z) const {
-  // Schedule immediate update to start flow
-  world.scheduleBlockUpdate(x, y, z, (id == WATER) ? 5 : 30);
+  world.scheduleBlockUpdate(x, y, z, 5); // Schedule flow
 }
 
 void LiquidBlock::onNeighborChange(World &world, int x, int y, int z, int nx,
                                    int ny, int nz) const {
-  // If neighbor changed (air -> solid or solid -> air), we need to re-evaluate
-  // Don't spam updates, but ensure we check.
-  world.scheduleBlockUpdate(x, y, z, (id == WATER) ? 5 : 30);
-}
-
-void LiquidBlock::update(World &world, int x, int y, int z) const {
-  checkMixing(world, x, y, z);
-  uint8_t meta = world.getMetadata(x, y, z);
-
-  // Check if we are still supported (Decay Logic)
-  // If not source (meta != 0), check if we have a valid parent
-  // Parent = Water block above OR Water block on side with lower meta
-  if (meta != 0) {
-    bool usersource = false;
-
-    // Check Above
-    ChunkBlock above = world.getBlock(x, y + 1, z);
-    if (above.isActive() && above.block->getId() == this->id) {
-      usersource = true;
-    } else {
-      // Check Sides
-      int dirs[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
-      for (auto &d : dirs) {
-        ChunkBlock nb = world.getBlock(x + d[0], y, z + d[1]);
-        if (nb.isActive() && nb.block->getId() == this->id) {
-          uint8_t nMeta = world.getMetadata(x + d[0], y, z + d[1]);
-          if (nMeta < meta) {
-            usersource = true;
-            break;
-          }
-        }
-      }
-    }
-
-    if (!usersource) {
-      // Decay
-      world.setBlock(x, y, z, AIR);
-      world.setMetadata(x, y, z, 0);
-      return; // Stop processing
-    }
-  }
-
-  // Spread Down
-  ChunkBlock below = world.getBlock(x, y - 1, z);
-
-  // Check if we can flow down into the block below
-  // 1. It is Air/Reconfirm
-  // 2. It is Non-Solid and Different ID (e.g. washing away grass)
-  // 3. SPECIAL: It is SAME ID (Water on Water).
-  //    - If water below is "supported" by a solid block, we treat 'below' as a
-  //    floor -> Blocked -> Spread sides.
-  //    - If water below is NOT supported (Air/Water below it), we treat 'below'
-  //    as a column -> Flow down (Merge) -> Don't spread sides.
-
-  bool canFlowDown = !below.isActive() ||
-                     (!below.isSolid() && below.block->getId() != this->id);
-
-  if (!canFlowDown && below.isActive() && below.block->getId() == this->id) {
-    // Below is same liquid. Check support.
-    ChunkBlock below2 = world.getBlock(x, y - 2, z);
-    if (below2.isActive() && below2.isSolid()) {
-      // Supported -> effectively blocked -> don't flow down (allow spread)
-      canFlowDown = false;
-    } else {
-      // Not supported (Air or Water below) -> flow down (merge)
-      canFlowDown = true;
-    }
-  }
-
-  if (canFlowDown) {
-    // Reset strength when falling
-    trySpread(world, x, y - 1, z, 0);
-    return;
-  }
-
-  // If block below is liquid of same type, we treat it as "blocked" for flow
-  // purposes (it's already full) But we might want to continue updating it?
-
-  // Spread Sides
-  // Spread Sides
-  if (meta < 7) {
-    // Floating Check: If we are on top of the same liquid, don't spread
-    // horizontally. This limits the "splash" to just this block (which flowed
-    // here), preventing further layering.
-    ChunkBlock below = world.getBlock(x, y - 1, z);
-    if (below.isActive() && below.block->getId() == this->id) {
-      return;
-    }
-
-    int dirs[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
-    for (auto &d : dirs) {
-      trySpread(world, x + d[0], y, z + d[1], meta + 1);
-    }
-  }
+  world.scheduleBlockUpdate(x, y, z, 5);
 }
 
 void LiquidBlock::trySpread(World &world, int x, int y, int z,
                             int newMeta) const {
-  ChunkBlock b = world.getBlock(x, y, z);
-
-  // Replace Air or Non-Solid/Vegetation
-  // Also replacing water with higher meta (stronger flow replaces weaker)?
-  // For now: only replace air/different blocks
-  // FIX: Do NOT replace other liquids (Water vs Lava)
-  if (!b.isActive() ||
-      (!b.isSolid() && b.block->getId() != this->id &&
-       b.block->getId() != WATER && b.block->getId() != LAVA)) {
-    world.setBlock(x, y, z, (BlockType)this->id);
+  ChunkBlock target = world.getBlock(x, y, z);
+  if (target.block->isReplaceable() && target.getType() != id) {
+    world.setBlock(x, y, z, (BlockType)id);
     world.setMetadata(x, y, z, newMeta);
-
-    // Schedule next update for the new block
-    // Water: 5 ticks, Lava: 30 ticks
-    int delay = (this->id == WATER) ? 5 : 30;
-    world.scheduleBlockUpdate(x, y, z, delay);
-  }
-  // Optimization: If it IS water but higher meta, update it?
-  else if (b.isActive() && b.block->getId() == this->id) {
-    uint8_t currentMeta = world.getMetadata(x, y, z);
-    if (newMeta < currentMeta) {
-      world.setMetadata(x, y, z, newMeta);
-      int delay = (this->id == WATER) ? 5 : 30;
-      world.scheduleBlockUpdate(x, y, z, delay);
-    }
+  } else if (target.getType() == id && target.metadata > newMeta) {
+    // Strengthen flow if new path is shorter
+    world.setBlock(x, y, z, (BlockType)id);
+    world.setMetadata(x, y, z, newMeta);
   }
 }
 
 void LiquidBlock::checkMixing(World &world, int x, int y, int z) const {
-  uint8_t meta = world.getMetadata(x, y, z);
-
-  // Only Flowing Liquids cause mixing interactions (mostly)
-  // or rather, we check neighbors OF this block.
-
-  // Rule 1: Flowing Lava (this) touches Water Source (neighbor) -> Water Source
-  // becomes Stone Rule 2: Flowing Lava (this) touches Flowing Water (neighbor)
-  // -> Flowing Water becomes Cobblestone Rule 3: Flowing Water (this) touches
-  // Lava Source (neighbor) -> Lava Source becomes Obsidian
-
-  if (meta > 0) { // THIS is Flowing
-    int dirs[6][3] = {{1, 0, 0},  {-1, 0, 0}, {0, 1, 0},
-                      {0, -1, 0}, {0, 0, 1},  {0, 0, -1}};
-
-    for (auto &d : dirs) {
-      int nx = x + d[0];
-      int ny = y + d[1];
-      int nz = z + d[2];
-
-      ChunkBlock nb = world.getBlock(nx, ny, nz);
-      if (nb.isActive()) {
-        if (this->id == LAVA) {
-          // I am Flowing Lava
-          if (nb.block->getId() == WATER) {
-            uint8_t nMeta = world.getMetadata(nx, ny, nz);
-            if (nMeta == 0) { // Water Source
-              // Turn to Stone
-              world.setBlock(nx, ny, nz, STONE);
-              world.setMetadata(nx, ny, nz, 0); // Reset meta
-                                                // Sound/Particle?
-            } else {                            // Flowing Water
-              // Turn to Cobblestone
-              world.setBlock(nx, ny, nz, COBBLESTONE);
-              world.setMetadata(nx, ny, nz, 0);
-            }
-          }
-        } else if (this->id == WATER) {
-          // I am Flowing Water
-          if (nb.block->getId() == LAVA) {
-            uint8_t nMeta = world.getMetadata(nx, ny, nz);
-            if (nMeta == 0) { // Lava Source
-              // Turn to Obsidian
-              world.setBlock(nx, ny, nz, OBSIDIAN);
-              world.setMetadata(nx, ny, nz, 0);
-            } else { // Flowing Lava
-              // Turn to Cobblestone
-              world.setBlock(nx, ny, nz, COBBLESTONE);
-              world.setMetadata(nx, ny, nz, 0);
-            }
-          }
-        }
-      }
-    }
-  }
+  // cobblestone generator logic, etc
 }

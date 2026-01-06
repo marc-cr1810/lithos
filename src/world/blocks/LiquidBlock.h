@@ -5,23 +5,14 @@
 
 class LiquidBlock : public Block {
 public:
-  LiquidBlock(uint8_t id, const std::string &name) : Block(id, name) {}
-  bool isSolid() const override { return false; }
-  bool isReplaceable() const override { return true; }
-  bool isOpaque() const override { return false; }
-  RenderLayer getRenderLayer() const override {
-    return RenderLayer::TRANSPARENT;
-  }
-
-  void getColor(float &r, float &g, float &b) const override {
-    r = 1.0f;
-    g = 1.0f;
-    b = 1.0f;
-  }
-
-  float getAlpha() const override { return 1.0f; }
-
-  uint8_t getEmission() const override { return 0; }
+  LiquidBlock(uint8_t id, const std::string &name);
+  bool isSolid() const override;
+  bool isReplaceable() const override;
+  bool isOpaque() const override;
+  RenderLayer getRenderLayer() const override;
+  void getColor(float &r, float &g, float &b) const override;
+  float getAlpha() const override;
+  uint8_t getEmission() const override;
 
   void update(World &world, int x, int y, int z) const override;
   void onPlace(World &world, int x, int y, int z) const override;

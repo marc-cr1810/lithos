@@ -1,5 +1,6 @@
 #include "BlockFactory.h"
 #include "../debug/Logger.h"
+#include "blocks/SolidBlock.h"
 
 BlockFactory &BlockFactory::getInstance() {
   static BlockFactory instance;

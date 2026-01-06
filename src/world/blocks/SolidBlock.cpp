@@ -5,3 +5,21 @@ static BlockRegistrar registrar("SolidBlock",
                                 [](uint8_t id, const std::string &name) {
                                   return new SolidBlock(id, name);
                                 });
+
+SolidBlock::SolidBlock(uint8_t id, const std::string &name) : Block(id, name) {}
+
+Block::RenderLayer SolidBlock::getRenderLayer() const {
+  // Fast/Fancy considerations would go here, or handled by specific subclass
+  // (like IceBlock or LeavesBlock) By default, SolidBlocks are OPAQUE.
+  return RenderLayer::OPAQUE;
+}
+
+void SolidBlock::getColor(float &r, float &g, float &b) const {
+  r = 1.0f;
+  g = 1.0f;
+  b = 1.0f;
+}
+
+bool SolidBlock::shouldTint(int faceDir, int layer) const {
+  return false; // Default: No tint for dirt, wood, etc.
+}
