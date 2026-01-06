@@ -716,7 +716,8 @@ void GameState::RenderUI(Application *app) {
     if (m_Hit) {
       ChunkBlock hitBlock =
           app->GetWorld()->getBlock(m_HitPos.x, m_HitPos.y, m_HitPos.z);
-      std::string blockName = BlockIdToName(hitBlock.getType());
+      Block *block = BlockRegistry::getInstance().getBlock(hitBlock.getType());
+      std::string blockName = block->getDisplayName();
 
       // Position at top center
       ImVec2 centerPos = ImVec2(viewport->Pos.x + viewport->Size.x / 2.0f,
@@ -793,7 +794,7 @@ void GameState::RenderUI(Application *app) {
       if (ImGui::BeginTabBar("CreativeTabs")) {
         for (int i = 0; i < tabs.size(); ++i) {
           // Use localized tab name
-          std::string tabName = Lang("tab-" + tabs[i].code);
+          std::string tabName = Lang("tab_" + tabs[i].code);
           if (ImGui::BeginTabItem(tabName.c_str())) {
             m_CurrentTabIdx = i;
 
@@ -955,7 +956,8 @@ void GameState::RenderUI(Application *app) {
       if (m_Hit) {
         ChunkBlock cb =
             app->GetWorld()->getBlock(m_HitPos.x, m_HitPos.y, m_HitPos.z);
-        ImGui::Text("Hit Block: %s (%d)", BlockIdToName(cb.getType()).c_str(),
+        Block *block = BlockRegistry::getInstance().getBlock(cb.getType());
+        ImGui::Text("Hit Block: %s (%d)", block->getDisplayName().c_str(),
                     cb.getType());
         ImGui::Text("Hit Pos: %d, %d, %d", m_HitPos.x, m_HitPos.y, m_HitPos.z);
         ImGui::Text("Pre Pos: %d, %d, %d", m_PrePos.x, m_PrePos.y, m_PrePos.z);
