@@ -12,6 +12,9 @@
 
 #include "../core/LangRegistry.h"
 #include "../world/Block.h"
+#include "../world/FloraDecorator.h"
+#include "../world/GlobalConfig.h"
+#include "../world/OreDecorator.h"
 #include "../world/decorators/TreeRegistry.h"
 #include "../world/gen/BlockLayerConfig.h"
 #include "../world/gen/Landform.h"
@@ -98,6 +101,17 @@ void Application::Init() {
   RockStrataRegistry::Get().LoadProvinces(
       "assets/worldgen/geologicprovinces.json");
   BlockLayerConfig::Get().Load("assets/worldgen/blocklayers.json");
+  GlobalConfig::Get().Load("assets/worldgen/global.json");
+
+  // Load Flora & Ore Configs
+  {
+    FloraDecorator t;
+    t.LoadConfig("assets/worldgen/flora.json");
+  }
+  {
+    OreDecorator t;
+    t.LoadConfig("assets/worldgen/ores.json");
+  }
   TreeRegistry::Get().LoadConfigs("assets/worldgen/treegen.json");
   LOG_INFO("WorldGen Assets Loaded.");
 

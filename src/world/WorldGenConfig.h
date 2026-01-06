@@ -62,14 +62,6 @@ struct WorldGenConfig {
   bool enableTrees = true;
   bool enableFlora = true;
 
-  // Densities (per chunk or roll)
-  int coalAttempts = 10;
-  int ironAttempts = 5;
-  float oakDensity = 5.0f;    // Roll %
-  float pineDensity = 2.0f;   // Roll %
-  float cactusDensity = 1.0f; // Roll %
-  float floraDensity = 10.0f; // Grass roll %
-
   // New Noise Scales for Rework
   float upheavalScale = 0.0005f; // Large scale for generalized height shifts
   float terrainDetailScale = 0.008f; // 16x landformScale (0.0005 * 16)
@@ -153,12 +145,6 @@ inline void to_json(json &j, const WorldGenConfig &c) {
            {"enableOre", c.enableOre},
            {"enableTrees", c.enableTrees},
            {"enableFlora", c.enableFlora},
-           {"coalAttempts", c.coalAttempts},
-           {"ironAttempts", c.ironAttempts},
-           {"oakDensity", c.oakDensity},
-           {"pineDensity", c.pineDensity},
-           {"cactusDensity", c.cactusDensity},
-           {"floraDensity", c.floraDensity},
            {"upheavalScale", c.upheavalScale},
            {"terrainDetailScale", c.terrainDetailScale},
            {"forestScale", c.forestScale},
@@ -205,12 +191,6 @@ inline void from_json(const json &j, WorldGenConfig &c) {
   j.at("enableOre").get_to(c.enableOre);
   j.at("enableTrees").get_to(c.enableTrees);
   j.at("enableFlora").get_to(c.enableFlora);
-  j.at("coalAttempts").get_to(c.coalAttempts);
-  j.at("ironAttempts").get_to(c.ironAttempts);
-  j.at("oakDensity").get_to(c.oakDensity);
-  j.at("pineDensity").get_to(c.pineDensity);
-  j.at("cactusDensity").get_to(c.cactusDensity);
-  j.at("floraDensity").get_to(c.floraDensity);
   if (j.contains("upheavalScale"))
     j.at("upheavalScale").get_to(c.upheavalScale);
   if (j.contains("terrainDetailScale"))

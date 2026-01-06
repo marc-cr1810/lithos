@@ -6,6 +6,7 @@
 #include "Chunk.h"
 #include "ChunkColumn.h"
 #include "FloraDecorator.h"
+#include "GlobalConfig.h"
 #include "OreDecorator.h"
 #include "TreeDecorator.h"
 #include "WorldGenRegion.h"
@@ -364,7 +365,14 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
     PROFILE_SCOPE_CONDITIONAL("ChunkGen_Terrain", m_ProfilingEnabled);
 
     // Cache common blocks
-    Block *waterBlock = BlockRegistry::getInstance().getBlock(BlockType::WATER);
+    auto &gc = GlobalConfig::Get();
+    Block *waterBlock =
+        BlockRegistry::getInstance().getBlock(gc.waterBlockCode);
+    Block *mantleBlock =
+        BlockRegistry::getInstance().getBlock(gc.mantleBlockCode);
+    if (!mantleBlock) // Fallback if mantle not defined or invalid
+      mantleBlock = BlockRegistry::getInstance().getBlock(gc.lavaBlockCode);
+
     Block *airBlock = BlockRegistry::getInstance().getBlock(BlockType::AIR);
     Block *sandBlock = BlockRegistry::getInstance().getBlock(BlockType::SAND);
     Block *sandstoneBlock =
@@ -518,6 +526,14 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
 
           for (int ly = 0; ly < CHUNK_SIZE; ly++) {
             int wy = startY + ly;
+
+            // Force single mantle layer at bottom of world
+            if (wy == 0) {
+              chunk.blocks[lx][ly][lz].block = mantleBlock;
+              chunk.blocks[lx][ly][lz].metadata = 0;
+              continue;
+            }
+
             bool isSolid = false;
 
             if (ly <= maxLy) {

@@ -245,7 +245,9 @@ float NoiseManager::GetTemperature(int x, int z) const {
 float NoiseManager::GetHumidity(int x, int z) const {
   float wx, wz;
   GetWarpedCoord((float)x, (float)z, wx, wz, config.climateScale);
-  return humidNode->GenSingle2D(wx, wz, seed + 2);
+  float val = humidNode->GenSingle2D(wx, wz, seed + 2);
+  // Normalize [-1, 1] to [0, 1]
+  return (val + 1.0f) * 0.5f;
 }
 
 float NoiseManager::GetTerrainDetail(int x, int z) const {
@@ -413,6 +415,8 @@ void NoiseManager::GenClimate(float *tempOut, float *humidOut, int startX,
   for (int i = 0; i < width * height; ++i) {
     // Temp: Map [-1, 1] to [-30, 60]
     tempOut[i] = (tempOut[i] + 1.0f) * 0.5f * 90.0f - 30.0f;
+    // Humid: Normalize [-1, 1] to [0, 1]
+    humidOut[i] = (humidOut[i] + 1.0f) * 0.5f;
   }
 }
 

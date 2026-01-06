@@ -1,5 +1,6 @@
 #include "RockStrata.h"
 #include "../../debug/Logger.h"
+#include "../GlobalConfig.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -33,7 +34,9 @@ BlockType RockStrataRegistry::GetStrataBlock(int x, int y, int z, int surfaceY,
                                              float strataNoise,
                                              float distortion, int seed) {
   if (provinces.empty())
-    return BlockType::STONE;
+    return (BlockType)BlockRegistry::getInstance()
+        .getBlock(GlobalConfig::Get().defaultRockCode)
+        ->getId();
 
   // Map noise (-1 to 1) to continuous index
   float t = (provinceNoise + 1.0f) * 0.5f;    // 0..1
@@ -120,12 +123,16 @@ BlockType RockStrataRegistry::GetStrataBlock(int x, int y, int z, int surfaceY,
   int igneousDepth = distortedDepth - topStackThickness;
 
   if (igneousDepth < 0)
-    return BlockType::STONE;
+    return (BlockType)BlockRegistry::getInstance()
+        .getBlock(GlobalConfig::Get().defaultRockCode)
+        ->getId();
 
   int ignThicknessUsed = 0;
   for (size_t i = 0; i < dominantProv->igneous.size(); ++i) {
     if (ignThicknessUsed >= ignCap)
-      return BlockType::STONE;
+      return (BlockType)BlockRegistry::getInstance()
+          .getBlock(GlobalConfig::Get().defaultRockCode)
+          ->getId();
 
     const auto &layer = dominantProv->igneous[i];
     float noise = (strataNoise + 1.0f) * 0.5f;
@@ -149,7 +156,9 @@ BlockType RockStrataRegistry::GetStrataBlock(int x, int y, int z, int surfaceY,
     return dominantProv->igneous.back().block;
   }
 
-  return BlockType::STONE;
+  return (BlockType)BlockRegistry::getInstance()
+      .getBlock(GlobalConfig::Get().defaultRockCode)
+      ->getId();
 }
 
 // Global Palette Storage (Private to this TU or member if moved to header, but

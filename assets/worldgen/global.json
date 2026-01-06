@@ -1,0 +1,9 @@
+{
+    "saltwaterBlockCode": "lithos:water",
+    "waterBlockCode": "lithos:water",
+    "iceBlockCode": "lithos:ice",
+    "basaltBlockCode": "lithos:rock_basalt",
+    "lavaBlockCode": "lithos:lava",
+    "mantleBlockCode": "lithos:mantle",
+    "defaultRockCode": "lithos:rock_granite"
+}

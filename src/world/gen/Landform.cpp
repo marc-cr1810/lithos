@@ -106,10 +106,9 @@ const Landform *LandformRegistry::Select(float entropy, float temp,
   // - Temperature: VS landforms use Celsius scale directly (minTemp=-50,
   // maxTemp=50)
   // - Rain: VS uses 0-255 integer range
-  // Our temp is already in Celsius, just need to convert humid (-1 to 1) to
-  // rain (0-255)
-  int vsRain = static_cast<int>(
-      std::min(255.0f, std::max(0.0f, (humid + 1.0f) * 127.5f)));
+  // Our temp is already in Celsius, humidity is now 0-1, convert to 0-255
+  int vsRain =
+      static_cast<int>(std::min(255.0f, std::max(0.0f, humid * 255.0f)));
 
   // 1. Filter candidates by climate and calculate total weight
   // Optimization: Use thread_local to avoid reallocation

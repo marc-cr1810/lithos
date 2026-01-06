@@ -1,0 +1,75 @@
+{
+    "ores": [
+        {
+            "code": "coal",
+            "block": "lithos:ore_coal",
+            "distribution": {
+                "type": "uniform",
+                "minY": 0.0,
+                "maxY": 0.8,
+                "veinsPerChunk": 20
+            },
+            "vein": {
+                "shape": "blob",
+                "minSize": 4,
+                "maxSize": 17
+            },
+            "spawnConditions": {
+                "replaceBlocks": [
+                    "lithos:rock_*",
+                    "lithos:stone"
+                ]
+            }
+        },
+        {
+            "code": "iron",
+            "block": "lithos:ore_iron",
+            "distribution": {
+                "type": "triangle",
+                "minY": 0.0,
+                "maxY": 0.6,
+                "peakY": 0.25,
+                "veinsPerChunk": 10
+            },
+            "vein": {
+                "shape": "blob",
+                "minSize": 3,
+                "maxSize": 9
+            },
+            "spawnConditions": {
+                "replaceBlocks": [
+                    "lithos:rock_*",
+                    "lithos:stone"
+                ],
+                "excludeBlocks": [
+                    "lithos:rock_limestone",
+                    "lithos:rock_chalk"
+                ]
+            }
+        },
+        {
+            "code": "gold",
+            "block": "lithos:gold_ore",
+            "distribution": {
+                "type": "gaussian",
+                "minY": 0.0,
+                "maxY": 0.3,
+                "meanY": 0.125,
+                "stdDev": 0.05,
+                "veinsPerChunk": 2
+            },
+            "vein": {
+                "shape": "blob",
+                "minSize": 2,
+                "maxSize": 6
+            },
+            "spawnConditions": {
+                "replaceBlocks": [
+                    "lithos:rock_granite",
+                    "lithos:rock_diorite",
+                    "lithos:rock_andesite"
+                ]
+            }
+        }
+    ]
+}

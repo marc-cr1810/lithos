@@ -1,0 +1,14 @@
+{
+    "code": "mantle",
+    "class": "SolidBlock",
+    "attributes": {
+        "hardness": -1.0,
+        "resistance": 3600000.0,
+        "isSolid": true,
+        "isOpaque": true,
+        "mapColor": "#220000"
+    },
+    "textures": {
+        "all": "stone/rock/mantle"
+    }
+}

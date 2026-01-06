@@ -1,0 +1,121 @@
+{
+    "patchesPerChunk": {
+        "distribution": "gaussian",
+        "mean": 25,
+        "variance": 12
+    },
+    "floraTypes": [
+        {
+            "code": "tall_grass",
+            "block": "lithos:grass_tall_green",
+            "weight": 10.0,
+            "spawnConditions": {
+                "minTemp": 5.0,
+                "maxTemp": 35.0,
+                "minRain": 0.4,
+                "maxRain": 1.0,
+                "minY": 0.15,
+                "maxY": 1.0,
+                "requiresSolidBelow": true,
+                "requiresAirAbove": true,
+                "allowedSurfaceBlocks": [
+                    "lithos:grass",
+                    "lithos:dirt",
+                    "lithos:podzol",
+                    "lithos:terra_preta"
+                ]
+            },
+            "patchSettings": {
+                "minSize": 3,
+                "maxSize": 10,
+                "density": 0.8
+            }
+        },
+        {
+            "code": "dry_short_grass",
+            "block": "lithos:grass_dry_short",
+            "weight": 8.0,
+            "spawnConditions": {
+                "minTemp": 15.0,
+                "maxTemp": 50.0,
+                "minRain": 0.0,
+                "maxRain": 0.4,
+                "minY": 0.15,
+                "maxY": 1.0,
+                "allowedSurfaceBlocks": [
+                    "lithos:sand",
+                    "lithos:coarse_dirt"
+                ]
+            },
+            "patchSettings": {
+                "minSize": 2,
+                "maxSize": 7,
+                "density": 0.6
+            }
+        },
+        {
+            "code": "dry_tall_grass",
+            "block": "lithos:grass_dry_tall",
+            "weight": 5.0,
+            "spawnConditions": {
+                "minTemp": 18.0,
+                "maxTemp": 50.0,
+                "minRain": 0.0,
+                "maxRain": 0.35,
+                "minY": 0.15,
+                "maxY": 1.0,
+                "allowedSurfaceBlocks": [
+                    "lithos:sand"
+                ]
+            },
+            "patchSettings": {
+                "minSize": 1,
+                "maxSize": 5,
+                "density": 0.5
+            }
+        },
+        {
+            "code": "poppy",
+            "block": "lithos:rose",
+            "weight": 2.0,
+            "spawnConditions": {
+                "minTemp": 10.0,
+                "maxTemp": 30.0,
+                "minRain": 0.45,
+                "maxRain": 1.0,
+                "minY": 0.15,
+                "maxY": 1.0,
+                "allowedSurfaceBlocks": [
+                    "lithos:grass"
+                ]
+            },
+            "patchSettings": {
+                "minSize": 1,
+                "maxSize": 4,
+                "density": 0.4
+            }
+        },
+        {
+            "code": "dead_bush",
+            "block": "lithos:dead_bush",
+            "weight": 3.0,
+            "spawnConditions": {
+                "minTemp": 25.0,
+                "maxTemp": 100.0,
+                "minRain": 0.0,
+                "maxRain": 0.25,
+                "minY": 0.15,
+                "maxY": 1.0,
+                "allowedSurfaceBlocks": [
+                    "lithos:sand",
+                    "lithos:coarse_dirt"
+                ]
+            },
+            "patchSettings": {
+                "minSize": 1,
+                "maxSize": 3,
+                "density": 0.3
+            }
+        }
+    ]
+}

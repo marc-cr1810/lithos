@@ -3,6 +3,7 @@
 #include "Block.h"
 #include "Chunk.h"
 #include "ChunkColumn.h"
+#include "GlobalConfig.h"
 #include "WorldGenRegion.h"
 #include <algorithm>
 #include <cmath>
@@ -624,8 +625,9 @@ bool CaveGenerator::SetBlocks(WorldGenRegion &region, float horRadius,
   double hRadiusSq = checkHorRadius * checkHorRadius;
   double vRadiusSq = checkVertRadius * checkVertRadius;
 
-  Block *waterBlock = BlockRegistry::getInstance().getBlock(BlockType::WATER);
-  Block *iceBlock = BlockRegistry::getInstance().getBlock(BlockType::ICE);
+  auto &gc = GlobalConfig::Get();
+  Block *waterBlock = BlockRegistry::getInstance().getBlock(gc.waterBlockCode);
+  Block *iceBlock = BlockRegistry::getInstance().getBlock(gc.iceBlockCode);
 
   for (int lx = mindx; lx <= maxdx; lx++) {
     double xdistRel = (lx - centerX) * (lx - centerX) / hRadiusSq;
@@ -667,7 +669,7 @@ bool CaveGenerator::SetBlocks(WorldGenRegion &region, float horRadius,
   maxdz = static_cast<int>(centerZ + horRadius + 1.0);
 
   Block *airBlock = BlockRegistry::getInstance().getBlock(BlockType::AIR);
-  Block *lavaBlock = BlockRegistry::getInstance().getBlock(BlockType::LAVA);
+  Block *lavaBlock = BlockRegistry::getInstance().getBlock(gc.lavaBlockCode);
 
   for (int lx = mindx; lx <= maxdx; lx++) {
     double xdistRel = (lx - centerX) * (lx - centerX) / hRadiusSq;
