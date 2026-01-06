@@ -184,6 +184,19 @@ struct TreeBlocks {
   // VS: Trunk segments for multi-textured trunks (redwood pine)
   std::string trunkSegmentBase;
   std::vector<std::string> trunkSegmentVariants;
+
+  // Runtime Optimized IDs
+  uint8_t resolvedLogBlockId = 0;
+  uint8_t resolvedLeavesBlockId = 0;
+  uint8_t resolvedLeavesBranchyBlockId = 0;
+  uint8_t resolvedVinesBlockId = 0;
+  uint8_t resolvedVinesEndBlockId = 0;
+  uint8_t resolvedMossDecorId = 0;
+  std::vector<uint8_t> resolvedTrunkSegmentBlockIds;
+
+  TreeBlocks() {
+    // Initialize with default/invalid values if needed, though 0 is usually AIR
+  }
 };
 
 inline void from_json(const json &j, TreeBlocks &b) {

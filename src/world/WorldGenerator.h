@@ -111,6 +111,21 @@ private:
 
   // Post-Processing
   void CleanupFloatingIslands(Chunk &chunk);
+
+  // Cached Blocks
+  Block *waterBlock = nullptr;
+  Block *mantleBlock = nullptr;
+  Block *airBlock = nullptr;
+  Block *sandBlock = nullptr;
+  Block *sandstoneBlock = nullptr;
+  Block *gravelBlock = nullptr;
+  Block *grassBlock = nullptr;
+  Block *dirtBlock = nullptr;
+  Block *mudBlock = nullptr;
+  Block *podzolBlock = nullptr;
+  Block *coarseDirtBlock = nullptr;
+  Block *terraPretaBlock = nullptr;
+  Block *peatBlock = nullptr;
 };
 
 #endif

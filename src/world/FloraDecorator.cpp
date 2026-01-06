@@ -11,6 +11,10 @@
 #include <glm/glm.hpp>
 #include <random>
 
+#include <cstring>
+#include <iostream>
+#include <vector>
+
 // Static member definitions
 std::vector<FloraType> FloraDecorator::floraTypes;
 int FloraDecorator::meanPatchesPerChunk = 15;
@@ -78,6 +82,46 @@ void FloraDecorator::LoadConfig(const std::filesystem::path &configPath) {
       floraTypes.push_back(flora);
       totalWeight += flora.weight;
     }
+
+    // Resolve Block IDs
+    for (auto &flora : floraTypes) {
+      // Resolve main block ID
+      Block *b = BlockRegistry::getInstance().getBlock(flora.blockId);
+      if (b) {
+        flora.resolvedBlockId = b->getId();
+      } else {
+        LOG_WARN("FloraDecorator: Could not resolve block '{}'", flora.blockId);
+      }
+
+      // Pre-calculate allowed surface blocks table
+      for (int i = 0; i < 256; ++i) {
+        Block *candidate = BlockRegistry::getInstance().getBlock(i);
+        if (!candidate)
+          continue;
+
+        std::string candidateId = candidate->getResourceId();
+        bool allowed = false;
+
+        // If list is empty, assume ALL surface blocks allowed? Or NONE?
+        // Logic in CanPlaceAt says if list not empty check it.
+        // If list IS empty, CanPlaceAt logic currently returns true for surface
+        // block check (but logic is `if (!empty) { check; if !allowed return
+        // false; } return true;`) So empty list means NO restrictions.
+
+        if (flora.allowedSurfaceBlocks.empty()) {
+          allowed = true;
+        } else {
+          for (const auto &allowedId : flora.allowedSurfaceBlocks) {
+            if (allowedId ==
+                candidateId) { // Exact match? Or Pattern? Original used ==
+              allowed = true;
+              break;
+            }
+          }
+        }
+        flora.resolvedAllowedSurfaceBlocks[i] = allowed;
+      }
+    }
   }
 
   LOG_INFO("Loaded {} flora types from {}", floraTypes.size(),
@@ -132,21 +176,12 @@ bool FloraDecorator::CanPlaceAt(int x, int y, int z, const FloraType &flora,
   }
 
   // Check allowed surface blocks
-  if (!flora.allowedSurfaceBlocks.empty()) {
-    Block *below = BlockRegistry::getInstance().getBlock(blockBelow);
-    std::string belowId = below->getResourceId();
+  // Use pre-resolved table
+  // The original check "if (!empty)" implies if empty, anything goes.
+  // Our resolved table should reflect that.
 
-    bool allowed = false;
-    for (const auto &allowedId : flora.allowedSurfaceBlocks) {
-      if (belowId == allowedId) {
-        allowed = true;
-        break;
-      }
-    }
-
-    if (!allowed) {
-      return false;
-    }
+  if (!flora.resolvedAllowedSurfaceBlocks[(uint8_t)blockBelow]) {
+    return false;
   }
 
   return true;
@@ -161,17 +196,11 @@ void FloraDecorator::PlacePatch(WorldGenRegion &region, int centerX,
                   (rand() % (flora.maxPatchSize - flora.minPatchSize + 1));
 
   // Get block type from registry
-  Block *floraBlock = nullptr;
-  for (int i = 0; i < 256; ++i) {
-    Block *b = BlockRegistry::getInstance().getBlock(i);
-    if (b && b->getResourceId() == flora.blockId) {
-      floraBlock = b;
-      break;
-    }
-  }
-
-  if (!floraBlock) {
-    return;
+  BlockType floraType = (BlockType)flora.resolvedBlockId;
+  if (floraType == 0 && flora.blockId != "air") {
+    Block *b = BlockRegistry::getInstance().getBlock(flora.blockId);
+    if (b)
+      floraType = (BlockType)b->getId();
   }
 
   // Place flora in a patch around center
@@ -194,7 +223,7 @@ void FloraDecorator::PlacePatch(WorldGenRegion &region, int centerX,
 
     // Try to place
     if (CanPlaceAt(px, py, pz, flora, region, column)) {
-      region.setBlock(px, py, pz, (BlockType)floraBlock->getId());
+      region.setBlock(px, py, pz, floraType);
     }
   }
 }

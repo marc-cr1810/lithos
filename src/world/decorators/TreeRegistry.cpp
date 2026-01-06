@@ -1,7 +1,11 @@
 #include "TreeRegistry.h"
 #include "../../debug/Logger.h"
+#include "../Block.h"
 #include <fstream>
+#include <iostream>
 #include <nlohmann/json.hpp>
+#include <random>
+#include <vector>
 
 using json = nlohmann::json;
 
@@ -41,6 +45,41 @@ void TreeRegistry::LoadConfigs(const std::string &path) {
         json j;
         tf >> j;
         TreeStructure tree = j.get<TreeStructure>();
+
+        // Resolve Block IDs
+        auto resolve = [](const std::string &code) -> uint8_t {
+          if (code.empty())
+            return 0;
+          Block *b = BlockRegistry::getInstance().getBlock(code);
+          return (b) ? b->getId() : 0;
+        };
+
+        tree.treeBlocks.resolvedLogBlockId =
+            resolve(tree.treeBlocks.logBlockCode);
+        tree.treeBlocks.resolvedLeavesBlockId =
+            resolve(tree.treeBlocks.leavesBlockCode);
+        tree.treeBlocks.resolvedLeavesBranchyBlockId =
+            resolve(tree.treeBlocks.leavesBranchyBlockCode);
+        tree.treeBlocks.resolvedVinesBlockId =
+            resolve(tree.treeBlocks.vinesBlockCode);
+        tree.treeBlocks.resolvedVinesEndBlockId =
+            resolve(tree.treeBlocks.vinesEndBlockCode);
+        tree.treeBlocks.resolvedMossDecorId =
+            resolve(tree.treeBlocks.mossDecorCode);
+
+        // Resolve Trunk Segments
+        tree.treeBlocks.resolvedTrunkSegmentBlockIds.clear();
+        if (!tree.treeBlocks.trunkSegmentBase.empty() &&
+            !tree.treeBlocks.trunkSegmentVariants.empty()) {
+          for (const std::string &variant :
+               tree.treeBlocks.trunkSegmentVariants) {
+            std::string blockCode =
+                tree.treeBlocks.trunkSegmentBase + variant + "-ud";
+            tree.treeBlocks.resolvedTrunkSegmentBlockIds.push_back(
+                resolve(blockCode));
+          }
+        }
+
         loadedTrees[gen.generator] = tree;
         // LOG_INFO("Loaded tree definition: {}", gen.generator);
       } catch (const json::parse_error &e) {

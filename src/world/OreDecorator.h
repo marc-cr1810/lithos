@@ -1,9 +1,8 @@
 #ifndef ORE_DECORATOR_H
 #define ORE_DECORATOR_H
 
+#include "Block.h"
 #include "WorldDecorator.h"
-#include <filesystem>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 
@@ -19,13 +18,27 @@ struct OreType {
   float peakY = 0.5f;  // For triangle distribution
   float meanY = 0.5f;  // For gaussian distribution
   float stdDev = 0.1f; // For gaussian distribution
-  int veinsPerChunk = 10;
+  int size = 0;
+  int minHeight = 0;
+  int maxHeight = 128;
+  int density = 0;       // Number of veins per chunk
+  int veinsPerChunk = 0; // Backwards compatibility / alias
 
   int minVeinSize = 4;
   int maxVeinSize = 8;
 
   std::vector<std::string> replaceBlocks;
   std::vector<std::string> excludeBlocks;
+
+  // Runtime Optimized IDs
+  uint8_t resolvedBlockId = 0;
+  std::vector<bool> resolvedReplaceBlocks; // Lookup table for fast checks
+  std::vector<bool> resolvedExcludeBlocks; // Lookup table for fast checks
+
+  OreType() {
+    resolvedReplaceBlocks.resize(256, false);
+    resolvedExcludeBlocks.resize(256, false);
+  }
 };
 
 class OreDecorator : public WorldDecorator {
@@ -43,7 +56,7 @@ private:
   static std::vector<OreType> oreTypes;
 
   float SampleDistribution(const OreType &ore, float random) const;
-  bool CanReplaceBlock(const std::string &blockId, const OreType &ore) const;
+  bool CanReplaceBlock(uint8_t blockId, const OreType &ore) const;
   bool MatchesPattern(const std::string &pattern,
                       const std::string &blockId) const;
   void GenerateVein(WorldGenRegion &region, int x, int y, int z,

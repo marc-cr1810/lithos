@@ -25,6 +25,12 @@ struct FloraType {
   int minPatchSize = 1;
   int maxPatchSize = 4;
   float density = 0.5f;
+
+  // Runtime Optimized IDs
+  uint8_t resolvedBlockId = 0;
+  std::vector<bool> resolvedAllowedSurfaceBlocks;
+
+  FloraType() { resolvedAllowedSurfaceBlocks.resize(256, false); }
 };
 
 class FloraDecorator : public WorldDecorator {

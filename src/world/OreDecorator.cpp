@@ -11,7 +11,9 @@
 #include <fstream>
 #include <random>
 
-// Static member definition
+#include <cstring>
+#include <nlohmann/json.hpp>
+
 std::vector<OreType> OreDecorator::oreTypes;
 
 OreDecorator::OreDecorator() {
@@ -82,8 +84,54 @@ void OreDecorator::LoadConfig(const std::filesystem::path &configPath) {
 
       oreTypes.push_back(ore);
     }
-  }
 
+    // Resolve Block IDs
+    for (auto &ore : oreTypes) {
+      // Resolve main block ID
+      Block *b = BlockRegistry::getInstance().getBlock(ore.blockId);
+      if (b) {
+        ore.resolvedBlockId = b->getId();
+      } else {
+        LOG_WARN("OreDecorator: Could not resolve block '{}'", ore.blockId);
+      }
+
+      // Pre-calculate replace/exclude tables
+      for (int i = 0; i < 256; ++i) {
+        Block *candidate = BlockRegistry::getInstance().getBlock(i);
+        if (!candidate)
+          continue;
+
+        std::string candidateId = candidate->getResourceId();
+
+        // Check exclude
+        bool excluded = false;
+        for (const auto &ex : ore.excludeBlocks) {
+          if (MatchesPattern(ex, candidateId)) {
+            excluded = true;
+            break;
+          }
+        }
+        if (excluded) {
+          ore.resolvedExcludeBlocks[i] = true;
+          continue;
+        }
+
+        // Check replace
+        bool replaceable = false;
+        if (ore.replaceBlocks.empty()) {
+          replaceable = true;
+        } else {
+          for (const auto &rep : ore.replaceBlocks) {
+            if (MatchesPattern(rep, candidateId)) {
+              replaceable = true;
+              break;
+            }
+          }
+        }
+        ore.resolvedReplaceBlocks[i] = replaceable;
+      }
+    }
+  }
   LOG_INFO("Loaded {} ore types from {}", oreTypes.size(), configPath.string());
 }
 
@@ -136,46 +184,24 @@ bool OreDecorator::MatchesPattern(const std::string &pattern,
   return blockId.substr(0, prefix.size()) == prefix;
 }
 
-bool OreDecorator::CanReplaceBlock(const std::string &blockId,
-                                   const OreType &ore) const {
-  // Check if in exclude list
-  for (const auto &excluded : ore.excludeBlocks) {
-    if (MatchesPattern(excluded, blockId)) {
-      return false;
-    }
-  }
-
-  // Check if in replace list
-  if (ore.replaceBlocks.empty()) {
-    return true; // No restrictions
-  }
-
-  for (const auto &allowed : ore.replaceBlocks) {
-    if (MatchesPattern(allowed, blockId)) {
-      return true;
-    }
-  }
-
-  return false;
+bool OreDecorator::CanReplaceBlock(uint8_t blockId, const OreType &ore) const {
+  if (ore.resolvedExcludeBlocks[blockId])
+    return false;
+  return ore.resolvedReplaceBlocks[blockId];
 }
 
 void OreDecorator::GenerateVein(WorldGenRegion &region, int x, int y, int z,
                                 const OreType &ore, int size) {
-  // Get ore block type
-  Block *oreBlock = nullptr;
-  for (int i = 0; i < 256; ++i) {
-    Block *b = BlockRegistry::getInstance().getBlock(i);
-    if (b && b->getResourceId() == ore.blockId) {
-      oreBlock = b;
-      break;
-    }
+  BlockType oreType = (BlockType)ore.resolvedBlockId;
+  if (oreType == 0 && ore.blockId != "air") {
+    // Maybe failed to resolve? Try again or verify?
+    // If resolvedBlockId is 0 it technically means AIR, which might be valid
+    // but unlikely for ore. Assuming 0 is AIR and default. If original string
+    // wasn't air, then we failed.
+    Block *b = BlockRegistry::getInstance().getBlock(ore.blockId);
+    if (b)
+      oreType = (BlockType)b->getId();
   }
-
-  if (!oreBlock) {
-    return;
-  }
-
-  BlockType oreType = (BlockType)oreBlock->getId();
 
   // Generate blob-shaped vein
   for (int i = 0; i < size; ++i) {
@@ -189,20 +215,9 @@ void OreDecorator::GenerateVein(WorldGenRegion &region, int x, int y, int z,
 
     // Check current block
     BlockType currentBlock = region.getBlock(px, py, pz);
-    if (currentBlock == AIR || currentBlock == WATER || currentBlock == LAVA) {
-      continue;
-    }
 
-    // Get block resource ID
-    Block *block = BlockRegistry::getInstance().getBlock(currentBlock);
-    if (!block) {
-      continue;
-    }
-
-    std::string blockId = block->getResourceId();
-
-    // Check if we can replace this block
-    if (CanReplaceBlock(blockId, ore)) {
+    // Fast check using pre-resolved table
+    if (CanReplaceBlock((uint8_t)currentBlock, ore)) {
       region.setBlock(px, py, pz, oreType);
     }
   }

@@ -81,7 +81,19 @@ BlockType WorldGenRegion::getBlock(int x, int y, int z) const {
     return AIR; // Column not loaded
   }
 
-  std::shared_ptr<Chunk> chunk = world->getChunk(colX, chunkY, colZ);
+  std::shared_ptr<Chunk> chunk = nullptr;
+  auto key = std::make_tuple(colX, chunkY, colZ);
+  auto it = chunkCache.find(key);
+  if (it != chunkCache.end()) {
+    chunk = it->second;
+  } else {
+    // Note: getChunk might lock, so caching is valuable
+    chunk = world->getChunk(colX, chunkY, colZ);
+    if (chunk) {
+      chunkCache[key] = chunk;
+    }
+  }
+
   if (!chunk) {
     return AIR; // Chunk not loaded
   }
@@ -187,7 +199,18 @@ Block *WorldGenRegion::getBlockPtr(int x, int y, int z) const {
     return BlockRegistry::getInstance().getBlock(BlockType::AIR);
   }
 
-  std::shared_ptr<Chunk> chunk = world->getChunk(colX, chunkY, colZ);
+  std::shared_ptr<Chunk> chunk = nullptr;
+  auto key = std::make_tuple(colX, chunkY, colZ);
+  auto it = chunkCache.find(key);
+  if (it != chunkCache.end()) {
+    chunk = it->second;
+  } else {
+    chunk = world->getChunk(colX, chunkY, colZ);
+    if (chunk) {
+      chunkCache[key] = chunk;
+    }
+  }
+
   if (!chunk) {
     return BlockRegistry::getInstance().getBlock(BlockType::AIR);
   }

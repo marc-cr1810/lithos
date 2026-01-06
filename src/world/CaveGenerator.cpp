@@ -210,6 +210,13 @@ CaveGenerator::CaveGenerator(const WorldGenConfig &config)
   fnFractal->SetSource(fnSimplex);
   fnFractal->SetOctaveCount(caveConfig.heightDistortOctaves);
   heightDistortNoise = fnFractal;
+
+  // Cache blocks
+  auto &gc = GlobalConfig::Get();
+  waterBlock = BlockRegistry::getInstance().getBlock(gc.waterBlockCode);
+  iceBlock = BlockRegistry::getInstance().getBlock(gc.iceBlockCode);
+  lavaBlock = BlockRegistry::getInstance().getBlock(gc.lavaBlockCode);
+  airBlock = BlockRegistry::getInstance().getBlock(BlockType::AIR);
 }
 
 void CaveGenerator::GenerateHeightDistortion(ChunkColumn &column, int cx,
@@ -625,9 +632,10 @@ bool CaveGenerator::SetBlocks(WorldGenRegion &region, float horRadius,
   double hRadiusSq = checkHorRadius * checkHorRadius;
   double vRadiusSq = checkVertRadius * checkVertRadius;
 
-  auto &gc = GlobalConfig::Get();
-  Block *waterBlock = BlockRegistry::getInstance().getBlock(gc.waterBlockCode);
-  Block *iceBlock = BlockRegistry::getInstance().getBlock(gc.iceBlockCode);
+  // Use cached blocks
+  // auto &gc = GlobalConfig::Get(); // Already used in constructor
+  // Block *waterBlock = ... // Cached
+  // Block *iceBlock = ... // Cached
 
   for (int lx = mindx; lx <= maxdx; lx++) {
     double xdistRel = (lx - centerX) * (lx - centerX) / hRadiusSq;
@@ -668,8 +676,8 @@ bool CaveGenerator::SetBlocks(WorldGenRegion &region, float horRadius,
   mindz = static_cast<int>(centerZ - horRadius);
   maxdz = static_cast<int>(centerZ + horRadius + 1.0);
 
-  Block *airBlock = BlockRegistry::getInstance().getBlock(BlockType::AIR);
-  Block *lavaBlock = BlockRegistry::getInstance().getBlock(gc.lavaBlockCode);
+  // Block *airBlock = ... // Cached
+  // Block *lavaBlock = ... // Cached
 
   for (int lx = mindx; lx <= maxdx; lx++) {
     double xdistRel = (lx - centerX) * (lx - centerX) / hRadiusSq;

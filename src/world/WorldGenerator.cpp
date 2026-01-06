@@ -36,6 +36,26 @@ WorldGenerator::WorldGenerator(const WorldGenConfig &config)
   decorators.push_back(new FloraDecorator());
 
   // Decorators initialized above
+
+  // Cache Common Blocks
+  auto &gc = GlobalConfig::Get();
+  waterBlock = BlockRegistry::getInstance().getBlock(gc.waterBlockCode);
+  mantleBlock = BlockRegistry::getInstance().getBlock(gc.mantleBlockCode);
+  if (!mantleBlock)
+    mantleBlock = BlockRegistry::getInstance().getBlock(gc.lavaBlockCode);
+  airBlock = BlockRegistry::getInstance().getBlock(BlockType::AIR);
+  sandBlock = BlockRegistry::getInstance().getBlock(BlockType::SAND);
+  sandstoneBlock = BlockRegistry::getInstance().getBlock(BlockType::SANDSTONE);
+  gravelBlock = BlockRegistry::getInstance().getBlock(BlockType::GRAVEL);
+  grassBlock = BlockRegistry::getInstance().getBlock(BlockType::GRASS);
+  dirtBlock = BlockRegistry::getInstance().getBlock(BlockType::DIRT);
+  mudBlock = BlockRegistry::getInstance().getBlock(BlockType::MUD);
+  podzolBlock = BlockRegistry::getInstance().getBlock(BlockType::PODZOL);
+  coarseDirtBlock =
+      BlockRegistry::getInstance().getBlock(BlockType::COARSE_DIRT);
+  terraPretaBlock =
+      BlockRegistry::getInstance().getBlock(BlockType::TERRA_PRETA);
+  peatBlock = BlockRegistry::getInstance().getBlock(BlockType::PEAT);
 }
 
 WorldGenerator::~WorldGenerator() {
@@ -365,30 +385,12 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
     PROFILE_SCOPE_CONDITIONAL("ChunkGen_Terrain", m_ProfilingEnabled);
 
     // Cache common blocks
-    auto &gc = GlobalConfig::Get();
-    Block *waterBlock =
-        BlockRegistry::getInstance().getBlock(gc.waterBlockCode);
-    Block *mantleBlock =
-        BlockRegistry::getInstance().getBlock(gc.mantleBlockCode);
-    if (!mantleBlock) // Fallback if mantle not defined or invalid
-      mantleBlock = BlockRegistry::getInstance().getBlock(gc.lavaBlockCode);
-
-    Block *airBlock = BlockRegistry::getInstance().getBlock(BlockType::AIR);
-    Block *sandBlock = BlockRegistry::getInstance().getBlock(BlockType::SAND);
-    Block *sandstoneBlock =
-        BlockRegistry::getInstance().getBlock(BlockType::SANDSTONE);
-    Block *gravelBlock =
-        BlockRegistry::getInstance().getBlock(BlockType::GRAVEL);
-    Block *grassBlock = BlockRegistry::getInstance().getBlock(BlockType::GRASS);
-    Block *dirtBlock = BlockRegistry::getInstance().getBlock(BlockType::DIRT);
-    Block *mudBlock = BlockRegistry::getInstance().getBlock(BlockType::MUD);
-    Block *podzolBlock =
-        BlockRegistry::getInstance().getBlock(BlockType::PODZOL);
-    Block *coarseDirtBlock =
-        BlockRegistry::getInstance().getBlock(BlockType::COARSE_DIRT);
-    Block *terraPretaBlock =
-        BlockRegistry::getInstance().getBlock(BlockType::TERRA_PRETA);
-    Block *peatBlock = BlockRegistry::getInstance().getBlock(BlockType::PEAT);
+    // Cache common blocks (Cached in Constructor now)
+    // auto &gc = GlobalConfig::Get();
+    // Block *waterBlock = ...
+    // Block *mantleBlock = ...
+    // ...
+    // Block *peatBlock = ...
 
     // Lambda to get density (Similar to GenerateColumn but for specific y)
 
@@ -732,7 +734,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
   // 6. Calculate Verticality Flags (for culling)
   bool allAir = true;
   bool allOpaque = true;
-  Block *airBlock = BlockRegistry::getInstance().getBlock(BlockType::AIR);
+  // Block *airBlock = ... // Cached
 
   for (int x = 0; x < CHUNK_SIZE; ++x) {
     for (int y = 0; y < CHUNK_SIZE; ++y) {

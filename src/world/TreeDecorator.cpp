@@ -156,45 +156,27 @@ void TreeDecorator::BuildSegment(WorldGenRegion *region, int x, int y, int z,
   // Offset logic handled by passed dx/dy/dz now
 
   // Resolve Block IDs
-  Block *logBlock =
-      BlockRegistry::getInstance().getBlock(tree.treeBlocks.logBlockCode);
-  if (!logBlock || logBlock->getId() == AIR)
-    logBlock = BlockRegistry::getInstance().getBlock(WOOD);
-  if (!logBlock)
-    logBlock = BlockRegistry::getInstance().getBlock(AIR);
-
-  Block *leavesBlock =
-      BlockRegistry::getInstance().getBlock(tree.treeBlocks.leavesBlockCode);
-  if (!leavesBlock || leavesBlock->getId() == AIR)
-    leavesBlock = BlockRegistry::getInstance().getBlock(LEAVES);
-  if (!leavesBlock)
-    leavesBlock = BlockRegistry::getInstance().getBlock(AIR);
-
-  BlockType logId = static_cast<BlockType>(logBlock->getId());
-  BlockType leavesId = static_cast<BlockType>(leavesBlock->getId());
-
-  // Resolve Branchy Leaves for structure
-  Block *branchyBlock = BlockRegistry::getInstance().getBlock(
-      tree.treeBlocks.leavesBranchyBlockCode);
-  BlockType branchyId = (branchyBlock && branchyBlock->getId() != AIR)
-                            ? (BlockType)branchyBlock->getId()
-                            : logId;
-
-  // VS: Build trunk segment block IDs (for multi-textured trunks)
-  std::vector<BlockType> trunkSegmentBlockIds;
-  if (!tree.treeBlocks.trunkSegmentBase.empty() &&
-      !tree.treeBlocks.trunkSegmentVariants.empty()) {
-    for (const std::string &variant : tree.treeBlocks.trunkSegmentVariants) {
-      std::string blockCode =
-          tree.treeBlocks.trunkSegmentBase + variant + "-ud";
-      Block *segBlock = BlockRegistry::getInstance().getBlock(blockCode);
-      if (segBlock && segBlock->getId() != AIR) {
-        trunkSegmentBlockIds.push_back((BlockType)segBlock->getId());
-      } else {
-        trunkSegmentBlockIds.push_back(logId); // Fallback
-      }
-    }
+  // Resolve Block IDs - Optimized
+  BlockType logId = (BlockType)tree.treeBlocks.resolvedLogBlockId;
+  if (logId == AIR) {
+    // Fallback
+    Block *logBlock = BlockRegistry::getInstance().getBlock(WOOD);
+    logId = (logBlock) ? (BlockType)logBlock->getId() : AIR;
   }
+
+  BlockType leavesId = (BlockType)tree.treeBlocks.resolvedLeavesBlockId;
+  if (leavesId == AIR) {
+    Block *leavesBlock = BlockRegistry::getInstance().getBlock(LEAVES);
+    leavesId = (leavesBlock) ? (BlockType)leavesBlock->getId() : AIR;
+  }
+
+  BlockType branchyId = (BlockType)tree.treeBlocks.resolvedLeavesBranchyBlockId;
+  if (branchyId == AIR)
+    branchyId = logId;
+
+  // VS: Trunk segment block IDs
+  const std::vector<uint8_t> &trunkSegmentIds =
+      tree.treeBlocks.resolvedTrunkSegmentBlockIds;
 
   bool alive = true;
 
@@ -252,11 +234,11 @@ void TreeDecorator::BuildSegment(WorldGenRegion *region, int x, int y, int z,
 
     // VS: Determine Block ID based on Width
     BlockType currentSegmentBlockId;
-    if (segment.segment != 0 && curWidth >= 0.3f &&
-        !trunkSegmentBlockIds.empty()) {
+    if (segment.segment != 0 && curWidth >= 0.3f && !trunkSegmentIds.empty()) {
       int idx = segment.segment - 1;
-      if (idx >= 0 && idx < (int)trunkSegmentBlockIds.size()) {
-        currentSegmentBlockId = trunkSegmentBlockIds[idx];
+      if (idx >= 0 && idx < (int)trunkSegmentIds.size()) {
+        uint8_t tid = trunkSegmentIds[idx];
+        currentSegmentBlockId = (tid != 0) ? (BlockType)tid : logId;
       } else {
         currentSegmentBlockId = logId;
       }
@@ -279,8 +261,8 @@ void TreeDecorator::BuildSegment(WorldGenRegion *region, int x, int y, int z,
     glm::ivec3 bPos = glm::vec3(currentPos);
     if (bPos.y >= 0 && bPos.y < maxHeight) {
       // Get current block at world position
-      BlockType currentType = region->getBlock(bPos.x, bPos.y, bPos.z);
-      Block *currentBlock = BlockRegistry::getInstance().getBlock(currentType);
+      Block *currentBlock = region->getBlockPtr(bPos.x, bPos.y, bPos.z);
+      BlockType currentType = (BlockType)currentBlock->getId();
 
       if (currentBlock->isSolid() && !currentBlock->isReplaceable() &&
           currentType != currentSegmentBlockId && currentType != logId &&

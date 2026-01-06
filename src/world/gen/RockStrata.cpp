@@ -33,10 +33,15 @@ BlockType RockStrataRegistry::GetStrataBlock(int x, int y, int z, int surfaceY,
                                              float provinceNoise,
                                              float strataNoise,
                                              float distortion, int seed) {
+  if (cachedDefaultRockId == BlockType::AIR) {
+    Block *b = BlockRegistry::getInstance().getBlock(
+        GlobalConfig::Get().defaultRockCode);
+    if (b)
+      cachedDefaultRockId = (BlockType)b->getId();
+  }
+
   if (provinces.empty())
-    return (BlockType)BlockRegistry::getInstance()
-        .getBlock(GlobalConfig::Get().defaultRockCode)
-        ->getId();
+    return cachedDefaultRockId;
 
   // Map noise (-1 to 1) to continuous index
   float t = (provinceNoise + 1.0f) * 0.5f;    // 0..1
@@ -123,16 +128,12 @@ BlockType RockStrataRegistry::GetStrataBlock(int x, int y, int z, int surfaceY,
   int igneousDepth = distortedDepth - topStackThickness;
 
   if (igneousDepth < 0)
-    return (BlockType)BlockRegistry::getInstance()
-        .getBlock(GlobalConfig::Get().defaultRockCode)
-        ->getId();
+    return cachedDefaultRockId;
 
   int ignThicknessUsed = 0;
   for (size_t i = 0; i < dominantProv->igneous.size(); ++i) {
     if (ignThicknessUsed >= ignCap)
-      return (BlockType)BlockRegistry::getInstance()
-          .getBlock(GlobalConfig::Get().defaultRockCode)
-          ->getId();
+      return cachedDefaultRockId;
 
     const auto &layer = dominantProv->igneous[i];
     float noise = (strataNoise + 1.0f) * 0.5f;
@@ -156,9 +157,7 @@ BlockType RockStrataRegistry::GetStrataBlock(int x, int y, int z, int surfaceY,
     return dominantProv->igneous.back().block;
   }
 
-  return (BlockType)BlockRegistry::getInstance()
-      .getBlock(GlobalConfig::Get().defaultRockCode)
-      ->getId();
+  return cachedDefaultRockId;
 }
 
 // Global Palette Storage (Private to this TU or member if moved to header, but

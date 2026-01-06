@@ -143,6 +143,12 @@ private:
 
   // Helper to get random int
   int RandomInt(int max);
+
+  // Cached Blocks
+  class Block *waterBlock = nullptr;
+  class Block *iceBlock = nullptr;
+  class Block *lavaBlock = nullptr;
+  class Block *airBlock = nullptr;
 };
 
 #endif
