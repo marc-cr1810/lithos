@@ -106,7 +106,7 @@ void Chunk::setBlockNoMeshUpdate(int x, int y, int z, BlockType type) {
   blocks[x][y][z].metadata = 0; // Reset metadata on block change!
 
   // Maintain Verticality Flags
-  if (type != BlockType::AIR) {
+  if (newBlock->getId() != AIR) {
     isAllAir = false;
   }
   if (!newOpaque) {

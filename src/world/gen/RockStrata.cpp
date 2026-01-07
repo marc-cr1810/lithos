@@ -196,6 +196,12 @@ void RockStrataRegistry::LoadStrataLayers(const std::string &path) {
   g_Volcanic.clear();
 
   if (root.contains("variants")) {
+    // Cache air block for validation
+    static Block *airBlockCache = nullptr;
+    if (!airBlockCache) {
+      airBlockCache = BlockRegistry::getInstance().getBlock("lithos:air");
+    }
+
     for (const auto &j : root["variants"]) {
       std::string code;
       if (j.contains("blockcode"))
@@ -204,7 +210,7 @@ void RockStrataRegistry::LoadStrataLayers(const std::string &path) {
         continue;
 
       Block *block = BlockRegistry::getInstance().getBlock(code);
-      if (block->getId() == BlockType::AIR && code != "lithos:air") {
+      if (block->getId() == airBlockCache->getId() && code != "lithos:air") {
         // Warning log?
         continue;
       }

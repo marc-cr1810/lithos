@@ -15,6 +15,9 @@
         "breakSound": "water_break",
         "walk": "water_walk"
     },
+    "climateColorMapByType": {
+        "*": "climateWaterTint"
+    },
     "textures": {
         "all": "liquid/water_still"
     },

@@ -45,5 +45,6 @@ private:
   std::vector<GeologicProvince> provinces;
 
   const GeologicProvince *GetProvince(float noise);
-  BlockType cachedDefaultRockId = BlockType::AIR;
+  BlockType cachedDefaultRockId = (BlockType)0; // Initialize to 0 (will be set
+                                                // to air block ID on first use)
 };
