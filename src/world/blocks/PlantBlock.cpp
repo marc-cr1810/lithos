@@ -16,10 +16,3 @@ PlantBlock::PlantBlock(uint8_t id, const std::string &name) : Block(id, name) {
 }
 
 bool PlantBlock::isSelectable() const { return true; }
-
-void PlantBlock::getColor(float &r, float &g, float &b) const {
-  // Generic plants use white tint (texture color)
-  r = 1.0f;
-  g = 1.0f;
-  b = 1.0f;
-}

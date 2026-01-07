@@ -10,6 +10,7 @@
     "drawType": "cross",
     "replaceable": 1,
     "solid": false,
+    "opaque": false,
     "id": 19,
     "textures": {
         "all": "plant/tallgrass/dead_bush"

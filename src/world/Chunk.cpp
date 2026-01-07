@@ -1,5 +1,8 @@
 #include "Chunk.h"
 #include "../debug/Logger.h"
+#include "../render/Shader.h" // Added by user instruction
+#include "Block.h"            // Added by user instruction
+#include "ColorMapRegistry.h" // Added by user instruction
 #include "World.h"
 #include "WorldGenerator.h"
 #include <GL/glew.h>
@@ -1194,10 +1197,39 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
         int gz = chunkPosition.z * CHUNK_SIZE + z;
 
         float r, g, b;
-        cb.block->getColor(r, g, b);
+        r = 1.0f;
+        g = 1.0f;
+        b = 1.0f;
         float alpha = cb.block->getAlpha();
 
         uint8_t sky = cb.skyLight;
+
+        // Climate Tinting (Pass 2)
+        if (cb.block->shouldTint(
+                0, 0)) { // Pass 2 usually simple shapes, check base layer
+          std::string mapCode = cb.block->getClimateColorMap();
+          if (!mapCode.empty()) {
+            float temp = 0.5f, humid = 0.5f;
+            getClimate(x, z, temp, humid);
+            glm::vec3 tint =
+                ColorMapRegistry::Get().GetColor(mapCode, temp, humid);
+
+            // Check for overlay only?
+            // If tintOverlayOnly is true, we ONLY tint the overlay layer.
+            // But "Special Shapes" (Cross, Post, etc.) might not HAVE layers in
+            // the same way. Usually cross/plants are base layer 0. If
+            // tintOverlayOnly is true but we are rendering base layer (0), do
+            // we tint? For "Cross" (Grass), it's usually layer 0. If
+            // tintOverlayOnly is true, we assume it's like a grass block where
+            // layer 0 is dirt (no tint) and layer 1 is grass (tint). But
+            // "Cross" shape is usually JUST the plant. So it SHOULD be tinted.
+            // So we tint if shouldTint returns true.
+
+            r *= tint.r;
+            g *= tint.g;
+            b *= tint.b;
+          }
+        }
         uint8_t bl = cb.blockLight;
         float l1Source = pow((float)sky / 15.0f, 0.8f);
         float l2Source = pow((float)bl / 15.0f, 0.8f);
@@ -2310,14 +2342,27 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
                     int aoBL, int aoBR, int aoTR, int aoTL, uint8_t metadata,
                     float hBL, float hBR, float hTR, float hTL, int layer,
                     bool isInternal) {
-  float r, g, b;
-  block->getColor(r, g, b); // Base Tint
+  float r = 1.0f;
+  float g = 1.0f;
+  float b = 1.0f;
 
   // Decide tint
   if (!block->shouldTint(faceDir, layer)) {
     r = 1.0f;
     g = 1.0f;
     b = 1.0f;
+  } else {
+    // Apply Climate Tint
+    std::string mapCode = block->getClimateColorMap();
+    if (!mapCode.empty()) {
+      float temp = 0.5f, humid = 0.5f;
+      getClimate(x, z, temp, humid);
+      // Use ColorMapRegistry (Singelton)
+      glm::vec3 tint = ColorMapRegistry::Get().GetColor(mapCode, temp, humid);
+      r *= tint.r;
+      g *= tint.g;
+      b *= tint.b;
+    }
   }
 
   float alpha = block->getAlpha();

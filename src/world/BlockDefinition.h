@@ -108,6 +108,7 @@ struct BlockDefinition {
   std::unordered_map<std::string, BoundingBox> collisionBoxByType;
   std::unordered_map<std::string, BoundingBox> selectionBoxByType;
   std::unordered_map<std::string, nlohmann::json> attributesByType;
+  std::unordered_map<std::string, std::string> climateColorMapByType;
 };
 
 } // namespace BlockDef

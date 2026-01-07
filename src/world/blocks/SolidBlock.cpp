@@ -14,12 +14,6 @@ Block::RenderLayer SolidBlock::getRenderLayer() const {
   return RenderLayer::OPAQUE;
 }
 
-void SolidBlock::getColor(float &r, float &g, float &b) const {
-  r = 1.0f;
-  g = 1.0f;
-  b = 1.0f;
-}
-
 bool SolidBlock::shouldTint(int faceDir, int layer) const {
   return false; // Default: No tint for dirt, wood, etc.
 }

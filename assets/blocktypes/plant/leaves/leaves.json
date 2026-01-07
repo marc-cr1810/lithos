@@ -8,6 +8,9 @@
     "class": "LeavesBlock",
     "blockMaterial": "Leaves",
     "drawType": "cube",
+    "climateColorMapByType": {
+        "*": "climatePlantTint"
+    },
     "opaque": false,
     "renderBackfaces": true,
     "resistance": 0.2,

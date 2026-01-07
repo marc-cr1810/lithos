@@ -339,18 +339,16 @@ public:
                                 int ny, int nz) const {}
   virtual void update(World &world, int x, int y, int z) const {}
 
-  virtual void getColor(float &r, float &g, float &b) const {
-    r = 1.0f;
-    g = 1.0f;
-    b = 1.0f;
-  }
-
   virtual float getAlpha() const { return 1.0f; }
 
   // Layer-based Tinting
   // layer 0 = base, layer 1 = overlay
   virtual bool shouldTint(int faceDir, int layer) const {
-    return true; // Default behavior
+    if (climateColorMap.empty())
+      return false;
+    if (tintOverlayOnly)
+      return layer == 1; // Only tint overlay
+    return true;         // Tint everything
   }
 
   void setOpaque(bool o) { isOpaque_ = o; }
@@ -358,6 +356,15 @@ public:
   // Attributes
   void setAttributes(const nlohmann::json &attr) { attributes = attr; }
   const nlohmann::json &getAttributes() const { return attributes; }
+
+  // Climate Tinting
+  void setClimateColorMap(const std::string &mapCode) {
+    climateColorMap = mapCode;
+  }
+  const std::string &getClimateColorMap() const { return climateColorMap; }
+
+  void setTintOverlayOnly(bool overlayOnly) { tintOverlayOnly = overlayOnly; }
+  bool isTintOverlayOnly() const { return tintOverlayOnly; }
 
 protected:
   uint8_t id;
@@ -391,6 +398,9 @@ protected:
   RenderShape renderShape = RenderShape::CUBE;
 
   nlohmann::json attributes;
+
+  std::string climateColorMap;
+  bool tintOverlayOnly = false;
 };
 
 // Singleton blocks

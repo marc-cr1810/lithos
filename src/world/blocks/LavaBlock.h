@@ -6,7 +6,6 @@
 class LavaBlock : public LiquidBlock {
 public:
   LavaBlock(uint8_t id, const std::string &name);
-  void getColor(float &r, float &g, float &b) const override;
   uint8_t getEmission() const override;
 };
 

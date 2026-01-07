@@ -296,6 +296,15 @@ BlockDef::BlockDefinition BlockLoader::parseJSON(const nlohmann::json &j) {
     }
   }
 
+  // Climate Color Map By Type
+  if (j.contains("climateColorMapByType")) {
+    for (const auto &item : j.at("climateColorMapByType").items()) {
+      if (item.value().is_string()) {
+        def.climateColorMapByType[item.key()] = item.value().get<std::string>();
+      }
+    }
+  }
+
   return def;
 }
 
@@ -360,7 +369,7 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
   // Determine ID: if JSON has explicit ID, use it (and ensure it doesn't
   // conflict logic later if needed)
   int resolvedId = resolveProperty(def.id, def.idByType, variantCode);
-  u_int8_t finalId =
+  uint8_t finalId =
       (resolvedId != -1) ? static_cast<uint8_t>(resolvedId) : blockId;
 
   // Create block based on class or inferred type
@@ -539,6 +548,12 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
   // Set render shape
   if (drawType == "cross") {
     block->setRenderShape(Block::RenderShape::CROSS);
+    // Implied properties for cross shape:
+    if (def.renderLayer.empty()) {
+      block->setRenderLayer(Block::RenderLayer::CUTOUT);
+    }
+    // Cross shapes are never opaque cubes
+    block->setOpaque(false);
   } else if (drawType == "cube") {
     block->setRenderShape(Block::RenderShape::CUBE);
   } else if (drawType == "json" && !def.shape.base.empty()) {
@@ -581,8 +596,36 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
   block->setSolid(def.isSolid);
   block->setReplaceable(def.replaceable > 0);
   block->setEmission(def.emission);
-  if (drawType == "cross") {
-    block->setOpaque(false);
+  // The following line was moved to be inside the function scope.
+  // block->setOpaque(false); // This line was removed from here.
+
+  // Parse Climate Color Map
+  std::string climateMap = "";
+  if (def.climateColorMapByType.count(variantCode)) {
+    climateMap = def.climateColorMapByType.at(variantCode);
+  } else {
+    // Check patterns
+    for (const auto &[pattern, mapCode] : def.climateColorMapByType) {
+      if (matchesPattern(pattern, variantCode)) {
+        climateMap = mapCode;
+        break;
+      }
+    }
+  }
+
+  if (!climateMap.empty()) {
+    block->setClimateColorMap(climateMap);
+
+    // Default behavior: if block has overlay, probably want to tint only
+    // overlay? Check JSON attributes for override
+    if (attributes.contains("tintOverlayOnly")) {
+      block->setTintOverlayOnly(attributes["tintOverlayOnly"].get<bool>());
+    } else {
+      // Heuristic: If we are "soil", default to overlay only.
+      if (className == "GrassBlock" || def.code == "soil") {
+        block->setTintOverlayOnly(true);
+      }
+    }
   }
 
   return block;

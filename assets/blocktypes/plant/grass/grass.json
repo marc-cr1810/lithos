@@ -8,6 +8,10 @@
     "class": "TallGrassBlock",
     "blockMaterial": "Plant",
     "drawType": "cross",
+    "climateColorMapByType": {
+        "*_tall_green": "climatePlantTint"
+    },
+    "opaque": false,
     "replaceable": 1,
     "solid": false,
     "variantGroups": [

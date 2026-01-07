@@ -9,6 +9,9 @@
     },
     "blockMaterial": "Soil",
     "drawType": "cube",
+    "climateColorMapByType": {
+        "*": "climatePlantTint"
+    },
     "resistance": 0.6,
     "sounds": {
         "place": "grass_hit",

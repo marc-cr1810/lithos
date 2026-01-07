@@ -194,7 +194,9 @@ add_executable(lithos
     src/debug/Profiler.cpp
     src/debug/CrashHandler.cpp
     src/debug/Logger.cpp
+    src/debug/Logger.cpp
     src/debug/Benchmark.cpp
+    src/world/ColorMapRegistry.cpp
     
     # ImGui
     ${imgui_SOURCE_DIR}/imgui.cpp

@@ -90,6 +90,31 @@ public:
   void setBlockLight(int x, int y, int z, uint8_t val);
   void setMetadata(int x, int y, int z, uint8_t val);
 
+  // Climate Data (0-255 mapped from 0.0-1.0)
+  void setClimate(int x, int z, float temp, float humid) {
+    if (x >= 0 && x < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE) {
+      temperatureMap[x][z] =
+          static_cast<uint8_t>(glm::clamp(temp, 0.0f, 1.0f) * 255.0f);
+      humidityMap[x][z] =
+          static_cast<uint8_t>(glm::clamp(humid, 0.0f, 1.0f) * 255.0f);
+    }
+  }
+
+  void getClimate(int x, int z, float &temp, float &humid) const {
+    if (x >= 0 && x < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE) {
+      temp = temperatureMap[x][z] / 255.0f;
+      humid = humidityMap[x][z] / 255.0f;
+    } else {
+      temp = 0.5f;
+      humid = 0.5f;
+    }
+  }
+
+private:
+  uint8_t temperatureMap[CHUNK_SIZE][CHUNK_SIZE];
+  uint8_t humidityMap[CHUNK_SIZE][CHUNK_SIZE];
+
+public:
   // Returns true if a block was hit. outputPos is set to the block coordinates.
   // origin: World space origin using float
   // direction: Normalized direction

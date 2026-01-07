@@ -12,6 +12,7 @@
 
 #include "../core/LangRegistry.h"
 #include "../world/Block.h"
+#include "../world/ColorMapRegistry.h"
 #include "../world/FloraDecorator.h"
 #include "../world/GlobalConfig.h"
 #include "../world/OreDecorator.h"
@@ -20,6 +21,7 @@
 #include "../world/gen/Landform.h"
 #include "../world/gen/RockStrata.h"
 #include <filesystem>
+
 
 void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
   auto app = reinterpret_cast<Application *>(glfwGetWindowUserPointer(window));
@@ -102,6 +104,7 @@ void Application::Init() {
       "assets/worldgen/geologicprovinces.json");
   BlockLayerConfig::Get().Load("assets/worldgen/blocklayers.json");
   GlobalConfig::Get().Load("assets/worldgen/global.json");
+  ColorMapRegistry::Get().LoadColorMaps("assets/config/color_maps.json");
 
   // Load Flora & Ore Configs
   {

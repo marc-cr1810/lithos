@@ -10,7 +10,6 @@ public:
   bool isReplaceable() const override;
   bool isOpaque() const override;
   RenderLayer getRenderLayer() const override;
-  void getColor(float &r, float &g, float &b) const override;
   float getAlpha() const override;
   uint8_t getEmission() const override;
 

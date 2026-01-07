@@ -10,6 +10,7 @@
     "drawType": "cross",
     "replaceable": 1,
     "solid": false,
+    "opaque": false,
     "id": 20,
     "textures": {
         "all": "plant/flower/poppy"

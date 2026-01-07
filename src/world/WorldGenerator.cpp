@@ -381,6 +381,18 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
   noiseManager.GenClimate(tempMap.data(), humidMap.data(), startX, startZ,
                           CHUNK_SIZE, CHUNK_SIZE);
 
+  // Populate Chunk Climate Data
+  for (int lz = 0; lz < CHUNK_SIZE; ++lz) {
+    for (int lx = 0; lx < CHUNK_SIZE; ++lx) {
+      int index = lx + lz * CHUNK_SIZE;
+      // Normalize temperature from [-30, 60] (Celsius) to [0, 1] for color map
+      // lookup
+      float rawTemp = tempMap[index];
+      float normalizedTemp = (rawTemp + 30.0f) / 90.0f;
+      chunk.setClimate(lx, lz, normalizedTemp, humidMap[index]);
+    }
+  }
+
   {
     PROFILE_SCOPE_CONDITIONAL("ChunkGen_Terrain", m_ProfilingEnabled);
 

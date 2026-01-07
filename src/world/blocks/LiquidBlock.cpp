@@ -19,12 +19,6 @@ Block::RenderLayer LiquidBlock::getRenderLayer() const {
   return RenderLayer::TRANSPARENT;
 }
 
-void LiquidBlock::getColor(float &r, float &g, float &b) const {
-  r = 1.0f;
-  g = 1.0f;
-  b = 1.0f;
-}
-
 float LiquidBlock::getAlpha() const { return 1.0f; }
 uint8_t LiquidBlock::getEmission() const { return 0; }
 
