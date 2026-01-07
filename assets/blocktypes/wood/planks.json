@@ -12,14 +12,12 @@
         {
             "code": "wood",
             "states": [
-                "oak",
-                "spruce"
+                "oak"
             ]
         }
     ],
     "idByType": {
-        "*_oak": 9,
-        "*_spruce": 25
+        "*_oak": 25
     },
     "textures": {
         "all": "wood/planks/{wood}_planks"

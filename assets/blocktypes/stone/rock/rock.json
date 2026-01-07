@@ -8,7 +8,7 @@
             "*_cobblestone"
         ]
     },
-    "class": "Block",
+    "class": "SolidBlock",
     "blockMaterial": "Stone",
     "drawType": "cube",
     "variantGroups": [
