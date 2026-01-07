@@ -6,9 +6,12 @@ in vec2 TexCoord;
 in vec3 Lighting;
 in vec2 TexOrigin;
 in vec3 FragPos;
+in vec3 Climate;
 
 // texture sampler
 uniform sampler2D texture1;
+uniform sampler2D tintMaps[8]; // Legacy/Fallback samplers
+uniform vec4 u_TintRects[8]; // Atlas UV Rects (if z > 0, use Atlas)
 uniform bool useTexture;
 uniform float sunStrength;
 uniform bool useLighting;
@@ -66,10 +69,34 @@ void main()
 
     if (!useLighting) lightVal = 1.0; // Bypass for UI/Fullbright
 
-    // Apply AO to the final light multiplier or the color?
-    // AO represents blocked ambient light.
-    // It should darken everything.
-    
+    // Apply Tint from Climate Data
+    // Climate.z = Tint Index (0 = None, 1+ = Map Index)
+    int tintIndex = int(Climate.z + 0.1); // Round safe
+    if (tintIndex > 0) {
+        // Shared UV logic (Legacy uses 1.0 - y)
+        vec2 localUV = vec2(Climate.x, 1.0 - Climate.y);
+        
+        if (tintIndex <= 8) { 
+             int idx = tintIndex - 1;
+             vec4 rect = u_TintRects[idx];
+             
+             vec4 tintColor;
+             
+             // Check if this map is in the Atlas
+             // We use rect.z (width) as indicator. If > 0, it's valid Atlas rect.
+             if (rect.z > 0.0) {
+                 // Sample from Atlas (texture1)
+                 vec2 tintAtlasUV = rect.xy + localUV * rect.zw;
+                 tintColor = texture(texture1, tintAtlasUV);
+             } else {
+                 // Fallback: Sample from dedicated texture unit
+                 tintColor = texture(tintMaps[idx], localUV);
+             }
+             
+             texColor *= tintColor;
+        }
+    }
+
     // Combine texture color with vertex color (tint)
     // Note: We multiply RGB and also Alpha
     vec4 result = texColor * ourColor; 

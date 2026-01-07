@@ -50,6 +50,11 @@ public:
 
   // Query
   bool GetTextureUV(const std::string &name, float &uMin, float &vMin) const;
+  const TextureInfo *GetTextureInfo(const std::string &name) const;
+
+  // Manually add texture
+  void PackTexture(const std::string &name, unsigned char *imgData, int w,
+                   int h, int channels, int frameCount = 1, int frameTime = 1);
 
 private:
   int width;
@@ -62,18 +67,12 @@ private:
 
   // Dirty flag for animation updates
   bool dirty;
-  // We track which slots are dirty to optimize?
-  // For now simpler to just track if we need to interact with GL.
-
-  // Helper
-  void PackTexture(const std::string &name, unsigned char *imgData, int w,
-                   int h, int channels, int frameCount = 1, int frameTime = 1);
-  void SetRegion(int x, int y, int w, int h, const unsigned char *src,
-                 int channels);
 
   // Simple grid packer state
   int nextSlotX;
   int nextSlotY;
+  void SetRegion(int x, int y, int w, int h, const unsigned char *src,
+                 int channels);
 };
 
 #endif

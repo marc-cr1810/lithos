@@ -4,12 +4,14 @@ layout (location = 1) in vec4 aColor;
 layout (location = 2) in vec2 aTexCoord;
 layout (location = 3) in vec3 aLight;
 layout (location = 4) in vec2 aTexOrigin;
+layout (location = 5) in vec3 aClimate; // x=Temp, y=Humid, z=TintIndex
 
 out vec4 ourColor;
 out vec2 TexCoord;
 out vec3 Lighting;
 out vec2 TexOrigin;
 out vec3 FragPos;
+out vec3 Climate;
 
 uniform mat4 model;
 uniform mat4 view;
@@ -24,4 +26,5 @@ void main()
     TexCoord = aTexCoord;
     Lighting = aLight; // x=Sky, y=Block, z=AO
     TexOrigin = aTexOrigin;
+    Climate = aClimate;
 }

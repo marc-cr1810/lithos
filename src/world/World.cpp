@@ -3,6 +3,7 @@
 #include "../debug/Profiler.h"
 #include "../ecs/Systems.h"
 #include "../render/Shader.h"
+#include "ColorMapRegistry.h"
 #include "WorldGenRegion.h"
 #include "WorldGenerator.h"
 #include <algorithm>
@@ -1161,6 +1162,36 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection,
   {
     PROFILE_SCOPE("Render Opaque");
     shader.use();
+
+    // Bind Tint Maps (Units 1-8)
+    // Unit 0 is reserved for Block Atlas (bound externally or essentially
+    // active)
+    // Bind Tint UV Rects (for Atlas sampling)
+    // Unit 0 is Block Atlas (bound externally or essentially active)
+
+    // Bind Tint UV Rects and Legacy Textures (Hybrid Support)
+    const auto &codes = ColorMapRegistry::Get().GetIndexedCodes();
+    for (int i = 0; i < 8; ++i) {
+      glm::vec4 rect(0.0f);
+      unsigned int texID = 0;
+
+      if (i < codes.size()) {
+        std::string code = codes[i];
+        rect = ColorMapRegistry::Get().GetAtlasUVRect(code);
+        // If (rect.z == 0), implies NOT in atlas (or invalid).
+        // In that case, we MUST bind the standalone texture.
+        if (rect.z <= 0.0f) {
+          texID = ColorMapRegistry::Get().GetTextureID(code);
+        }
+      }
+      shader.setVec4("u_TintRects[" + std::to_string(i) + "]", rect);
+
+      // Bind to unit 1+i and set uniform
+      glActiveTexture(GL_TEXTURE1 + i);
+      glBindTexture(GL_TEXTURE_2D, texID);
+      shader.setInt("tintMaps[" + std::to_string(i) + "]", 1 + i);
+    }
+    glActiveTexture(GL_TEXTURE0);
     for (const auto &c : visibleChunks) {
       if (c) {
         c->render(shader, viewProjection, 0); // Opaque

@@ -149,49 +149,70 @@ void TextureAtlas::PackTexture(const std::string &name, unsigned char *imgData,
   int frameW = w;
   int frameH = h / frameCount;
 
-  if (frameW != slotSize || frameH != slotSize) {
-    // Warn? Or just accept?
-    // If it's 16x16 vs 32x32, mixing resolutions in one atlas is messy if we
-    // use grid. But we initialized atlas with slotSize=16. If we load a 32x32
-    // texture, it won't fit in 16x16 grid easily without flexible packing. But
-    // let's assume assets are compliant or we just write what we can.
+  int slotsUsedX = (frameW + slotSize - 1) / slotSize;
+  int slotsUsedY = (frameH + slotSize - 1) / slotSize;
+
+  int limitX = width / slotSize;
+
+  // If item doesn't fit in current row residue, or if it is multi-row tall,
+  // start new row? Strategy:
+  // 1. If multi-row tall, force start of new layout row (waste simple packing
+  // to right).
+  // 2. If single-row tall, try to fit in current row.
+
+  if (slotsUsedY > 1) {
+    // Move to start of next available line if we aren't already at 0
+    if (nextSlotX > 0) {
+      nextSlotX = 0;
+      nextSlotY++;
+    }
   }
 
-  // Find Slot
-  if (nextSlotX * slotSize >= width) {
+  // Wrap X if needed
+  if (nextSlotX + slotsUsedX > limitX) {
     nextSlotX = 0;
     nextSlotY++;
   }
-  if (nextSlotY * slotSize >= height) {
+
+  // Check Y limit
+  if ((nextSlotY + slotsUsedY) * slotSize > height) {
     LOG_RESOURCE_ERROR("Texture Atlas Full! Cannot pack {}", name);
     return;
   }
 
   int slotX = nextSlotX;
   int slotY = nextSlotY;
-  nextSlotX++;
+
+  // Advance
+  if (slotsUsedY > 1) {
+    // For multi-row items, we consume full rows (naive)
+    nextSlotY += slotsUsedY;
+    nextSlotX = 0;
+  } else {
+    nextSlotX += slotsUsedX;
+  }
 
   // Store Info
   TextureInfo info;
   info.slotX = slotX;
   info.slotY = slotY;
 
-  // UVs
-  // add small epsilon to avoid bleeding? Or rely on Nearest.
-  // Nearest neighbor at patch boundaries can bleed if not careful.
-  // Using padding is better, but here we just use strict coordinates.
+  // UVs (Use actual content size, not slot size if smaller?)
+  // But slots are fixed size grid conceptually for the UV calculation?
+  // No, we use pixel coords / width.
   info.uMin = (float)(slotX * slotSize) / width;
   info.vMin = (float)(slotY * slotSize) / height;
-  info.uMax = (float)((slotX + 1) * slotSize) / width;
-  info.vMax = (float)((slotY + 1) * slotSize) / height;
+  // Use frameW/H for Max UV to tightly wrap content?
+  // Standard block rendering might expect 16x16 UVs.
+  // If we pack 256x256, we want UV to cover 256x256.
+  info.uMax = (float)(slotX * slotSize + frameW) / width;
+  info.vMax = (float)(slotY * slotSize + frameH) / height;
 
   info.isAnimated = (frameCount > 1);
   info.frameCount = frameCount;
   info.frameTime = frameTime;
 
   textures[name] = info;
-  // Also store by "filename" without ext?
-  // Handled by Load() using stem().
 
   // Copy first frame to Atlas Data
   SetRegion(slotX * slotSize, slotY * slotSize, frameW, frameH, imgData,
@@ -207,16 +228,12 @@ void TextureAtlas::PackTexture(const std::string &name, unsigned char *imgData,
     anim.slotY = slotY;
     anim.currentFrame = 0;
     anim.timer = 0.0f;
-    // FrameTime is in Ticks (1/20s)
     anim.fps = 20 / (frameTime > 0 ? frameTime : 1);
     if (anim.fps <= 0)
       anim.fps = 1;
 
-    // Copy all frames
-    size_t totalSize = w * h * 4; // Assuming 4 channels conversion
+    size_t totalSize = w * h * 4;
     anim.frames.resize(totalSize);
-    // If source was RGBA (4), copy directly.
-    // We forced 4 channels in load.
     memcpy(anim.frames.data(), imgData, totalSize);
 
     animatedTextures.push_back(anim);
@@ -311,4 +328,12 @@ bool TextureAtlas::GetTextureUV(const std::string &name, float &uMin,
     return true;
   }
   return false;
+}
+
+const TextureInfo *TextureAtlas::GetTextureInfo(const std::string &name) const {
+  auto it = textures.find(name);
+  if (it != textures.end()) {
+    return &it->second;
+  }
+  return nullptr;
 }

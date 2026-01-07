@@ -1204,30 +1204,18 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
 
         uint8_t sky = cb.skyLight;
 
+        // Climate Data for Shader
+        float temp = 0.5f;
+        float humid = 0.5f;
+        float tintIndex = 0.0f;
+
         // Climate Tinting (Pass 2)
-        if (cb.block->shouldTint(
-                0, 0)) { // Pass 2 usually simple shapes, check base layer
+        if (cb.block->shouldTint(0, 0)) {
           std::string mapCode = cb.block->getClimateColorMap();
           if (!mapCode.empty()) {
-            float temp = 0.5f, humid = 0.5f;
             getClimate(x, z, temp, humid);
-            glm::vec3 tint =
-                ColorMapRegistry::Get().GetColor(mapCode, temp, humid);
-
-            // Check for overlay only?
-            // If tintOverlayOnly is true, we ONLY tint the overlay layer.
-            // But "Special Shapes" (Cross, Post, etc.) might not HAVE layers in
-            // the same way. Usually cross/plants are base layer 0. If
-            // tintOverlayOnly is true but we are rendering base layer (0), do
-            // we tint? For "Cross" (Grass), it's usually layer 0. If
-            // tintOverlayOnly is true, we assume it's like a grass block where
-            // layer 0 is dirt (no tint) and layer 1 is grass (tint). But
-            // "Cross" shape is usually JUST the plant. So it SHOULD be tinted.
-            // So we tint if shouldTint returns true.
-
-            r *= tint.r;
-            g *= tint.g;
-            b *= tint.b;
+            tintIndex = (float)ColorMapRegistry::Get().GetMapIndex(mapCode);
+            // No CPU multiplying!
           }
         }
         uint8_t bl = cb.blockLight;
@@ -1280,6 +1268,10 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
           targetVerts.push_back(aoVal);
           targetVerts.push_back(uOrigin);
           targetVerts.push_back(vOrigin);
+          // New Attributes
+          targetVerts.push_back(temp);
+          targetVerts.push_back(humid);
+          targetVerts.push_back(tintIndex);
         };
 
         if (shape == Block::RenderShape::CROSS) {
@@ -2201,7 +2193,10 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
   }
 
   // Stitch Vectors
-  outOpaqueCount = opaqueVertices.size() / 14;
+  // Stitch Vectors
+  outOpaqueCount = opaqueVertices.size() / 17;
+  opaqueVertices.insert(opaqueVertices.end(), transparentVertices.begin(),
+                        transparentVertices.end());
   opaqueVertices.insert(opaqueVertices.end(), transparentVertices.begin(),
                         transparentVertices.end());
 
@@ -2218,11 +2213,11 @@ void Chunk::uploadMesh(const std::vector<float> &data, int opaqueCount) {
                GL_DYNAMIC_DRAW);
 
   vertexCount = opaqueCount;
-  vertexCountTransparent = (data.size() / 14) - opaqueCount;
+  vertexCountTransparent = (data.size() / 17) - opaqueCount;
 
   // Store transparent part for sorting
   if (vertexCountTransparent > 0) {
-    size_t opaqueFloats = opaqueCount * 14;
+    size_t opaqueFloats = opaqueCount * 17;
     if (opaqueFloats < data.size()) {
       transparentVertices.assign(data.begin() + opaqueFloats, data.end());
     }
@@ -2231,7 +2226,7 @@ void Chunk::uploadMesh(const std::vector<float> &data, int opaqueCount) {
   }
 
   // Attribs
-  float stride = 14 * sizeof(float);
+  float stride = 17 * sizeof(float); // 3+4+2+3+2+3 = 17
 
   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void *)0); // Pos
   glEnableVertexAttribArray(0);
@@ -2247,6 +2242,10 @@ void Chunk::uploadMesh(const std::vector<float> &data, int opaqueCount) {
   glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, stride,
                         (void *)(12 * sizeof(float))); // TexOrigin
   glEnableVertexAttribArray(4);
+  glVertexAttribPointer(
+      5, 3, GL_FLOAT, GL_FALSE, stride,
+      (void *)(14 * sizeof(float))); // Climate (Temp, Humid, Index)
+  glEnableVertexAttribArray(5);
 }
 
 void Chunk::sortAndUploadTransparent(const glm::vec3 &cameraPos) {
@@ -2261,7 +2260,7 @@ void Chunk::sortAndUploadTransparent(const glm::vec3 &cameraPos) {
   }
   m_lastSortCameraPos = cameraPos;
 
-  int floatsPerVertex = 14; // As defined in uploadMesh
+  int floatsPerVertex = 17; // As defined in uploadMesh
   int vertsPerFace = 6;
   int numFloatsPerFace = floatsPerVertex * vertsPerFace;
 
@@ -2346,22 +2345,16 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
   float g = 1.0f;
   float b = 1.0f;
 
+  float temp = 0.5f;
+  float humid = 0.5f;
+  float tintIndex = 0.0f;
+
   // Decide tint
-  if (!block->shouldTint(faceDir, layer)) {
-    r = 1.0f;
-    g = 1.0f;
-    b = 1.0f;
-  } else {
-    // Apply Climate Tint
+  if (block->shouldTint(faceDir, layer)) {
     std::string mapCode = block->getClimateColorMap();
     if (!mapCode.empty()) {
-      float temp = 0.5f, humid = 0.5f;
       getClimate(x, z, temp, humid);
-      // Use ColorMapRegistry (Singelton)
-      glm::vec3 tint = ColorMapRegistry::Get().GetColor(mapCode, temp, humid);
-      r *= tint.r;
-      g *= tint.g;
-      b *= tint.b;
+      tintIndex = (float)ColorMapRegistry::Get().GetMapIndex(mapCode);
     }
   }
 
@@ -2610,6 +2603,10 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
     vertices.push_back(ao);
     vertices.push_back(uMin);
     vertices.push_back(vMin);
+    // New Attributes
+    vertices.push_back(temp);
+    vertices.push_back(humid);
+    vertices.push_back(tintIndex);
   };
 
   // Corners Mapping:

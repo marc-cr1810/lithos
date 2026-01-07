@@ -22,7 +22,6 @@
 #include "../world/gen/RockStrata.h"
 #include <filesystem>
 
-
 void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
   auto app = reinterpret_cast<Application *>(glfwGetWindowUserPointer(window));
   if (app)
@@ -89,6 +88,9 @@ void Application::Init() {
   // Basic Shader
   m_ResourceManager.LoadShader("basic", "src/shaders/basic.vs",
                                "src/shaders/basic.fs");
+  // Color Maps (Must be loaded before Atlas)
+  ColorMapRegistry::Get().LoadColorMaps("assets/config/color_maps.json");
+
   // Texture Atlas
   m_ResourceManager.LoadTextureAtlas("blocks", "assets/textures/block");
   // Resolve UVs for blocks globally once
@@ -104,7 +106,6 @@ void Application::Init() {
       "assets/worldgen/geologicprovinces.json");
   BlockLayerConfig::Get().Load("assets/worldgen/blocklayers.json");
   GlobalConfig::Get().Load("assets/worldgen/global.json");
-  ColorMapRegistry::Get().LoadColorMaps("assets/config/color_maps.json");
 
   // Load Flora & Ore Configs
   {

@@ -1,5 +1,6 @@
 #include "ResourceManager.h"
 #include "../debug/Logger.h"
+#include "../world/ColorMapRegistry.h"
 
 // Initialize static instance
 ResourceManager *ResourceManager::s_Instance = nullptr;
@@ -60,6 +61,29 @@ void ResourceManager::LoadTextureAtlas(const std::string &name,
 
   // We assume TextureAtlas has a Load method that takes a directory
   try {
+    // Inject Color Maps (if this is the blocks atlas)
+    if (name == "blocks") {
+      const auto &maps = ColorMapRegistry::Get().GetMaps();
+      for (const auto &pair : maps) {
+        const auto &map = pair.second;
+        if (map.loadIntoBlockTextureAtlas && !map.data.empty()) {
+          // Add to atlas
+          atlas->PackTexture(map.code, (unsigned char *)map.data.data(),
+                             map.width, map.height, map.channels);
+          LOG_INFO("Injected ColorMap '{}' into Block Atlas", map.code);
+
+          // UV Retrieval
+          const TextureInfo *info = atlas->GetTextureInfo(map.code);
+          if (info) {
+            float w = info->uMax - info->uMin;
+            float h = info->vMax - info->vMin;
+            glm::vec4 uvRect(info->uMin, info->vMin, w, h);
+            ColorMapRegistry::Get().SetAtlasUVRect(map.code, uvRect);
+          }
+        }
+      }
+    }
+
     atlas->Load(dirPath);
 
     // Setup texture from atlas data
