@@ -579,7 +579,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
 
             // Block Placement Logic inside loop
             if (isSolid) {
-              BlockType rockType = strataRegistry.GetStrataBlock(
+              block_id rockType = strataRegistry.GetStrataBlock(
                   wx, wy, wz, surfaceHeight, pNoise, sNoise, upVal, m_Seed);
               chunk.blocks[lx][ly][lz].block =
                   BlockRegistry::getInstance().getBlock(rockType);
@@ -621,7 +621,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
           // Check for Beach (Only near sea level)
           if (surfaceHeight >= config.seaLevel - 2 &&
               surfaceHeight <= config.seaLevel + 2) {
-            uint8_t beachId = BlockLayerConfig::Get().GetBeachBlockId(
+            block_id beachId = BlockLayerConfig::Get().GetBeachBlockId(
                 temp, humid, beachInfo, yNormalized);
             if (beachId != 0) {
               Block *beachBlock =
@@ -654,7 +654,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
           if (!placedBeach) {
             if (surfaceHeight < config.seaLevel) {
               // Underwater terrain
-              uint8_t uwId = BlockLayerConfig::Get().GetUnderwaterBlockId(
+              block_id uwId = BlockLayerConfig::Get().GetUnderwaterBlockId(
                   temp, humid, yNormalized);
               if (uwId == 0)
                 uwId = gravelBlock->getId(); // Fallback
@@ -667,7 +667,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
               float patch = noiseManager.GetSurfacePatchNoise(wx, wz);
               float fertility = humid;
 
-              std::pair<uint8_t, uint8_t> surface =
+              std::pair<block_id, block_id> surface =
                   BlockLayerConfig::Get().GetSurfaceBlocks(
                       temp, humid, fertility, patch, yNormalized, beachInfo);
 
@@ -731,7 +731,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
               float fertility = humid;
               float yNormalized = (float)wy / (float)config.worldHeight;
 
-              uint8_t liquidId =
+              block_id liquidId =
                   BlockLayerConfig::Get().GetLiquidSurfaceBlockId(
                       temp, humid, fertility, patch, yNormalized);
 
@@ -927,8 +927,8 @@ std::string WorldGenerator::GetLandformNameAt(int x, int z) {
   return lf->name;
 }
 
-BlockType WorldGenerator::GetSurfaceBlock(int x, int y, int z,
-                                          const ChunkColumn *column) {
+block_id WorldGenerator::GetSurfaceBlock(int x, int y, int z,
+                                         const ChunkColumn *column) {
   // Use config loader by default
   float temp = noiseManager.GetTemperature(x, z);
   float humid = noiseManager.GetHumidity(x, z);
@@ -939,10 +939,10 @@ BlockType WorldGenerator::GetSurfaceBlock(int x, int y, int z,
   float yNormalized = (float)y / (float)config.worldHeight;
   yNormalized = std::max(0.0f, std::min(1.0f, yNormalized));
 
-  std::pair<uint8_t, uint8_t> surface =
+  std::pair<block_id, block_id> surface =
       BlockLayerConfig::Get().GetSurfaceBlocks(temp, humid, fertility, patch,
                                                yNormalized, beach);
-  return (BlockType)surface.first;
+  return surface.first;
 }
 
 float WorldGenerator::GetTemperature(int x, int z) {
@@ -1061,7 +1061,7 @@ void WorldGenerator::CleanupFloatingIslands(Chunk &chunk) {
         } else {
           // Delete it.
           for (const auto &p : component) {
-            chunk.setBlock(p.x, p.y, p.z, (BlockType)airBlock->getId());
+            chunk.setBlock(p.x, p.y, p.z, airBlock->getId());
           }
         }
       }

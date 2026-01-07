@@ -5,7 +5,7 @@
 
 class PlantBlock : public Block {
 public:
-  PlantBlock(uint8_t id, const std::string &name);
+  PlantBlock(block_id id, const std::string &name);
   bool isSelectable() const override;
 };
 

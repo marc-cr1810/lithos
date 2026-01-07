@@ -16,7 +16,7 @@ void BlockFactory::registerBlock(const std::string &className,
   constructors[className] = constructor;
 }
 
-Block *BlockFactory::createBlock(const std::string &className, uint8_t id,
+Block *BlockFactory::createBlock(const std::string &className, block_id id,
                                  const std::string &variantCode) {
   auto it = constructors.find(className);
   if (it != constructors.end()) {

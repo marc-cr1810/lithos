@@ -20,6 +20,8 @@ std::vector<FloraType> FloraDecorator::floraTypes;
 int FloraDecorator::meanPatchesPerChunk = 15;
 int FloraDecorator::patchVariance = 8;
 float FloraDecorator::totalWeight = 0.0f;
+block_id FloraDecorator::waterId = 0;
+block_id FloraDecorator::lavaId = 0;
 
 FloraDecorator::FloraDecorator() {
   // Config loaded at app startup via Application.cpp
@@ -94,7 +96,7 @@ void FloraDecorator::LoadConfig(const std::filesystem::path &configPath) {
       }
 
       // Pre-calculate allowed surface blocks table
-      for (int i = 0; i < 256; ++i) {
+      for (block_id i = 0; i < 65535; ++i) { // Loop block IDs
         Block *candidate = BlockRegistry::getInstance().getBlock(i);
         if (!candidate)
           continue;
@@ -122,6 +124,9 @@ void FloraDecorator::LoadConfig(const std::filesystem::path &configPath) {
         flora.resolvedAllowedSurfaceBlocks[i] = allowed;
       }
     }
+    // Resolve Water/Lava IDs
+    waterId = BlockRegistry::getInstance().getBlockId("lithos:water");
+    lavaId = BlockRegistry::getInstance().getBlockId("lithos:lava");
   }
 
   LOG_INFO("Loaded {} flora types from {}", floraTypes.size(),
@@ -164,13 +169,13 @@ bool FloraDecorator::CanPlaceAt(int x, int y, int z, const FloraType &flora,
                                 WorldGenRegion &region,
                                 const ChunkColumn &column) {
   // Check if there's a solid block below
-  BlockType blockBelow = region.getBlock(x, y - 1, z);
-  if (blockBelow == AIR || blockBelow == WATER || blockBelow == LAVA) {
+  block_id blockBelow = region.getBlock(x, y - 1, z);
+  if (blockBelow == AIR || blockBelow == waterId || blockBelow == lavaId) {
     return false;
   }
 
   // Check if current position is air
-  BlockType currentBlock = region.getBlock(x, y, z);
+  block_id currentBlock = region.getBlock(x, y, z);
   if (currentBlock != AIR) {
     return false;
   }
@@ -180,7 +185,7 @@ bool FloraDecorator::CanPlaceAt(int x, int y, int z, const FloraType &flora,
   // The original check "if (!empty)" implies if empty, anything goes.
   // Our resolved table should reflect that.
 
-  if (!flora.resolvedAllowedSurfaceBlocks[(uint8_t)blockBelow]) {
+  if (!flora.resolvedAllowedSurfaceBlocks[blockBelow]) {
     return false;
   }
 
@@ -196,11 +201,11 @@ void FloraDecorator::PlacePatch(WorldGenRegion &region, int centerX,
                   (rand() % (flora.maxPatchSize - flora.minPatchSize + 1));
 
   // Get block type from registry
-  BlockType floraType = (BlockType)flora.resolvedBlockId;
+  block_id floraType = flora.resolvedBlockId;
   if (floraType == 0 && flora.blockId != "air") {
     Block *b = BlockRegistry::getInstance().getBlock(flora.blockId);
     if (b)
-      floraType = (BlockType)b->getId();
+      floraType = b->getId();
   }
 
   // Place flora in a patch around center

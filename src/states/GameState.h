@@ -48,7 +48,7 @@ private:
   entt::entity m_PlayerEntity;
 
   // Interaction
-  BlockType m_SelectedBlock = STONE;
+  block_id m_SelectedBlock = AIR;
   uint8_t m_SelectedBlockMetadata = 0;
   bool m_FirstMouse = true;
   float m_LastX = 0, m_LastY = 0;

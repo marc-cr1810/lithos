@@ -2,11 +2,11 @@
 #include "../BlockRegistrar.h"
 
 static BlockRegistrar registrar("LogBlock",
-                                [](uint8_t id, const std::string &name) {
+                                [](block_id id, const std::string &name) {
                                   return new LogBlock(id, name);
                                 });
 
-LogBlock::LogBlock(uint8_t id, const std::string &name)
+LogBlock::LogBlock(block_id id, const std::string &name)
     : SolidBlock(id, name) {}
 
 void LogBlock::getTextureUV(int faceDir, float &u, float &v, int x, int y,

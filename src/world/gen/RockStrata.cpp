@@ -29,10 +29,10 @@ const GeologicProvince *RockStrataRegistry::GetProvince(float noise) {
   return &provinces[index];
 }
 
-BlockType RockStrataRegistry::GetStrataBlock(int x, int y, int z, int surfaceY,
-                                             float provinceNoise,
-                                             float strataNoise,
-                                             float distortion, int seed) {
+block_id RockStrataRegistry::GetStrataBlock(int x, int y, int z, int surfaceY,
+                                            float provinceNoise,
+                                            float strataNoise, float distortion,
+                                            int seed) {
   static Block *airBlock = nullptr;
   if (!airBlock) {
     airBlock = BlockRegistry::getInstance().getBlock("lithos:air");
@@ -42,7 +42,7 @@ BlockType RockStrataRegistry::GetStrataBlock(int x, int y, int z, int surfaceY,
     Block *b = BlockRegistry::getInstance().getBlock(
         GlobalConfig::Get().defaultRockCode);
     if (b)
-      cachedDefaultRockId = (BlockType)b->getId();
+      cachedDefaultRockId = b->getId();
   }
 
   if (provinces.empty())
@@ -216,7 +216,7 @@ void RockStrataRegistry::LoadStrataLayers(const std::string &path) {
       }
 
       StrataLayer layer;
-      layer.block = (BlockType)block->getId();
+      layer.block = block->getId();
 
       // Calc Thickness
       float sumAmp = 0.0f;

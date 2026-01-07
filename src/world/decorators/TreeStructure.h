@@ -1,5 +1,6 @@
 #pragma once
 #include "../../utils/MathUtils.h"
+#include "../../world/Block.h"
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
@@ -186,13 +187,13 @@ struct TreeBlocks {
   std::vector<std::string> trunkSegmentVariants;
 
   // Runtime Optimized IDs
-  uint8_t resolvedLogBlockId = 0;
-  uint8_t resolvedLeavesBlockId = 0;
-  uint8_t resolvedLeavesBranchyBlockId = 0;
-  uint8_t resolvedVinesBlockId = 0;
-  uint8_t resolvedVinesEndBlockId = 0;
-  uint8_t resolvedMossDecorId = 0;
-  std::vector<uint8_t> resolvedTrunkSegmentBlockIds;
+  block_id resolvedLogBlockId = 0;
+  block_id resolvedLeavesBlockId = 0;
+  block_id resolvedLeavesBranchyBlockId = 0;
+  block_id resolvedVinesBlockId = 0;
+  block_id resolvedVinesEndBlockId = 0;
+  block_id resolvedMossDecorId = 0;
+  std::vector<block_id> resolvedTrunkSegmentBlockIdList;
 
   TreeBlocks() {
     // Initialize with default/invalid values if needed, though 0 is usually AIR

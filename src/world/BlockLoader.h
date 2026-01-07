@@ -28,7 +28,7 @@ private:
   // Create a Block instance from definition and variant code
   static Block *createBlockFromDefinition(const BlockDef::BlockDefinition &def,
                                           const std::string &variantCode,
-                                          uint8_t blockId);
+                                          block_id blockId);
 
   // Resolve property value based on variant using byType patterns
   template <typename T>
@@ -68,7 +68,7 @@ private:
                                          const std::string &variantCode);
 
   // Counter for auto-assigning block IDs
-  static uint8_t nextBlockId;
+  static block_id nextBlockId;
 };
 
 #endif

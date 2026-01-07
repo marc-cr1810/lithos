@@ -5,7 +5,7 @@
 
 class LavaBlock : public LiquidBlock {
 public:
-  LavaBlock(uint8_t id, const std::string &name);
+  LavaBlock(block_id id, const std::string &name);
   uint8_t getEmission() const override;
 };
 

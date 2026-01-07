@@ -96,7 +96,7 @@ void OreDecorator::LoadConfig(const std::filesystem::path &configPath) {
       }
 
       // Pre-calculate replace/exclude tables
-      for (int i = 0; i < 256; ++i) {
+      for (uint32_t i = 0; i < 65536; ++i) {
         Block *candidate = BlockRegistry::getInstance().getBlock(i);
         if (!candidate)
           continue;
@@ -184,7 +184,7 @@ bool OreDecorator::MatchesPattern(const std::string &pattern,
   return blockId.substr(0, prefix.size()) == prefix;
 }
 
-bool OreDecorator::CanReplaceBlock(uint8_t blockId, const OreType &ore) const {
+bool OreDecorator::CanReplaceBlock(block_id blockId, const OreType &ore) const {
   if (ore.resolvedExcludeBlocks[blockId])
     return false;
   return ore.resolvedReplaceBlocks[blockId];
@@ -192,7 +192,7 @@ bool OreDecorator::CanReplaceBlock(uint8_t blockId, const OreType &ore) const {
 
 void OreDecorator::GenerateVein(WorldGenRegion &region, int x, int y, int z,
                                 const OreType &ore, int size) {
-  BlockType oreType = (BlockType)ore.resolvedBlockId;
+  block_id oreType = ore.resolvedBlockId;
   if (oreType == 0 && ore.blockId != "air") {
     // Maybe failed to resolve? Try again or verify?
     // If resolvedBlockId is 0 it technically means AIR, which might be valid
@@ -200,7 +200,7 @@ void OreDecorator::GenerateVein(WorldGenRegion &region, int x, int y, int z,
     // wasn't air, then we failed.
     Block *b = BlockRegistry::getInstance().getBlock(ore.blockId);
     if (b)
-      oreType = (BlockType)b->getId();
+      oreType = b->getId();
   }
 
   // Generate blob-shaped vein
@@ -214,10 +214,10 @@ void OreDecorator::GenerateVein(WorldGenRegion &region, int x, int y, int z,
     int pz = z + dz;
 
     // Check current block
-    BlockType currentBlock = region.getBlock(px, py, pz);
+    block_id currentBlock = region.getBlock(px, py, pz);
 
     // Fast check using pre-resolved table
-    if (CanReplaceBlock((uint8_t)currentBlock, ore)) {
+    if (CanReplaceBlock(currentBlock, ore)) {
       region.setBlock(px, py, pz, oreType);
     }
   }

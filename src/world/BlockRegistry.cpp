@@ -26,7 +26,10 @@ BlockRegistry &BlockRegistry::getInstance() {
 BlockRegistry::BlockRegistry() {
   // Default to Air to avoid crashes
   defaultBlock = new AirBlock();
-  blocks[defaultBlock->getId()] = defaultBlock;
+  defaultBlock->setId(AIR);
+  blocks[AIR] = defaultBlock;
+  blocksByResourceId["lithos:air"] = defaultBlock;
+  nextId = 1; // Air is 0, next is 1
 
   // Load Creative Tabs
   std::ifstream f("assets/config/creative_tabs.json");
@@ -113,7 +116,17 @@ BlockRegistry::BlockRegistry() {
 }
 
 void BlockRegistry::registerBlock(Block *block) {
+  // If block doesn't have an ID yet (is 0 but not air), assign it
+  if (block->getResourceId() != "lithos:air" && block->getId() == AIR) {
+    block->setId(nextId++);
+    LOG_DEBUG("Registered block: {} with dynamic ID {}", block->getResourceId(),
+              block->getId());
+  }
+
   blocks[block->getId()] = block;
+  if (!block->getResourceId().empty()) {
+    blocksByResourceId[block->getResourceId()] = block;
+  }
 }
 
 void BlockRegistry::addBlockToTab(const std::string &tabCode, Block *block) {
@@ -126,7 +139,7 @@ void BlockRegistry::addBlockToTab(const std::string &tabCode, Block *block) {
   }
 }
 
-Block *BlockRegistry::getBlock(uint8_t id) {
+Block *BlockRegistry::getBlock(block_id id) {
   auto it = blocks.find(id);
   if (it != blocks.end()) {
     return it->second;
@@ -135,12 +148,19 @@ Block *BlockRegistry::getBlock(uint8_t id) {
 }
 
 Block *BlockRegistry::getBlock(const std::string &resourceId) {
-  for (const auto &pair : blocks) {
-    if (pair.second->getResourceId() == resourceId) {
-      return pair.second;
-    }
+  auto it = blocksByResourceId.find(resourceId);
+  if (it != blocksByResourceId.end()) {
+    return it->second;
   }
   return defaultBlock;
+}
+
+block_id BlockRegistry::getBlockId(const std::string &resourceId) {
+  auto it = blocksByResourceId.find(resourceId);
+  if (it != blocksByResourceId.end()) {
+    return it->second->getId();
+  }
+  return AIR;
 }
 
 BlockRegistry::~BlockRegistry() {

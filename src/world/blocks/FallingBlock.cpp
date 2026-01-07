@@ -5,11 +5,11 @@
 #include <glm/glm.hpp>
 
 static BlockRegistrar registrar("FallingBlock",
-                                [](uint8_t id, const std::string &name) {
+                                [](block_id id, const std::string &name) {
                                   return new FallingBlock(id, name);
                                 });
 
-FallingBlock::FallingBlock(uint8_t id, const std::string &name)
+FallingBlock::FallingBlock(block_id id, const std::string &name)
     : SolidBlock(id, name) {}
 
 void FallingBlock::onPlace(World &world, int x, int y, int z) const {
@@ -37,7 +37,7 @@ void FallingBlock::update(World &world, int x, int y, int z) const {
     world.registry.emplace<VelocityComponent>(entity, glm::vec3(0, 0, 0));
     world.registry.emplace<GravityComponent>(entity, 20.0f); // Fast gravity
     world.registry.emplace<ColliderComponent>(entity, glm::vec3(0.98f));
-    world.registry.emplace<BlockComponent>(entity, (BlockType)id);
+    world.registry.emplace<BlockComponent>(entity, id);
   }
 }
 

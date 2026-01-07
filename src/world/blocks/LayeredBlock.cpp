@@ -2,11 +2,11 @@
 #include "../BlockRegistrar.h"
 
 static BlockRegistrar registrar("LayeredBlock",
-                                [](uint8_t id, const std::string &name) {
+                                [](block_id id, const std::string &name) {
                                   return new LayeredBlock(id, name);
                                 });
 
-LayeredBlock::LayeredBlock(uint8_t id, const std::string &name, int maxLayers)
+LayeredBlock::LayeredBlock(block_id id, const std::string &name, int maxLayers)
     : Block(id, name), maxLayers(maxLayers) {}
 
 // Layered blocks are not fully opaque since they don't fill the entire block

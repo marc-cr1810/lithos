@@ -5,7 +5,7 @@
 
 class GrassBlock : public SolidBlock {
 public:
-  GrassBlock(uint8_t id, const std::string &name);
+  GrassBlock(block_id id, const std::string &name);
   bool shouldTint(int faceDir, int layer) const override;
 };
 

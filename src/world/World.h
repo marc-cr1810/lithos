@@ -62,7 +62,7 @@ public:
   WorldGenConfig config;
   int worldSeed;
   ChunkBlock getBlock(int x, int y, int z) const;
-  void setBlock(int x, int y, int z, BlockType type);
+  void setBlock(int x, int y, int z, block_id type);
   // Get terrain height from column (cached)
   int getHeight(int x, int z) const;
 

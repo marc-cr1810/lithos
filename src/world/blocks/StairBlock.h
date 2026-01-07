@@ -5,7 +5,7 @@
 
 class StairBlock : public Block {
 public:
-  StairBlock(uint8_t id, const std::string &name);
+  StairBlock(block_id id, const std::string &name);
   bool isOpaque() const override;
   bool isSolid() const override;
   RenderShape getRenderShape() const override;

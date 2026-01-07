@@ -311,7 +311,7 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
         return world.getBlock(x, y, z).getType();
       };
 
-      uint8_t headType = getBlockType(ix, iy, iz);
+      block_id headType = getBlockType(ix, iy, iz);
       if (headType == waterBlock->getId()) {
         inWater = true;
         headInWater = true;
@@ -323,7 +323,7 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
 
       // Check feet (Eye - 1.6)
       int iyFeet = (int)floor(transform.position.y - 1.6f);
-      uint8_t feetType = getBlockType(ix, iyFeet, iz);
+      block_id feetType = getBlockType(ix, iyFeet, iz);
       if (feetType == waterBlock->getId())
         inWater = true;
       if (feetType == lavaBlock->getId())
@@ -332,7 +332,7 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
       // Extended Range (Sub-feet) to smooth surface transition.
       // Helps prevent "skipping" by keeping fluid physics active during crest.
       int iySub = (int)floor(transform.position.y - 1.85f);
-      uint8_t subType = getBlockType(ix, iySub, iz);
+      block_id subType = getBlockType(ix, iySub, iz);
       if (subType == waterBlock->getId())
         inWater = true;
       if (subType == lavaBlock->getId())

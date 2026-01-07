@@ -34,9 +34,8 @@ public:
   // --- Helper / Getters ---
 
   int GetHeight(int x, int z);
-  BlockType GetSurfaceBlock(int x, int y, int z,
-                            const ChunkColumn *column = nullptr);
-
+  block_id GetSurfaceBlock(int x, int y, int z,
+                           const struct ChunkColumn *column = nullptr);
   // Proxy helpers for decorators
   float GetTemperature(int x, int z);
   float GetHumidity(int x, int z);

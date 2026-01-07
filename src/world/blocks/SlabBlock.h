@@ -5,7 +5,7 @@
 
 class SlabBlock : public Block {
 public:
-  SlabBlock(uint8_t id, const std::string &name);
+  SlabBlock(block_id id, const std::string &name);
   bool isOpaque() const override;
   bool isSolid() const override;
   RenderShape getRenderShape() const override;

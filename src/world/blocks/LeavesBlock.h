@@ -5,7 +5,8 @@
 
 class LeavesBlock : public PlantBlock {
 public:
-  LeavesBlock(uint8_t id, const std::string &name);
+  LeavesBlock(block_id id, const std::string &name);
+  bool isLeaves() const override { return true; }
 };
 
 #endif

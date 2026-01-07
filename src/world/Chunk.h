@@ -81,8 +81,8 @@ public:
   void initGL();
 
   ChunkBlock getBlock(int x, int y, int z) const;
-  void setBlock(int x, int y, int z, BlockType type);
-  void setBlockNoMeshUpdate(int x, int y, int z, BlockType type);
+  void setBlock(int x, int y, int z, block_id type);
+  void setBlockNoMeshUpdate(int x, int y, int z, block_id type);
   uint8_t getSkyLight(int x, int y, int z) const;
   uint8_t getBlockLight(int x, int y, int z) const;
   uint8_t getMetadata(int x, int y, int z) const;

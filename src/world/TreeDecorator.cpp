@@ -15,6 +15,33 @@
 #include <random>
 #include <vector>
 
+static block_id WOOD = 0, LEAVES = 0, GRASS = 0, DIRT = 0, PODZOL = 0, MUD = 0,
+                SAND = 0, GRAVEL = 0, COARSE_DIRT = 0, TERRA_PRETA = 0,
+                PEAT = 0, CLAY = 0, CLAYSTONE = 0, SNOW = 0, SNOW_LAYER = 0;
+static bool idsResolved = false;
+
+static void resolveTreeIds() {
+  if (idsResolved)
+    return;
+  auto &reg = BlockRegistry::getInstance();
+  WOOD = reg.getBlockId("lithos:log-oak-ud");
+  LEAVES = reg.getBlockId("lithos:leaves-oak");
+  GRASS = reg.getBlockId("lithos:grass-soil");
+  DIRT = reg.getBlockId("lithos:dirt-soil");
+  PODZOL = reg.getBlockId("lithos:podzol-soil");
+  MUD = reg.getBlockId("lithos:mud-soil");
+  SAND = reg.getBlockId("lithos:sand");
+  GRAVEL = reg.getBlockId("lithos:gravel");
+  COARSE_DIRT = reg.getBlockId("lithos:coarsedirt-soil");
+  TERRA_PRETA = reg.getBlockId("lithos:terra_preta-soil");
+  PEAT = reg.getBlockId("lithos:peat-soil");
+  CLAY = reg.getBlockId("lithos:clay-soil");
+  CLAYSTONE = reg.getBlockId("lithos:claystone-rock");
+  SNOW = reg.getBlockId("lithos:snow-block");
+  SNOW_LAYER = reg.getBlockId("lithos:snow-layer");
+  idsResolved = true;
+}
+
 // Helper for neighbor caching
 
 void TreeDecorator::GenerateTree(WorldGenRegion *region, int x, int y, int z,
@@ -156,27 +183,26 @@ void TreeDecorator::BuildSegment(WorldGenRegion *region, int x, int y, int z,
   // Offset logic handled by passed dx/dy/dz now
 
   // Resolve Block IDs
+  resolveTreeIds();
   // Resolve Block IDs - Optimized
-  BlockType logId = (BlockType)tree.treeBlocks.resolvedLogBlockId;
+  block_id logId = (block_id)tree.treeBlocks.resolvedLogBlockId;
   if (logId == AIR) {
     // Fallback
-    Block *logBlock = BlockRegistry::getInstance().getBlock(WOOD);
-    logId = (logBlock) ? (BlockType)logBlock->getId() : AIR;
+    logId = WOOD;
   }
 
-  BlockType leavesId = (BlockType)tree.treeBlocks.resolvedLeavesBlockId;
+  block_id leavesId = (block_id)tree.treeBlocks.resolvedLeavesBlockId;
   if (leavesId == AIR) {
-    Block *leavesBlock = BlockRegistry::getInstance().getBlock(LEAVES);
-    leavesId = (leavesBlock) ? (BlockType)leavesBlock->getId() : AIR;
+    leavesId = LEAVES;
   }
 
-  BlockType branchyId = (BlockType)tree.treeBlocks.resolvedLeavesBranchyBlockId;
+  block_id branchyId = (block_id)tree.treeBlocks.resolvedLeavesBranchyBlockId;
   if (branchyId == AIR)
     branchyId = logId;
 
   // VS: Trunk segment block IDs
-  const std::vector<uint8_t> &trunkSegmentIds =
-      tree.treeBlocks.resolvedTrunkSegmentBlockIds;
+  const std::vector<block_id> &trunkSegmentIds =
+      tree.treeBlocks.resolvedTrunkSegmentBlockIdList;
 
   bool alive = true;
 
@@ -233,12 +259,12 @@ void TreeDecorator::BuildSegment(WorldGenRegion *region, int x, int y, int z,
     dz += sinAngleVer * sinAngleHor / std::max(1.0f, std::abs(ddrag));
 
     // VS: Determine Block ID based on Width
-    BlockType currentSegmentBlockId;
+    block_id currentSegmentBlockId;
     if (segment.segment != 0 && curWidth >= 0.3f && !trunkSegmentIds.empty()) {
       int idx = segment.segment - 1;
       if (idx >= 0 && idx < (int)trunkSegmentIds.size()) {
-        uint8_t tid = trunkSegmentIds[idx];
-        currentSegmentBlockId = (tid != 0) ? (BlockType)tid : logId;
+        block_id tid = trunkSegmentIds[idx];
+        currentSegmentBlockId = (tid != 0) ? (block_id)tid : logId;
       } else {
         currentSegmentBlockId = logId;
       }
@@ -262,7 +288,7 @@ void TreeDecorator::BuildSegment(WorldGenRegion *region, int x, int y, int z,
     if (bPos.y >= 0 && bPos.y < maxHeight) {
       // Get current block at world position
       Block *currentBlock = region->getBlockPtr(bPos.x, bPos.y, bPos.z);
-      BlockType currentType = (BlockType)currentBlock->getId();
+      block_id currentType = currentBlock->getId();
 
       if (currentBlock->isSolid() && !currentBlock->isReplaceable() &&
           currentType != currentSegmentBlockId && currentType != logId &&
@@ -428,6 +454,7 @@ void TreeDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
 // Region-based decoration (cross-chunk tree generation)
 void TreeDecorator::Decorate(WorldGenerator &generator, WorldGenRegion &region,
                              const ChunkColumn &column) {
+  resolveTreeIds();
   PROFILE_SCOPE_CONDITIONAL("Decorator_Trees_Region",
                             generator.IsProfilingEnabled());
 
@@ -465,7 +492,7 @@ void TreeDecorator::Decorate(WorldGenerator &generator, WorldGenRegion &region,
       continue;
 
     // Get surface block using region
-    BlockType surfaceBlock = region.getBlock(gx, height, gz);
+    block_id surfaceBlock = region.getBlock(gx, height, gz);
 
     bool isSoil = (surfaceBlock == GRASS || surfaceBlock == DIRT ||
                    surfaceBlock == PODZOL || surfaceBlock == MUD ||

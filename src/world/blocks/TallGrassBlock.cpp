@@ -3,9 +3,9 @@
 #include "../BlockRegistrar.h"
 
 static BlockRegistrar registrar("TallGrassBlock",
-                                [](uint8_t id, const std::string &name) {
+                                [](block_id id, const std::string &name) {
                                   return new TallGrassBlock(id, name);
                                 });
 
-TallGrassBlock::TallGrassBlock(uint8_t id, const std::string &name)
+TallGrassBlock::TallGrassBlock(block_id id, const std::string &name)
     : PlantBlock(id, name) {}

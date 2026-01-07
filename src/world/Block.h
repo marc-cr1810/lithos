@@ -16,90 +16,16 @@
 #include "../render/TextureAtlas.h"
 #include <glm/glm.hpp>
 
-// Keep enum for IDs, useful for generation and serialization
-enum BlockType {
-  AIR = 0,
-  DIRT = 1,
-  GRASS = 2,
-  STONE = 3,
-  WOOD = 4,
-  LEAVES = 5,
-  COAL_ORE = 6,
-  IRON_ORE = 7,
-  GLOWSTONE = 8,
-  WATER = 9,
-  LAVA = 10,
-  SAND = 11,
-  GRAVEL = 12,
-  SNOW = 13,
-  ICE = 14,
-  CACTUS = 15,
-  SPRUCE_LOG = 16,
-  SPRUCE_LEAVES = 17,
-  TALL_GRASS = 18,
-
-  DEAD_BUSH = 19,
-  ROSE = 20,
-  DRY_SHORT_GRASS = 21,
-  DRY_TALL_GRASS = 22,
-  OBSIDIAN = 23,
-  COBBLESTONE = 24,
-  WOOD_PLANKS = 25,
-  STONE_SLAB = 26,
-  WOOD_STAIRS = 27,
-  ANDESITE = 28,
-  BASALT = 29,
-  DIORITE = 30,
-  GRANITE = 31,
-  MUD = 32,
-  PODZOL = 33,
-  SANDSTONE = 34,
-  TUFF = 35,
-  ANTHRACITE = 36,
-  BAUXITE = 37,
-  CHALK = 38,
-  CHERT = 39,
-  CLAY = 40,
-  CLAYSTONE = 41,
-  CONGLOMERATE = 42,
-  ACACIA_LOG = 100,
-  BIRCH_LOG = 101,
-  DARK_OAK_LOG = 102,
-  JUNGLE_LOG = 103,
-  MANGROVE_LOG = 104,
-  PALE_OAK_LOG = 105,
-  ACACIA_LEAVES = 106,
-  BIRCH_LEAVES = 107,
-  DARK_OAK_LEAVES = 108,
-  JUNGLE_LEAVES = 109,
-  GREEN_MARBLE = 43,
-  HALITE = 44,
-  KIMBERLITE = 45,
-  LIMESTONE = 46,
-  MANTLE = 47,
-  PERIDOTITE = 48,
-  PHYLLITE = 49,
-  PINK_MARBLE = 50,
-  SCORIA = 51,
-  SHALE = 52,
-  SLATE = 53,
-  SUEVITE = 54,
-  WHITE_MARBLE = 55,
-  GNEISS = 56,
-  SCHIST = 57,
-  RHYOLITE = 58,
-  GOLD_ORE = 59,
-  COARSE_DIRT = 60,
-  TERRA_PRETA = 61,
-  PEAT = 62,
-  SNOW_LAYER = 63
-};
+// Block ID type - dynamic assignment at runtime (matches Vintage Story's
+// ushort)
+using block_id = uint16_t;  // 0-65,535 blocks
+constexpr block_id AIR = 0; // Air block always gets ID 0
 
 class World; // Forward declaration
 
 class Block {
 public:
-  Block(uint8_t id, const std::string &name) : id(id), name(name) {
+  Block(block_id id, const std::string &name) : id(id), name(name) {
     for (int i = 0; i < 6; ++i) {
       textureNames[i] = "pink"; // fallback
       uMin[i] = 0.0f;
@@ -110,7 +36,8 @@ public:
   }
   virtual ~Block() {}
 
-  uint8_t getId() const { return id; }
+  block_id getId() const { return id; }
+  void setId(block_id newId) { id = newId; }
   const std::string &getName() const { return name; }
 
   void setResourceId(const std::string &resId) { resourceId = resId; }
@@ -306,6 +233,10 @@ public:
   void setResistance(float r) { resistance = r; }
 
   virtual bool isActive() const { return true; }
+  virtual bool isLiquid() const { return false; }
+  virtual bool isLog() const { return false; }
+  virtual bool isLeaves() const { return false; }
+  virtual uint8_t getLightDecay() const { return 1; }
 
   void addCreativeTab(const std::string &tab) { creativeTabs.push_back(tab); }
   const std::vector<std::string> &getCreativeTabs() const {
@@ -367,7 +298,7 @@ public:
   bool isTintOverlayOnly() const { return tintOverlayOnly; }
 
 protected:
-  uint8_t id;
+  block_id id;
   std::string name;
   std::string resourceId;
   bool isOpaque_ = true;
@@ -415,7 +346,7 @@ struct ChunkBlock {
   bool isSolid() const { return block->isSolid(); }
   bool isSelectable() const { return block->isSelectable(); }
   uint8_t getEmission() const { return block->getEmission(); }
-  uint8_t getType() const { return block->getId(); }
+  block_id getType() const { return block->getId(); }
   Block::RenderLayer getRenderLayer() const { return block->getRenderLayer(); }
 };
 
@@ -424,8 +355,9 @@ public:
   static BlockRegistry &getInstance();
 
   void registerBlock(Block *block);
-  Block *getBlock(uint8_t id);
+  Block *getBlock(block_id id);
   Block *getBlock(const std::string &resourceId);
+  block_id getBlockId(const std::string &resourceId);
 
   struct CreativeTab {
     std::string code;
@@ -449,9 +381,11 @@ private:
   BlockRegistry();
   ~BlockRegistry();
 
-  std::unordered_map<uint8_t, Block *> blocks;
+  std::unordered_map<block_id, Block *> blocks;
+  std::unordered_map<std::string, Block *> blocksByResourceId;
   std::vector<CreativeTab> creativeTabs;
   Block *defaultBlock; // Air
+  block_id nextId = 1;
 };
 
 #endif

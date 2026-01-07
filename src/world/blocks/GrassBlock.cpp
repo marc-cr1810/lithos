@@ -2,11 +2,11 @@
 #include "../BlockRegistrar.h"
 
 static BlockRegistrar registrar("GrassBlock",
-                                [](uint8_t id, const std::string &name) {
+                                [](block_id id, const std::string &name) {
                                   return new GrassBlock(id, name);
                                 });
 
-GrassBlock::GrassBlock(uint8_t id, const std::string &name)
+GrassBlock::GrassBlock(block_id id, const std::string &name)
     : SolidBlock(id, name) {}
 
 bool GrassBlock::shouldTint(int faceDir, int layer) const {

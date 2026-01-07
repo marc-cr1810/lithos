@@ -5,13 +5,14 @@
 
 class LiquidBlock : public Block {
 public:
-  LiquidBlock(uint8_t id, const std::string &name);
+  LiquidBlock(block_id id, const std::string &name);
   bool isSolid() const override;
   bool isReplaceable() const override;
   bool isOpaque() const override;
   RenderLayer getRenderLayer() const override;
   float getAlpha() const override;
   uint8_t getEmission() const override;
+  bool isLiquid() const override { return true; }
 
   void update(World &world, int x, int y, int z) const override;
   void onPlace(World &world, int x, int y, int z) const override;

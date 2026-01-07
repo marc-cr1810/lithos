@@ -5,7 +5,8 @@
 
 class WaterBlock : public LiquidBlock {
 public:
-  WaterBlock(uint8_t id, const std::string &name);
+  WaterBlock(block_id id, const std::string &name);
+  uint8_t getLightDecay() const override { return 3; }
 };
 
 #endif

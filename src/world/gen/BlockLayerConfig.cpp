@@ -120,7 +120,7 @@ bool BlockLayerConfig::Load(const std::string &path) {
   return true;
 }
 
-std::pair<uint8_t, uint8_t>
+std::pair<block_id, block_id>
 BlockLayerConfig::GetSurfaceBlocks(float temp, float rain, float fertility,
                                    float patchNoise, float yNormalized,
                                    float beachNoise) const {
@@ -131,12 +131,21 @@ BlockLayerConfig::GetSurfaceBlocks(float temp, float rain, float fertility,
     }
   }
   // Default: Grass, Dirt
-  return {2, 1};
+  static block_id grass = 0, dirt = 0;
+  if (grass == 0) {
+    Block *gb = BlockRegistry::getInstance().getBlock("lithos:grass-soil");
+    if (gb)
+      grass = gb->getId();
+    Block *db = BlockRegistry::getInstance().getBlock("lithos:dirt-soil");
+    if (db)
+      dirt = db->getId();
+  }
+  return {grass, dirt};
 }
 
-uint8_t BlockLayerConfig::GetBeachBlockId(float temp, float rain,
-                                          float beachNoise,
-                                          float yNormalized) const {
+block_id BlockLayerConfig::GetBeachBlockId(float temp, float rain,
+                                           float beachNoise,
+                                           float yNormalized) const {
   for (const auto &rule : beachRules) {
     if (rule.Matches(temp, rain, 0.0f, 0.0f, yNormalized, beachNoise)) {
       return rule.cachedBlockId;
@@ -145,8 +154,8 @@ uint8_t BlockLayerConfig::GetBeachBlockId(float temp, float rain,
   return 0; // No beach
 }
 
-uint8_t BlockLayerConfig::GetUnderwaterBlockId(float temp, float rain,
-                                               float yNormalized) const {
+block_id BlockLayerConfig::GetUnderwaterBlockId(float temp, float rain,
+                                                float yNormalized) const {
   for (const auto &rule : underwaterRules) {
     if (rule.Matches(temp, rain, 0.0f, 0.0f, yNormalized, 0.0f)) {
       return rule.cachedBlockId;
@@ -155,14 +164,20 @@ uint8_t BlockLayerConfig::GetUnderwaterBlockId(float temp, float rain,
   return 0; // No underwater override
 }
 
-uint8_t BlockLayerConfig::GetLiquidSurfaceBlockId(float temp, float rain,
-                                                  float fertility,
-                                                  float patchNoise,
-                                                  float yNormalized) const {
+block_id BlockLayerConfig::GetLiquidSurfaceBlockId(float temp, float rain,
+                                                   float fertility,
+                                                   float patchNoise,
+                                                   float yNormalized) const {
   for (const auto &rule : liquidRules) {
     if (rule.Matches(temp, rain, fertility, patchNoise, yNormalized, 0.0f)) {
       return rule.cachedBlockId;
     }
   }
-  return 9; // Default to Water (ID 9) if no rule matches
+  static block_id water = 0;
+  if (water == 0) {
+    Block *wb = BlockRegistry::getInstance().getBlock("lithos:water");
+    if (wb)
+      water = wb->getId();
+  }
+  return water; // Default to Water if no rule matches
 }

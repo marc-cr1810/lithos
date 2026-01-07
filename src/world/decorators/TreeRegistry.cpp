@@ -47,7 +47,7 @@ void TreeRegistry::LoadConfigs(const std::string &path) {
         TreeStructure tree = j.get<TreeStructure>();
 
         // Resolve Block IDs
-        auto resolve = [](const std::string &code) -> uint8_t {
+        auto resolve = [](const std::string &code) -> block_id {
           if (code.empty())
             return 0;
           Block *b = BlockRegistry::getInstance().getBlock(code);
@@ -68,14 +68,14 @@ void TreeRegistry::LoadConfigs(const std::string &path) {
             resolve(tree.treeBlocks.mossDecorCode);
 
         // Resolve Trunk Segments
-        tree.treeBlocks.resolvedTrunkSegmentBlockIds.clear();
+        tree.treeBlocks.resolvedTrunkSegmentBlockIdList.clear();
         if (!tree.treeBlocks.trunkSegmentBase.empty() &&
             !tree.treeBlocks.trunkSegmentVariants.empty()) {
           for (const std::string &variant :
                tree.treeBlocks.trunkSegmentVariants) {
             std::string blockCode =
                 tree.treeBlocks.trunkSegmentBase + variant + "-ud";
-            tree.treeBlocks.resolvedTrunkSegmentBlockIds.push_back(
+            tree.treeBlocks.resolvedTrunkSegmentBlockIdList.push_back(
                 resolve(blockCode));
           }
         }

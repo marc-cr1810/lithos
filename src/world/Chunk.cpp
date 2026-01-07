@@ -82,12 +82,12 @@ ChunkBlock Chunk::getBlock(int x, int y, int z) const {
   return blocks[x][y][z];
 }
 
-void Chunk::setBlock(int x, int y, int z, BlockType type) {
+void Chunk::setBlock(int x, int y, int z, block_id type) {
   setBlockNoMeshUpdate(x, y, z, type);
   meshDirty = true;
 }
 
-void Chunk::setBlockNoMeshUpdate(int x, int y, int z, BlockType type) {
+void Chunk::setBlockNoMeshUpdate(int x, int y, int z, block_id type) {
   std::lock_guard<std::mutex> lock(chunkMutex);
   if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_SIZE || z < 0 ||
       z >= CHUNK_SIZE)
@@ -372,14 +372,8 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 if (!b.isOpaque()) {
                   // Special Case: Liquid Top Face should NOT be occluded by
                   // Solids (unless full height? No, safer to render)
-                  bool isLiquid =
-                      (b.block->getId() == WATER || b.block->getId() == LAVA);
-                  bool isLeaves = (b.block->getId() == LEAVES ||
-                                   b.block->getId() == SPRUCE_LEAVES ||
-                                   b.block->getId() == ACACIA_LEAVES ||
-                                   b.block->getId() == BIRCH_LEAVES ||
-                                   b.block->getId() == DARK_OAK_LEAVES ||
-                                   b.block->getId() == JUNGLE_LEAVES);
+                  bool isLiquid = b.block->isLiquid();
+                  bool isLeaves = b.block->isLeaves();
 
                   if (isLiquid && faceDir == 4) {
                     // Only occlude if neighbor is also Liquid (same type)
@@ -394,12 +388,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                       occluded = true;
                     } else {
                       // Check if neighbor is also leaf
-                      bool nbIsLeaves = (nb.block->getId() == LEAVES ||
-                                         nb.block->getId() == SPRUCE_LEAVES ||
-                                         nb.block->getId() == ACACIA_LEAVES ||
-                                         nb.block->getId() == BIRCH_LEAVES ||
-                                         nb.block->getId() == DARK_OAK_LEAVES ||
-                                         nb.block->getId() == JUNGLE_LEAVES);
+                      bool nbIsLeaves = nb.block->isLeaves();
                       if (nbIsLeaves)
                         internalFace = true;
                     }
@@ -446,14 +435,8 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 ChunkBlock nb = n->getBlock(nnx, nny, nnz);
                 if (nb.isActive()) {
                   if (!b.isOpaque()) {
-                    bool isLiquid =
-                        (b.block->getId() == WATER || b.block->getId() == LAVA);
-                    bool isLeaves = (b.block->getId() == LEAVES ||
-                                     b.block->getId() == SPRUCE_LEAVES ||
-                                     b.block->getId() == ACACIA_LEAVES ||
-                                     b.block->getId() == BIRCH_LEAVES ||
-                                     b.block->getId() == DARK_OAK_LEAVES ||
-                                     b.block->getId() == JUNGLE_LEAVES);
+                    bool isLiquid = b.block->isLiquid();
+                    bool isLeaves = b.block->isLeaves();
 
                     if (isLiquid && faceDir == 4) {
                       if (nb.block == b.block)
@@ -462,13 +445,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                       if (nb.isOpaque()) {
                         occluded = true;
                       } else {
-                        bool nbIsLeaves =
-                            (nb.block->getId() == LEAVES ||
-                             nb.block->getId() == SPRUCE_LEAVES ||
-                             nb.block->getId() == ACACIA_LEAVES ||
-                             nb.block->getId() == BIRCH_LEAVES ||
-                             nb.block->getId() == DARK_OAK_LEAVES ||
-                             nb.block->getId() == JUNGLE_LEAVES);
+                        bool nbIsLeaves = nb.block->isLeaves();
                         if (nbIsLeaves)
                           internalFace = true;
                       }
@@ -491,8 +468,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 ChunkBlock nb = world->getBlock(gx, gy, gz);
                 if (nb.isActive()) {
                   if (!b.isOpaque()) {
-                    bool isLiquid =
-                        (b.block->getId() == WATER || b.block->getId() == LAVA);
+                    bool isLiquid = b.block->isLiquid();
                     if (isLiquid && faceDir == 4) {
                       if (nb.block == b.block)
                         occluded = true;
@@ -626,8 +602,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             // Greedy Extend
             // Disable greedy meshing for liquids to allow per-block smooth
             // lighting/height
-            bool isLiquid = (current.block->getId() == WATER ||
-                             current.block->getId() == LAVA);
+            bool isLiquid = current.block->isLiquid();
             // Optimization: Allow greedy meshing for source liquids (flat)
             // Flowing liquids (metadata > 0) should remain individual for
             // proper stepping/heights
@@ -896,9 +871,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                     }
                   }
 
-                  if (aboveVec.isActive() &&
-                      (aboveVec.block->getId() == WATER ||
-                       aboveVec.block->getId() == LAVA)) {
+                  if (aboveVec.isActive() && aboveVec.block->isLiquid()) {
                     return 2.0f; // Flag: Force Full Height
                   }
 
@@ -958,8 +931,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                   return 0.0f; // Flag: Drop-off (Air/Liquid below) -> Slope
                                // down
                 }
-                if (bVec.block->getId() == WATER ||
-                    bVec.block->getId() == LAVA) {
+                if (bVec.block->isLiquid()) {
                   // Check if this neighbor has liquid above it
                   bool isVertical = false;
 
@@ -1992,8 +1964,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 }
 
                 // Global Rotation for Logs
-                if (cb.block->getId() == WOOD ||
-                    cb.block->getId() == SPRUCE_LOG) {
+                if (cb.block->isLog()) {
                   if (cb.metadata == 1) { // X-Axis
                     // Rotate 90 deg around Z axis
                     // Center is 0.5, 0.5, 0.5
@@ -2110,8 +2081,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
 
                 // Check for Log Rotation UV Adjustment
                 bool rotateUV = false;
-                if (cb.block->getId() == WOOD ||
-                    cb.block->getId() == SPRUCE_LOG) {
+                if (cb.block->isLog()) {
                   if (cb.metadata == 1 || cb.metadata == 2) {
                     // Rotate UVs for Bark Faces (0, 1, 2, 3) geometry-wise
                     // Faces 4 and 5 are Rings (Ends), usually don't need
@@ -2413,7 +2383,7 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
     // source block flowing into a hole? Let's check neighbors to see if
     // it's flowing. Simpler: If meta > 0, use flow. If meta == 0, use
     // still. BUT user said "direction in which they are flowing".
-    if ((block->getId() == WATER || block->getId() == LAVA) && faceDir == 4) {
+    if (block->isLiquid() && faceDir == 4) {
       // Check if flowing
       if (metadata > 0) {
         block->getTextureUV(0, uMin, vMin, gx, gy, gz, metadata,
@@ -2450,7 +2420,7 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
 
   // Fluid Height Logic
   float topH = 1.0f; // Default Top
-  if (block->getId() == WATER || block->getId() == LAVA) {
+  if (block->isLiquid()) {
     if (metadata >= 7)
       topH = 0.1f;
     else
@@ -2461,7 +2431,7 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
   // Actually, "height" argument is the greedy-meshed height (number of
   // blocks). If NOT liquid, force h=1.0f for Top/Bottom, or h=height for
   // Sides
-  if (block->getId() != WATER && block->getId() != LAVA) {
+  if (!block->isLiquid()) {
     if (faceDir <= 3) { // Side Faces: height is Y-extent
       float H = (float)height;
       hBL = H;
@@ -2479,7 +2449,7 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
 
   // Flow rotation logic
   float rAngle = 0.0f;
-  if ((block->getId() == WATER || block->getId() == LAVA) && faceDir == 4) {
+  if (block->isLiquid() && faceDir == 4) {
     // Calculate Flow Vector
     // Check neighbors (using World if available, else cache?)
     // We are in addFace, called from generateGeometry, where we don't have
@@ -2532,7 +2502,7 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
         // Only rotate if NOT Lava Source (Lava Still should not rotate)
         // Water Source can rotate (visual choice) but User specifically
         // complained about Lava Still.
-        if (block->getId() == LAVA && metadata == 0) {
+        if (block->isLiquid() && block->getEmission() > 0 && metadata == 0) {
           rAngle = 0.0f;
         } else {
           rAngle = atan2(dz, dx) + 1.5708f; // +PI/2 to align texture correctly
@@ -2544,10 +2514,7 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
         // check defaults. Let's assume standard UV orientation.
       }
     }
-  } else if (block->getId() == WOOD || block->getId() == SPRUCE_LOG ||
-             block->getId() == ACACIA_LOG || block->getId() == BIRCH_LOG ||
-             block->getId() == DARK_OAK_LOG || block->getId() == JUNGLE_LOG ||
-             block->getId() == MANGROVE_LOG || block->getId() == PALE_OAK_LOG) {
+  } else if (block->isLog()) {
 
     // Log Rotation
     if (metadata == 1) { // X-Axis
@@ -2628,15 +2595,12 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
   // Determine V coordinates (Flip for liquids on sides)
   float vBottom = 0.0f;
   float vTop = fh;
-  if ((block->getId() == WATER || block->getId() == LAVA) && faceDir <= 3) {
+  if (block->isLiquid() && faceDir <= 3) {
     vBottom = fh;
     vTop = 0.0f;
   }
 
-  bool isDoubleSided =
-      (block->getId() == LEAVES || block->getId() == SPRUCE_LEAVES ||
-       block->getId() == ACACIA_LEAVES || block->getId() == BIRCH_LEAVES ||
-       block->getId() == DARK_OAK_LEAVES || block->getId() == JUNGLE_LEAVES);
+  bool isDoubleSided = block->isLeaves();
 
   if (isInternal) {
     if (faceDir % 2 != 0)
@@ -2919,7 +2883,7 @@ void Chunk::calculateSunlight() {
             if (blocks[x][y][z].isOpaque()) {
               break;
             } else {
-              if (blocks[x][y][z].getType() == WATER) {
+              if (blocks[x][y][z].block->isLiquid()) { // Decay in liquids
                 currentLight -= 2;
                 if (currentLight < 0)
                   currentLight = 0;
@@ -3145,7 +3109,7 @@ void Chunk::spreadLight() {
       if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE && nz >= 0 &&
           nz < CHUNK_SIZE) {
         if (!blocks[nx][ny][nz].isOpaque()) {
-          int decay = (blocks[nx][ny][nz].getType() == WATER) ? 3 : 1;
+          int decay = (blocks[nx][ny][nz].block->getLightDecay());
           if (blocks[nx][ny][nz].skyLight < curLight - decay) {
             blocks[nx][ny][nz].skyLight = curLight - decay;
             skyQueue.push(glm::ivec3(nx, ny, nz));
@@ -3175,7 +3139,7 @@ void Chunk::spreadLight() {
       if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE && nz >= 0 &&
           nz < CHUNK_SIZE) {
         if (!blocks[nx][ny][nz].isOpaque()) {
-          int decay = (blocks[nx][ny][nz].getType() == WATER) ? 3 : 1;
+          int decay = (blocks[nx][ny][nz].block->getLightDecay());
           if (blocks[nx][ny][nz].blockLight < curLight - decay) {
             blocks[nx][ny][nz].blockLight = curLight - decay;
             blockQueue.push(glm::ivec3(nx, ny, nz));

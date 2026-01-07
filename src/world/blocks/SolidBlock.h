@@ -5,7 +5,7 @@
 
 class SolidBlock : public Block {
 public:
-  SolidBlock(uint8_t id, const std::string &name);
+  SolidBlock(block_id id, const std::string &name);
   RenderLayer getRenderLayer() const override;
   bool shouldTint(int faceDir, int layer) const override;
 };

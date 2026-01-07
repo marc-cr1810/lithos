@@ -966,7 +966,7 @@ void World::setMetadata(int x, int y, int z, uint8_t val) {
   }
 }
 
-void World::setBlock(int x, int y, int z, BlockType type) {
+void World::setBlock(int x, int y, int z, block_id type) {
   int cx = floorDiv(x, CHUNK_SIZE);
   int cy = floorDiv(y, CHUNK_SIZE);
   int cz = floorDiv(z, CHUNK_SIZE);

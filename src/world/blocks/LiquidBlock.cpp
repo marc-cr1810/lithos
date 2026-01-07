@@ -3,13 +3,13 @@
 #include "../World.h"
 
 static BlockRegistrar registrar("LiquidBlock",
-                                [](uint8_t id, const std::string &name) {
+                                [](block_id id, const std::string &name) {
                                   return new LiquidBlock(id, name);
                                 });
 
 // Metadata: 0 = Source/Full Strength, 1-7 = Decaying Flow
 
-LiquidBlock::LiquidBlock(uint8_t id, const std::string &name)
+LiquidBlock::LiquidBlock(block_id id, const std::string &name)
     : Block(id, name) {}
 
 bool LiquidBlock::isSolid() const { return false; }
@@ -32,10 +32,10 @@ void LiquidBlock::update(World &world, int x, int y, int z) const {
   if (below.block->isReplaceable() && below.getType() != id) {
     if (meta == 0) { // Source flows down as falling liquid (meta 8 usually, but
                      // here we simplify)
-      world.setBlock(x, y - 1, z, (BlockType)id);
+      world.setBlock(x, y - 1, z, id);
       world.setMetadata(x, y - 1, z, 0); // Propagate source-like downwards
     } else {
-      world.setBlock(x, y - 1, z, (BlockType)id);
+      world.setBlock(x, y - 1, z, id);
       world.setMetadata(x, y - 1, z, 8); // Falling stream
     }
   }
@@ -66,11 +66,11 @@ void LiquidBlock::trySpread(World &world, int x, int y, int z,
                             int newMeta) const {
   ChunkBlock target = world.getBlock(x, y, z);
   if (target.block->isReplaceable() && target.getType() != id) {
-    world.setBlock(x, y, z, (BlockType)id);
+    world.setBlock(x, y, z, id);
     world.setMetadata(x, y, z, newMeta);
   } else if (target.getType() == id && target.metadata > newMeta) {
     // Strengthen flow if new path is shorter
-    world.setBlock(x, y, z, (BlockType)id);
+    world.setBlock(x, y, z, id);
     world.setMetadata(x, y, z, newMeta);
   }
 }

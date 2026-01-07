@@ -31,13 +31,13 @@ struct OreType {
   std::vector<std::string> excludeBlocks;
 
   // Runtime Optimized IDs
-  uint8_t resolvedBlockId = 0;
+  block_id resolvedBlockId = 0;
   std::vector<bool> resolvedReplaceBlocks; // Lookup table for fast checks
   std::vector<bool> resolvedExcludeBlocks; // Lookup table for fast checks
 
   OreType() {
-    resolvedReplaceBlocks.resize(256, false);
-    resolvedExcludeBlocks.resize(256, false);
+    resolvedReplaceBlocks.resize(65536, false);
+    resolvedExcludeBlocks.resize(65536, false);
   }
 };
 
@@ -56,7 +56,7 @@ private:
   static std::vector<OreType> oreTypes;
 
   float SampleDistribution(const OreType &ore, float random) const;
-  bool CanReplaceBlock(uint8_t blockId, const OreType &ore) const;
+  bool CanReplaceBlock(block_id blockId, const OreType &ore) const;
   bool MatchesPattern(const std::string &pattern,
                       const std::string &blockId) const;
   void GenerateVein(WorldGenRegion &region, int x, int y, int z,

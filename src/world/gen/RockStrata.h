@@ -1,10 +1,10 @@
 #pragma once
-#include "../Block.h" // For BlockType
+#include "../Block.h" // For block_id
 #include <string>
 #include <vector>
 
 struct StrataLayer {
-  BlockType block;
+  block_id block;
   int baseThickness = 10;
   int thicknessVariation = 5;
 };
@@ -36,15 +36,15 @@ public:
 
   // Returns the primary rock type for a given coordinate
   // distortion: vertical warp/upheaval to bend layers
-  BlockType GetStrataBlock(int x, int y, int z, int surfaceY,
-                           float provinceNoise, float strataNoise,
-                           float distortion, int seed);
+  block_id GetStrataBlock(int x, int y, int z, int surfaceY,
+                          float provinceNoise, float strataNoise,
+                          float distortion, int seed);
 
 private:
   RockStrataRegistry();
   std::vector<GeologicProvince> provinces;
 
   const GeologicProvince *GetProvince(float noise);
-  BlockType cachedDefaultRockId = (BlockType)0; // Initialize to 0 (will be set
-                                                // to air block ID on first use)
+  block_id cachedDefaultRockId = 0; // Initialize to 0 (will be set
+                                    // to air block ID on first use)
 };

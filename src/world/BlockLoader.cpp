@@ -8,7 +8,7 @@
 
 using json = nlohmann::json;
 
-uint8_t BlockLoader::nextBlockId = 100; // Start from 100 to avoid conflicts
+block_id BlockLoader::nextBlockId = 100; // Start from 100 to avoid conflicts
 
 std::vector<Block *>
 BlockLoader::loadFromDirectory(const std::filesystem::path &dir) {
@@ -339,7 +339,7 @@ BlockLoader::expandVariants(const BlockDef::BlockDefinition &def) {
 Block *
 BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
                                        const std::string &variantCode,
-                                       uint8_t blockId) {
+                                       block_id blockId) {
 
   // Determine drawtype for this variant
   std::string drawType =
@@ -369,8 +369,8 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
   // Determine ID: if JSON has explicit ID, use it (and ensure it doesn't
   // conflict logic later if needed)
   int resolvedId = resolveProperty(def.id, def.idByType, variantCode);
-  uint8_t finalId =
-      (resolvedId != -1) ? static_cast<uint8_t>(resolvedId) : blockId;
+  block_id finalId =
+      (resolvedId != -1) ? static_cast<block_id>(resolvedId) : blockId;
 
   // Create block based on class or inferred type
   // Determine Class Name

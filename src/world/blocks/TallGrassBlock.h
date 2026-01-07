@@ -5,7 +5,7 @@
 
 class TallGrassBlock : public PlantBlock {
 public:
-  TallGrassBlock(uint8_t id, const std::string &name);
+  TallGrassBlock(block_id id, const std::string &name);
 };
 
 #endif

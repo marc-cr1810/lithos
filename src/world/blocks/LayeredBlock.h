@@ -5,7 +5,7 @@
 
 class LayeredBlock : public Block {
 public:
-  LayeredBlock(uint8_t id, const std::string &name, int maxLayers = 8);
+  LayeredBlock(block_id id, const std::string &name, int maxLayers = 8);
   bool isOpaque() const override;
   bool isSolid() const override;
   RenderShape getRenderShape() const override;

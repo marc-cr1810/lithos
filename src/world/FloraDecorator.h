@@ -27,10 +27,10 @@ struct FloraType {
   float density = 0.5f;
 
   // Runtime Optimized IDs
-  uint8_t resolvedBlockId = 0;
+  block_id resolvedBlockId = 0;
   std::vector<bool> resolvedAllowedSurfaceBlocks;
 
-  FloraType() { resolvedAllowedSurfaceBlocks.resize(256, false); }
+  FloraType() { resolvedAllowedSurfaceBlocks.resize(65536, false); }
 };
 
 class FloraDecorator : public WorldDecorator {
@@ -49,6 +49,8 @@ private:
   static int meanPatchesPerChunk;
   static int patchVariance;
   static float totalWeight;
+  static block_id waterId;
+  static block_id lavaId;
 
   FloraType *SelectFlora(float temp, float rain, float y);
   void PlacePatch(WorldGenRegion &region, int centerX, int centerY, int centerZ,

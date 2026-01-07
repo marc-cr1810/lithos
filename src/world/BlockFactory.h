@@ -9,13 +9,14 @@
 
 class BlockFactory {
 public:
-  using BlockConstructor = std::function<Block *(uint8_t, const std::string &)>;
+  using BlockConstructor =
+      std::function<Block *(block_id, const std::string &)>;
 
   static BlockFactory &getInstance();
 
   void registerBlock(const std::string &className,
                      BlockConstructor constructor);
-  Block *createBlock(const std::string &className, uint8_t id,
+  Block *createBlock(const std::string &className, block_id id,
                      const std::string &variantCode);
 
 private:

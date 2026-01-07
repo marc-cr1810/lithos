@@ -5,7 +5,7 @@
 
 class AirBlock : public Block {
 public:
-  AirBlock() : Block(BlockType::AIR, "Air") {}
+  AirBlock() : Block(AIR, "Air") { setResourceId("lithos:air"); }
   bool isSolid() const override { return false; }
   bool isOpaque() const override { return false; }
   bool isActive() const override { return false; }

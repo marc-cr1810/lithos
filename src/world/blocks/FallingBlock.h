@@ -9,7 +9,7 @@ class World;
 
 class FallingBlock : public SolidBlock {
 public:
-  FallingBlock(uint8_t id, const std::string &name);
+  FallingBlock(block_id id, const std::string &name);
   void onPlace(World &world, int x, int y, int z) const override;
   void onNeighborChange(World &world, int x, int y, int z, int nx, int ny,
                         int nz) const override;

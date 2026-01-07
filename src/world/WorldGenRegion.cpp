@@ -36,7 +36,6 @@ WorldGenRegion::WorldGenRegion(World *world, int cx, int cz)
     }
   }
   // If world is nullptr (benchmark mode), columns remain nullptr
-  // If world is nullptr (benchmark mode), columns remain nullptr
 }
 
 WorldGenRegion::~WorldGenRegion() {
@@ -48,11 +47,6 @@ WorldGenRegion::~WorldGenRegion() {
     if (chunk) {
       chunk->meshDirty = true;
       chunk->needsLightingUpdate = true;
-      // We don't queue update here, as World::Decorate handles triggering
-      // light/mesh updates for the region after decoration returns. But setting
-      // the flags ensures they ARE picked up. Wait, World::Decorate calls
-      // QueueMeshUpdate based on meshDirty flags? Yes, "if (c && c->meshDirty)
-      // QueueMeshUpdate(c, false);"
     }
   }
 }
@@ -64,7 +58,7 @@ const ChunkColumn *WorldGenRegion::getColumn(int dx, int dz) const {
   return columns[dx + 1][dz + 1];
 }
 
-BlockType WorldGenRegion::getBlock(int x, int y, int z) const {
+block_id WorldGenRegion::getBlock(int x, int y, int z) const {
   // Null-safety for benchmark mode
   if (!world) {
     return AIR;
@@ -99,7 +93,7 @@ BlockType WorldGenRegion::getBlock(int x, int y, int z) const {
     // Note: getChunk might lock, so caching is valuable
     chunk = world->getChunk(colX, chunkY, colZ);
     if (chunk) {
-      chunkCache[key] = chunk;
+      const_cast<WorldGenRegion *>(this)->chunkCache[key] = chunk;
     }
   }
 
@@ -119,72 +113,11 @@ BlockType WorldGenRegion::getBlock(int x, int y, int z) const {
     return AIR;
   }
 
-  return (BlockType)chunk->getBlock(lx, ly, lz).getType();
-}
-
-void WorldGenRegion::setBlock(int x, int y, int z, BlockType type) {
-  // Null-safety for benchmark mode
-  if (!world) {
-    return; // Can't set blocks without World
-  }
-
-  // Use floor division for chunk coordinates to handle negative values
-  // correctly
-  int colX = (x >= 0) ? (x / CHUNK_SIZE) : ((x - CHUNK_SIZE + 1) / CHUNK_SIZE);
-  int colZ = (z >= 0) ? (z / CHUNK_SIZE) : ((z - CHUNK_SIZE + 1) / CHUNK_SIZE);
-  int chunkY =
-      (y >= 0) ? (y / CHUNK_SIZE) : ((y - CHUNK_SIZE + 1) / CHUNK_SIZE);
-
-  int dx = colX - centerX;
-  int dz = colZ - centerZ;
-
-  // Out of bounds check
-  if (dx < -1 || dx > 1 || dz < -1 || dz > 1) {
-    return; // Outside region, ignore
-  }
-
-  ChunkColumn *col = columns[dx + 1][dz + 1];
-  if (!col) {
-    return; // Column not loaded
-  }
-
-  // Optimization: use cache
-  std::shared_ptr<Chunk> chunk = nullptr;
-  auto key = std::make_tuple(colX, chunkY, colZ);
-  auto it = chunkCache.find(key);
-  if (it != chunkCache.end()) {
-    chunk = it->second;
-  } else {
-    chunk = world->getChunk(colX, chunkY, colZ);
-    if (chunk) {
-      chunkCache[key] = chunk;
-    }
-  }
-
-  if (!chunk) {
-    return; // Chunk not loaded
-  }
-
-  // Convert to local coordinates
-  int lx = x - colX * CHUNK_SIZE;
-  int ly = y - chunkY * CHUNK_SIZE;
-  int lz = z - colZ * CHUNK_SIZE;
-
-  // Bounds check
-  if (lx < 0 || lx >= CHUNK_SIZE || ly < 0 || ly >= CHUNK_SIZE || lz < 0 ||
-      lz >= CHUNK_SIZE) {
-    return;
-  }
-
-  // FAST PATH: Check if block is arguably the same (optimization)
-  // But setBlockNoMeshUpdate is fast enough.
-  chunk->setBlockNoMeshUpdate(lx, ly, lz, type);
-
-  // Track modified
-  modifiedChunks.insert(chunk.get());
+  return chunk->getBlock(lx, ly, lz).getType();
 }
 
 Block *WorldGenRegion::getBlockPtr(int x, int y, int z) const {
+  // Same logic as getBlock but returns the pointer directly
   // Null-safety for benchmark mode
   if (!world) {
     return airBlock;
@@ -198,15 +131,12 @@ Block *WorldGenRegion::getBlockPtr(int x, int y, int z) const {
   int dx = colX - centerX;
   int dz = colZ - centerZ;
 
-  // Out of bounds check
-  if (dx < -1 || dx > 1 || dz < -1 || dz > 1) {
+  if (dx < -1 || dx > 1 || dz < -1 || dz > 1)
     return airBlock;
-  }
 
   ChunkColumn *col = columns[dx + 1][dz + 1];
-  if (!col) {
+  if (!col)
     return airBlock;
-  }
 
   std::shared_ptr<Chunk> chunk = nullptr;
   auto key = std::make_tuple(colX, chunkY, colZ);
@@ -216,13 +146,12 @@ Block *WorldGenRegion::getBlockPtr(int x, int y, int z) const {
   } else {
     chunk = world->getChunk(colX, chunkY, colZ);
     if (chunk) {
-      chunkCache[key] = chunk;
+      const_cast<WorldGenRegion *>(this)->chunkCache[key] = chunk;
     }
   }
 
-  if (!chunk) {
+  if (!chunk)
     return airBlock;
-  }
 
   int lx = x - colX * CHUNK_SIZE;
   int ly = y - chunkY * CHUNK_SIZE;
@@ -234,6 +163,10 @@ Block *WorldGenRegion::getBlockPtr(int x, int y, int z) const {
   }
 
   return chunk->getBlock(lx, ly, lz).block;
+}
+
+void WorldGenRegion::setBlock(int x, int y, int z, block_id type) {
+  setBlock(x, y, z, BlockRegistry::getInstance().getBlock(type));
 }
 
 void WorldGenRegion::setBlock(int x, int y, int z, Block *block) {
@@ -250,20 +183,27 @@ void WorldGenRegion::setBlock(int x, int y, int z, Block *block) {
   int dx = colX - centerX;
   int dz = colZ - centerZ;
 
-  // Out of bounds check
-  if (dx < -1 || dx > 1 || dz < -1 || dz > 1) {
+  if (dx < -1 || dx > 1 || dz < -1 || dz > 1)
     return;
-  }
 
   ChunkColumn *col = columns[dx + 1][dz + 1];
-  if (!col) {
+  if (!col)
     return;
+
+  std::shared_ptr<Chunk> chunk = nullptr;
+  auto key = std::make_tuple(colX, chunkY, colZ);
+  auto it = chunkCache.find(key);
+  if (it != chunkCache.end()) {
+    chunk = it->second;
+  } else {
+    chunk = world->getChunk(colX, chunkY, colZ);
+    if (chunk) {
+      chunkCache[key] = chunk;
+    }
   }
 
-  std::shared_ptr<Chunk> chunk = world->getChunk(colX, chunkY, colZ);
-  if (!chunk) {
+  if (!chunk)
     return;
-  }
 
   int lx = x - colX * CHUNK_SIZE;
   int ly = y - chunkY * CHUNK_SIZE;
@@ -274,6 +214,6 @@ void WorldGenRegion::setBlock(int x, int y, int z, Block *block) {
     return;
   }
 
-  chunk->setBlock(lx, ly, lz, static_cast<BlockType>(block->getId()));
-  chunk->needsLightingUpdate = true;
+  chunk->setBlockNoMeshUpdate(lx, ly, lz, block->getId());
+  modifiedChunks.insert(chunk.get());
 }

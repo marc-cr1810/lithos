@@ -14,15 +14,47 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-// Helper
-// Helper
-static std::string BlockIdToName(int type) {
+static std::string BlockIdToName(block_id type) {
   return BlockRegistry::getInstance().getBlock(type)->getName();
+}
+
+static block_id WATER = 0, LAVA = 0, DIRT = 0, STONE = 0, GRASS = 0, WOOD = 0,
+                WOOD_PLANKS = 0, COBBLESTONE = 0, OBSIDIAN = 0, SAND = 0,
+                GLOWSTONE = 0, SPRUCE_LOG = 0, ACACIA_LOG = 0, BIRCH_LOG = 0,
+                DARK_OAK_LOG = 0, JUNGLE_LOG = 0, MANGROVE_LOG = 0,
+                PALE_OAK_LOG = 0;
+static bool g_GameStateIdsResolved = false;
+
+static void resolveGameStateIds() {
+  if (g_GameStateIdsResolved)
+    return;
+  auto &reg = BlockRegistry::getInstance();
+  WATER = reg.getBlockId("lithos:water");
+  LAVA = reg.getBlockId("lithos:lava");
+  DIRT = reg.getBlockId("lithos:dirt-soil");
+  STONE = reg.getBlockId("lithos:stone");
+  GRASS = reg.getBlockId("lithos:grass-soil");
+  WOOD = reg.getBlockId("lithos:log-oak-ud");
+  WOOD_PLANKS = reg.getBlockId("lithos:planks-oak");
+  COBBLESTONE = reg.getBlockId("lithos:cobblestone");
+  OBSIDIAN = reg.getBlockId("lithos:obsidian");
+  SAND = reg.getBlockId("lithos:sand");
+  GLOWSTONE = reg.getBlockId("lithos:glowstone");
+  SPRUCE_LOG = reg.getBlockId("lithos:log-spruce-ud");
+  ACACIA_LOG = reg.getBlockId("lithos:log-acacia-ud");
+  BIRCH_LOG = reg.getBlockId("lithos:log-birch-ud");
+  DARK_OAK_LOG = reg.getBlockId("lithos:log-dark_oak-ud");
+  JUNGLE_LOG = reg.getBlockId("lithos:log-jungle-ud");
+  MANGROVE_LOG = reg.getBlockId("lithos:log-mangrove-ud");
+  PALE_OAK_LOG = reg.getBlockId("lithos:log-pale_oak-ud");
+
+  g_GameStateIdsResolved = true;
 }
 
 GameState::GameState(glm::vec3 spawnPos) : m_SpawnPos(spawnPos) {}
 
 void GameState::Init(Application *app) {
+  resolveGameStateIds();
   LOG_INFO("Entering Game State");
   glfwSetInputMode(app->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
@@ -507,7 +539,7 @@ void GameState::Render(Application *app) {
       app->GetWorld()->getBlock((int)floor(app->GetCamera().Position.x),
                                 (int)floor(app->GetCamera().Position.y),
                                 (int)floor(app->GetCamera().Position.z));
-  int camBlockType = camBlock.getType();
+  block_id camBlockType = camBlock.getType();
   if (camBlockType == WATER || camBlockType == LAVA)
     inWater = true;
 
@@ -811,14 +843,15 @@ void GameState::RenderUI(Application *app) {
 
               // Use localized display name
               std::string displayName = block->getDisplayName();
+              bool isSelected = (m_SelectedBlock == block->getId());
 
-              if (ImGui::Button(
+              if (ImGui::Selectable(
                       (displayName + "##" + std::to_string(j)).c_str(),
-                      ImVec2(buttonSize, buttonSize))) {
-                m_SelectedBlock = (BlockType)block->getId();
-                m_SelectedBlockMetadata = 0;
+                      isSelected, 0, ImVec2(buttonSize, buttonSize))) {
+                m_SelectedBlock = block->getId();
+                m_SelectedBlockMetadata =
+                    0; // Reset metadata when picking new block
               }
-
               if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("%s (ID: %d)", displayName.c_str(),
                                   block->getId());

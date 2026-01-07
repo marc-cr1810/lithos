@@ -24,7 +24,7 @@ struct ColliderComponent {
 };
 
 struct BlockComponent {
-  BlockType type; // The block this entity represents
+  block_id type; // The block this entity represents
 };
 
 struct CameraComponent {

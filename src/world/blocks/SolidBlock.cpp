@@ -2,11 +2,12 @@
 #include "../BlockRegistrar.h"
 
 static BlockRegistrar registrar("SolidBlock",
-                                [](uint8_t id, const std::string &name) {
+                                [](block_id id, const std::string &name) {
                                   return new SolidBlock(id, name);
                                 });
 
-SolidBlock::SolidBlock(uint8_t id, const std::string &name) : Block(id, name) {}
+SolidBlock::SolidBlock(block_id id, const std::string &name)
+    : Block(id, name) {}
 
 Block::RenderLayer SolidBlock::getRenderLayer() const {
   // Fast/Fancy considerations would go here, or handled by specific subclass

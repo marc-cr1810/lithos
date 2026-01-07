@@ -45,7 +45,7 @@ public:
   /**
    * Get block at world coordinates (delegates to appropriate column/chunk)
    */
-  BlockType getBlock(int x, int y, int z) const;
+  block_id getBlock(int x, int y, int z) const;
 
   /**
    * Get Block* at world coordinates (delegates to appropriate column/chunk)
@@ -56,7 +56,7 @@ public:
    * Set block at world coordinates (delegates to appropriate column/chunk)
    * Thread-safe via world's chunkMutex
    */
-  void setBlock(int x, int y, int z, BlockType type);
+  void setBlock(int x, int y, int z, block_id type);
 
   /**
    * Set block at world coordinates using Block pointer
