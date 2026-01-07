@@ -90,7 +90,19 @@ void main()
                  tintColor = texture(texture1, tintAtlasUV);
              } else {
                  // Fallback: Sample from dedicated texture unit
-                 tintColor = texture(tintMaps[idx], localUV);
+                 // GLSL 1.30+ requires constant indices for sampler arrays
+                 // Use switch statement instead of dynamic indexing
+                 switch(idx) {
+                     case 0: tintColor = texture(tintMaps[0], localUV); break;
+                     case 1: tintColor = texture(tintMaps[1], localUV); break;
+                     case 2: tintColor = texture(tintMaps[2], localUV); break;
+                     case 3: tintColor = texture(tintMaps[3], localUV); break;
+                     case 4: tintColor = texture(tintMaps[4], localUV); break;
+                     case 5: tintColor = texture(tintMaps[5], localUV); break;
+                     case 6: tintColor = texture(tintMaps[6], localUV); break;
+                     case 7: tintColor = texture(tintMaps[7], localUV); break;
+                     default: tintColor = vec4(1.0); break;
+                 }
              }
              
              texColor *= tintColor;
