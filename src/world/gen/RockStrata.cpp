@@ -33,7 +33,12 @@ BlockType RockStrataRegistry::GetStrataBlock(int x, int y, int z, int surfaceY,
                                              float provinceNoise,
                                              float strataNoise,
                                              float distortion, int seed) {
-  if (cachedDefaultRockId == BlockType::AIR) {
+  static Block *airBlock = nullptr;
+  if (!airBlock) {
+    airBlock = BlockRegistry::getInstance().getBlock("lithos:air");
+  }
+
+  if (cachedDefaultRockId == airBlock->getId()) {
     Block *b = BlockRegistry::getInstance().getBlock(
         GlobalConfig::Get().defaultRockCode);
     if (b)

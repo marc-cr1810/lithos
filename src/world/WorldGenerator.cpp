@@ -43,19 +43,17 @@ WorldGenerator::WorldGenerator(const WorldGenConfig &config)
   mantleBlock = BlockRegistry::getInstance().getBlock(gc.mantleBlockCode);
   if (!mantleBlock)
     mantleBlock = BlockRegistry::getInstance().getBlock(gc.lavaBlockCode);
-  airBlock = BlockRegistry::getInstance().getBlock(BlockType::AIR);
-  sandBlock = BlockRegistry::getInstance().getBlock(BlockType::SAND);
-  sandstoneBlock = BlockRegistry::getInstance().getBlock(BlockType::SANDSTONE);
-  gravelBlock = BlockRegistry::getInstance().getBlock(BlockType::GRAVEL);
-  grassBlock = BlockRegistry::getInstance().getBlock(BlockType::GRASS);
-  dirtBlock = BlockRegistry::getInstance().getBlock(BlockType::DIRT);
-  mudBlock = BlockRegistry::getInstance().getBlock(BlockType::MUD);
-  podzolBlock = BlockRegistry::getInstance().getBlock(BlockType::PODZOL);
-  coarseDirtBlock =
-      BlockRegistry::getInstance().getBlock(BlockType::COARSE_DIRT);
-  terraPretaBlock =
-      BlockRegistry::getInstance().getBlock(BlockType::TERRA_PRETA);
-  peatBlock = BlockRegistry::getInstance().getBlock(BlockType::PEAT);
+  airBlock = BlockRegistry::getInstance().getBlock("lithos:air");
+  sandBlock = BlockRegistry::getInstance().getBlock("lithos:sand");
+  sandstoneBlock = BlockRegistry::getInstance().getBlock("lithos:sandstone");
+  gravelBlock = BlockRegistry::getInstance().getBlock("lithos:gravel");
+  grassBlock = BlockRegistry::getInstance().getBlock("lithos:grass");
+  dirtBlock = BlockRegistry::getInstance().getBlock("lithos:dirt");
+  mudBlock = BlockRegistry::getInstance().getBlock("lithos:mud");
+  podzolBlock = BlockRegistry::getInstance().getBlock("lithos:podzol");
+  coarseDirtBlock = BlockRegistry::getInstance().getBlock("lithos:coarse_dirt");
+  terraPretaBlock = BlockRegistry::getInstance().getBlock("lithos:terra_preta");
+  peatBlock = BlockRegistry::getInstance().getBlock("lithos:peat");
 }
 
 WorldGenerator::~WorldGenerator() {
@@ -715,13 +713,13 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
           int wy = startY + ly;
 
           // Only process water at the top of water columns (surface)
-          if (chunk.blocks[lx][ly][lz].block->getId() == BlockType::WATER) {
+          if (chunk.blocks[lx][ly][lz].block->getId() == waterBlock->getId()) {
             // Check if this is the top water block (air or nothing above)
             bool isTopWater = false;
             if (ly == CHUNK_SIZE - 1) {
               isTopWater = true; // Top of chunk
             } else if (chunk.blocks[lx][ly + 1][lz].block->getId() ==
-                       BlockType::AIR) {
+                       airBlock->getId()) {
               isTopWater = true; // Air above
             }
 
@@ -737,7 +735,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
                   BlockLayerConfig::Get().GetLiquidSurfaceBlockId(
                       temp, humid, fertility, patch, yNormalized);
 
-              if (liquidId != BlockType::WATER) {
+              if (liquidId != waterBlock->getId()) {
                 chunk.blocks[lx][ly][lz].block =
                     BlockRegistry::getInstance().getBlock(liquidId);
                 chunk.blocks[lx][ly][lz].metadata = 0;
@@ -995,8 +993,8 @@ void WorldGenerator::CleanupFloatingIslands(Chunk &chunk) {
           continue;
 
         ChunkBlock cb = chunk.getBlock(x, y, z);
-        bool isSolid = (cb.getType() != BlockType::AIR &&
-                        cb.getType() != BlockType::WATER);
+        bool isSolid = (cb.getType() != airBlock->getId() &&
+                        cb.getType() != waterBlock->getId());
 
         if (!isSolid) {
           visited[idx] = true;
@@ -1045,8 +1043,8 @@ void WorldGenerator::CleanupFloatingIslands(Chunk &chunk) {
               int nIdx = getIdx(n.x, n.y, n.z);
               if (!visited[nIdx]) {
                 ChunkBlock ncb = chunk.getBlock(n.x, n.y, n.z);
-                bool nSolid = (ncb.getType() != BlockType::AIR &&
-                               ncb.getType() != BlockType::WATER);
+                bool nSolid = (ncb.getType() != airBlock->getId() &&
+                               ncb.getType() != waterBlock->getId());
                 if (nSolid) {
                   visited[nIdx] = true;
                   q.push(n);
@@ -1063,7 +1061,7 @@ void WorldGenerator::CleanupFloatingIslands(Chunk &chunk) {
         } else {
           // Delete it.
           for (const auto &p : component) {
-            chunk.setBlock(p.x, p.y, p.z, BlockType::AIR);
+            chunk.setBlock(p.x, p.y, p.z, (BlockType)airBlock->getId());
           }
         }
       }

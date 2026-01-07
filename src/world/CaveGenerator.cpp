@@ -216,7 +216,7 @@ CaveGenerator::CaveGenerator(const WorldGenConfig &config)
   waterBlock = BlockRegistry::getInstance().getBlock(gc.waterBlockCode);
   iceBlock = BlockRegistry::getInstance().getBlock(gc.iceBlockCode);
   lavaBlock = BlockRegistry::getInstance().getBlock(gc.lavaBlockCode);
-  airBlock = BlockRegistry::getInstance().getBlock(BlockType::AIR);
+  airBlock = BlockRegistry::getInstance().getBlock("lithos:air");
 }
 
 void CaveGenerator::GenerateHeightDistortion(ChunkColumn &column, int cx,

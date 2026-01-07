@@ -7,6 +7,20 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 
+// Cache common block pointers for comparison
+static Block *airBlock = nullptr;
+static Block *waterBlock = nullptr;
+static Block *lavaBlock = nullptr;
+
+// Initialize cached blocks
+static void initCachedBlocks() {
+  if (!airBlock) {
+    airBlock = BlockRegistry::getInstance().getBlock("lithos:air");
+    waterBlock = BlockRegistry::getInstance().getBlock("lithos:water");
+    lavaBlock = BlockRegistry::getInstance().getBlock("lithos:lava");
+  }
+}
+
 // --- Physics System ---
 
 void PhysicsSystem::Update(entt::registry &registry, float dt) {
@@ -40,6 +54,7 @@ void PhysicsSystem::Update(entt::registry &registry, float dt) {
 // --- Collision System ---
 
 void CollisionSystem::Update(entt::registry &registry, World &world, float dt) {
+  initCachedBlocks();
   auto view = registry.view<TransformComponent, VelocityComponent,
                             ColliderComponent, BlockComponent>();
 
@@ -64,8 +79,9 @@ void CollisionSystem::Update(entt::registry &registry, World &world, float dt) {
     int bz = std::floor(checkPos.z);
 
     ChunkBlock b = world.getBlock(bx, by, bz);
-    if (b.getType() != BlockType::AIR && b.getType() != BlockType::WATER &&
-        b.getType() != BlockType::LAVA) {
+    if (b.getType() != airBlock->getId() &&
+        b.getType() != waterBlock->getId() &&
+        b.getType() != lavaBlock->getId()) {
       // Collision with ground
       if (vel.velocity.y < 0) {
         // Stop
@@ -99,6 +115,7 @@ unsigned int RenderSystem::cubeVBO = 0;
 void PlayerControlSystem::Update(entt::registry &registry, bool forward,
                                  bool backward, bool left, bool right, bool up,
                                  bool down, float dt, const World &world) {
+  initCachedBlocks();
   auto view =
       registry.view<TransformComponent, VelocityComponent, GravityComponent,
                     CameraComponent, InputComponent>();
@@ -295,11 +312,11 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
       };
 
       uint8_t headType = getBlockType(ix, iy, iz);
-      if (headType == BlockType::WATER) {
+      if (headType == waterBlock->getId()) {
         inWater = true;
         headInWater = true;
       }
-      if (headType == BlockType::LAVA) {
+      if (headType == lavaBlock->getId()) {
         inLava = true;
         headInLava = true;
       }
@@ -307,18 +324,18 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
       // Check feet (Eye - 1.6)
       int iyFeet = (int)floor(transform.position.y - 1.6f);
       uint8_t feetType = getBlockType(ix, iyFeet, iz);
-      if (feetType == BlockType::WATER)
+      if (feetType == waterBlock->getId())
         inWater = true;
-      if (feetType == BlockType::LAVA)
+      if (feetType == lavaBlock->getId())
         inLava = true;
 
       // Extended Range (Sub-feet) to smooth surface transition.
       // Helps prevent "skipping" by keeping fluid physics active during crest.
       int iySub = (int)floor(transform.position.y - 1.85f);
       uint8_t subType = getBlockType(ix, iySub, iz);
-      if (subType == BlockType::WATER)
+      if (subType == waterBlock->getId())
         inWater = true;
-      if (subType == BlockType::LAVA)
+      if (subType == lavaBlock->getId())
         inLava = true;
     }
 

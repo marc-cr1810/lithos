@@ -2,8 +2,17 @@
 #include "Chunk.h"
 #include <iostream>
 
+// Cache air block for default returns
+static Block *airBlock = nullptr;
+static void initAirBlock() {
+  if (!airBlock) {
+    airBlock = BlockRegistry::getInstance().getBlock("lithos:air");
+  }
+}
+
 WorldGenRegion::WorldGenRegion(World *world, int cx, int cz)
     : world(world), centerX(cx), centerZ(cz) {
+  initAirBlock();
   // Initialize all pointers to nullptr
   for (int i = 0; i < 3; ++i) {
     for (int j = 0; j < 3; ++j) {
@@ -178,7 +187,7 @@ void WorldGenRegion::setBlock(int x, int y, int z, BlockType type) {
 Block *WorldGenRegion::getBlockPtr(int x, int y, int z) const {
   // Null-safety for benchmark mode
   if (!world) {
-    return BlockRegistry::getInstance().getBlock(BlockType::AIR);
+    return airBlock;
   }
 
   int colX = (x >= 0) ? (x / CHUNK_SIZE) : ((x - CHUNK_SIZE + 1) / CHUNK_SIZE);
@@ -191,12 +200,12 @@ Block *WorldGenRegion::getBlockPtr(int x, int y, int z) const {
 
   // Out of bounds check
   if (dx < -1 || dx > 1 || dz < -1 || dz > 1) {
-    return BlockRegistry::getInstance().getBlock(BlockType::AIR);
+    return airBlock;
   }
 
   ChunkColumn *col = columns[dx + 1][dz + 1];
   if (!col) {
-    return BlockRegistry::getInstance().getBlock(BlockType::AIR);
+    return airBlock;
   }
 
   std::shared_ptr<Chunk> chunk = nullptr;
@@ -212,7 +221,7 @@ Block *WorldGenRegion::getBlockPtr(int x, int y, int z) const {
   }
 
   if (!chunk) {
-    return BlockRegistry::getInstance().getBlock(BlockType::AIR);
+    return airBlock;
   }
 
   int lx = x - colX * CHUNK_SIZE;
@@ -221,7 +230,7 @@ Block *WorldGenRegion::getBlockPtr(int x, int y, int z) const {
 
   if (lx < 0 || lx >= CHUNK_SIZE || ly < 0 || ly >= CHUNK_SIZE || lz < 0 ||
       lz >= CHUNK_SIZE) {
-    return BlockRegistry::getInstance().getBlock(BlockType::AIR);
+    return airBlock;
   }
 
   return chunk->getBlock(lx, ly, lz).block;
