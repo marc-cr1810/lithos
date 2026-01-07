@@ -47,5 +47,5 @@ bool FallingBlock::canFallThrough(const ChunkBlock &b) const {
   // or if it thinks it is replaceable
   if (b.getType() == 0)
     return true; // AIR
-  return b.block->isReplaceable();
+  return b.getBlock()->isReplaceable();
 }

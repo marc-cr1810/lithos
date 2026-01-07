@@ -155,7 +155,7 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
 
             // Get actual block AABB
             glm::vec3 blockMin, blockMax;
-            cb.block->getAABB(cb.metadata, blockMin, blockMax);
+            cb.getBlock()->getAABB(cb.metadata, blockMin, blockMax);
 
             // Convert to world coordinates
             blockMin += glm::vec3(x, y, z);
@@ -217,7 +217,7 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
             ChunkBlock cb = world.getBlock(bx, blockY, bz);
             if (cb.isSolid()) {
               glm::vec3 bMin, bMax;
-              cb.block->getAABB(cb.metadata, bMin, bMax);
+              cb.getBlock()->getAABB(cb.metadata, bMin, bMax);
               float topY = (float)blockY + bMax.y;
 
               // Snap if within step height (0.6f) to prevent wall climbing
@@ -273,7 +273,7 @@ void PlayerControlSystem::Update(entt::registry &registry, bool forward,
               ChunkBlock cb = world.getBlock(bx, blockY, bz);
               if (cb.isSolid()) {
                 glm::vec3 bMin, bMax;
-                cb.block->getAABB(cb.metadata, bMin, bMax);
+                cb.getBlock()->getAABB(cb.metadata, bMin, bMax);
                 float topY = (float)blockY + bMax.y;
 
                 // Snap if within step height (0.6f)

@@ -336,18 +336,23 @@ protected:
 
 // Singleton blocks
 struct ChunkBlock {
-  Block *block;
+  block_id id = 0;
   uint8_t skyLight = 0;   // 0-15 Sun
   uint8_t blockLight = 0; // 0-15 Torches
   uint8_t metadata = 0;   // Extra data (flow level, rotation, etc)
 
-  bool isActive() const { return block->isActive(); }
-  bool isOpaque() const { return block->isOpaque(); }
-  bool isSolid() const { return block->isSolid(); }
-  bool isSelectable() const { return block->isSelectable(); }
-  uint8_t getEmission() const { return block->getEmission(); }
-  block_id getType() const { return block->getId(); }
-  Block::RenderLayer getRenderLayer() const { return block->getRenderLayer(); }
+  // Fast accessors wrapping the registry lookup
+  // Fast accessors wrapping the registry lookup
+  Block *getBlock() const;
+
+  bool isActive() const;
+  bool isOpaque() const;
+  bool isSolid() const;
+  bool isSelectable() const;
+  uint8_t getEmission() const;
+  block_id getType() const { return id; }
+  Block::RenderLayer getRenderLayer() const;
+  Block::RenderShape getRenderShape() const;
 };
 
 class BlockRegistry {
@@ -355,7 +360,11 @@ public:
   static BlockRegistry &getInstance();
 
   void registerBlock(Block *block);
-  Block *getBlock(block_id id);
+  inline Block *getBlock(block_id id) {
+    if (id < blockVector.size())
+      return blockVector[id];
+    return defaultBlock;
+  }
   Block *getBlock(const std::string &resourceId);
   block_id getBlockId(const std::string &resourceId);
 
@@ -381,11 +390,34 @@ private:
   BlockRegistry();
   ~BlockRegistry();
 
+  std::vector<Block *> blockVector; // Fast O(1) by ID
   std::unordered_map<block_id, Block *> blocks;
   std::unordered_map<std::string, Block *> blocksByResourceId;
   std::vector<CreativeTab> creativeTabs;
   Block *defaultBlock; // Air
   block_id nextId = 1;
 };
+
+// Inline implementations for ChunkBlock
+inline Block *ChunkBlock::getBlock() const {
+  return BlockRegistry::getInstance().getBlock(id);
+}
+
+inline bool ChunkBlock::isActive() const { return getBlock()->isActive(); }
+inline bool ChunkBlock::isOpaque() const { return getBlock()->isOpaque(); }
+inline bool ChunkBlock::isSolid() const { return getBlock()->isSolid(); }
+inline bool ChunkBlock::isSelectable() const {
+  return getBlock()->isSelectable();
+}
+inline uint8_t ChunkBlock::getEmission() const {
+  return getBlock()->getEmission();
+}
+inline Block::RenderLayer ChunkBlock::getRenderLayer() const {
+  return getBlock()->getRenderLayer();
+}
+
+inline Block::RenderShape ChunkBlock::getRenderShape() const {
+  return getBlock()->getRenderShape();
+}
 
 #endif

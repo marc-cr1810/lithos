@@ -124,6 +124,11 @@ void BlockRegistry::registerBlock(Block *block) {
   }
 
   blocks[block->getId()] = block;
+  if (block->getId() >= blockVector.size()) {
+    blockVector.resize(block->getId() + 1, defaultBlock);
+  }
+  blockVector[block->getId()] = block;
+
   if (!block->getResourceId().empty()) {
     blocksByResourceId[block->getResourceId()] = block;
   }
@@ -137,14 +142,6 @@ void BlockRegistry::addBlockToTab(const std::string &tabCode, Block *block) {
       return;
     }
   }
-}
-
-Block *BlockRegistry::getBlock(block_id id) {
-  auto it = blocks.find(id);
-  if (it != blocks.end()) {
-    return it->second;
-  }
-  return defaultBlock;
 }
 
 Block *BlockRegistry::getBlock(const std::string &resourceId) {

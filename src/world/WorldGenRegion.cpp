@@ -162,7 +162,7 @@ Block *WorldGenRegion::getBlockPtr(int x, int y, int z) const {
     return airBlock;
   }
 
-  return chunk->getBlock(lx, ly, lz).block;
+  return chunk->getBlock(lx, ly, lz).getBlock();
 }
 
 void WorldGenRegion::setBlock(int x, int y, int z, block_id type) {

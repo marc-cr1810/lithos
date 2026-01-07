@@ -541,7 +541,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
 
             // Force single mantle layer at bottom of world
             if (wy == 0) {
-              chunk.blocks[lx][ly][lz].block = mantleBlock;
+              chunk.blocks[lx][ly][lz].id = mantleBlock->getId();
               chunk.blocks[lx][ly][lz].metadata = 0;
               continue;
             }
@@ -581,14 +581,13 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
             if (isSolid) {
               block_id rockType = strataRegistry.GetStrataBlock(
                   wx, wy, wz, surfaceHeight, pNoise, sNoise, upVal, m_Seed);
-              chunk.blocks[lx][ly][lz].block =
-                  BlockRegistry::getInstance().getBlock(rockType);
+              chunk.blocks[lx][ly][lz].id = rockType;
               chunk.blocks[lx][ly][lz].metadata = 0;
             } else if (wy < config.seaLevel) {
-              chunk.blocks[lx][ly][lz].block = waterBlock;
+              chunk.blocks[lx][ly][lz].id = waterBlock->getId();
               chunk.blocks[lx][ly][lz].metadata = 0;
             } else {
-              chunk.blocks[lx][ly][lz].block = airBlock;
+              chunk.blocks[lx][ly][lz].id = airBlock->getId();
               chunk.blocks[lx][ly][lz].metadata = 0;
             }
           }
@@ -598,10 +597,10 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
           for (int ly = 0; ly < CHUNK_SIZE; ly++) {
             int wy = startY + ly;
             if (wy < config.seaLevel) {
-              chunk.blocks[lx][ly][lz].block = waterBlock;
+              chunk.blocks[lx][ly][lz].id = waterBlock->getId();
               chunk.blocks[lx][ly][lz].metadata = 0;
             } else {
-              chunk.blocks[lx][ly][lz].block = airBlock;
+              chunk.blocks[lx][ly][lz].id = airBlock->getId();
               chunk.blocks[lx][ly][lz].metadata = 0;
             }
           }
@@ -626,7 +625,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
             if (beachId != 0) {
               Block *beachBlock =
                   BlockRegistry::getInstance().getBlock(beachId);
-              chunk.blocks[lx][localSurfaceY][lz].block = beachBlock;
+              chunk.blocks[lx][localSurfaceY][lz].id = beachBlock->getId();
               chunk.blocks[lx][localSurfaceY][lz].metadata = 0;
 
               // Sandstone/Sub-beach support? For now assuming simple beaches
@@ -640,10 +639,11 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
                 // Let's just place Sandstone if Sand, else same block.
                 // Or better: Use the same block for depth 1.
                 if (beachId == sandBlock->getId()) {
-                  chunk.blocks[lx][localSurfaceY - 1][lz].block =
-                      sandstoneBlock;
+                  chunk.blocks[lx][localSurfaceY - 1][lz].id =
+                      sandstoneBlock->getId();
                 } else {
-                  chunk.blocks[lx][localSurfaceY - 1][lz].block = beachBlock;
+                  chunk.blocks[lx][localSurfaceY - 1][lz].id =
+                      beachBlock->getId();
                 }
                 chunk.blocks[lx][localSurfaceY - 1][lz].metadata = 0;
               }
@@ -660,7 +660,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
                 uwId = gravelBlock->getId(); // Fallback
 
               Block *uwBlock = BlockRegistry::getInstance().getBlock(uwId);
-              chunk.blocks[lx][localSurfaceY][lz].block = uwBlock;
+              chunk.blocks[lx][localSurfaceY][lz].id = uwBlock->getId();
               chunk.blocks[lx][localSurfaceY][lz].metadata = 0;
             } else {
               // Land
@@ -676,19 +676,19 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
               Block *subBlock =
                   BlockRegistry::getInstance().getBlock(surface.second);
 
-              chunk.blocks[lx][localSurfaceY][lz].block = surfaceBlock;
+              chunk.blocks[lx][localSurfaceY][lz].id = surfaceBlock->getId();
               chunk.blocks[lx][localSurfaceY][lz].metadata = 0;
 
               if (localSurfaceY > 0) {
-                chunk.blocks[lx][localSurfaceY - 1][lz].block = subBlock;
+                chunk.blocks[lx][localSurfaceY - 1][lz].id = subBlock->getId();
                 chunk.blocks[lx][localSurfaceY - 1][lz].metadata = 0;
               }
               if (localSurfaceY > 1) {
-                chunk.blocks[lx][localSurfaceY - 2][lz].block = subBlock;
+                chunk.blocks[lx][localSurfaceY - 2][lz].id = subBlock->getId();
                 chunk.blocks[lx][localSurfaceY - 2][lz].metadata = 0;
               }
               if (localSurfaceY > 2) {
-                chunk.blocks[lx][localSurfaceY - 3][lz].block = subBlock;
+                chunk.blocks[lx][localSurfaceY - 3][lz].id = subBlock->getId();
                 chunk.blocks[lx][localSurfaceY - 3][lz].metadata = 0;
               }
             }
@@ -713,13 +713,12 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
           int wy = startY + ly;
 
           // Only process water at the top of water columns (surface)
-          if (chunk.blocks[lx][ly][lz].block->getId() == waterBlock->getId()) {
+          if (chunk.blocks[lx][ly][lz].id == waterBlock->getId()) {
             // Check if this is the top water block (air or nothing above)
             bool isTopWater = false;
             if (ly == CHUNK_SIZE - 1) {
               isTopWater = true; // Top of chunk
-            } else if (chunk.blocks[lx][ly + 1][lz].block->getId() ==
-                       airBlock->getId()) {
+            } else if (chunk.blocks[lx][ly + 1][lz].id == airBlock->getId()) {
               isTopWater = true; // Air above
             }
 
@@ -736,8 +735,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
                       temp, humid, fertility, patch, yNormalized);
 
               if (liquidId != waterBlock->getId()) {
-                chunk.blocks[lx][ly][lz].block =
-                    BlockRegistry::getInstance().getBlock(liquidId);
+                chunk.blocks[lx][ly][lz].id = liquidId;
                 chunk.blocks[lx][ly][lz].metadata = 0;
               }
             }
@@ -774,7 +772,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
   for (int x = 0; x < CHUNK_SIZE; ++x) {
     for (int y = 0; y < CHUNK_SIZE; ++y) {
       for (int z = 0; z < CHUNK_SIZE; ++z) {
-        Block *b = chunk.blocks[x][y][z].block;
+        Block *b = chunk.blocks[x][y][z].getBlock();
         if (b != airBlock) {
           allAir = false;
         }

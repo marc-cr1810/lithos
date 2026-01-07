@@ -228,7 +228,7 @@ void World::updateBlocks() {
 
     ChunkBlock b = getBlock(u.x, u.y, u.z);
     if (b.isActive()) {
-      b.block->update(*this, u.x, u.y, u.z);
+      b.getBlock()->update(*this, u.x, u.y, u.z);
     }
 
     updateQueueMutex.lock();
@@ -849,7 +849,7 @@ ChunkBlock World::getBlock(int x, int y, int z) const {
   std::shared_ptr<const Chunk> c = getChunk(cx, cy, cz);
   if (!c) {
     // Return Air if chunk is not loaded
-    return {BlockRegistry::getInstance().getBlock(AIR), 15, 0};
+    return {AIR, 15, 0, 0};
   }
 
   // Local coordinates (robust modulo)
@@ -1050,7 +1050,7 @@ void World::setBlock(int x, int y, int z, block_id type) {
     // Block Update Logic
     ChunkBlock b = getBlock(x, y, z);
     if (b.isActive()) {
-      b.block->onPlace(*this, x, y, z);
+      b.getBlock()->onPlace(*this, x, y, z);
     }
 
     // Notify neighbors
@@ -1063,7 +1063,7 @@ void World::setBlock(int x, int y, int z, block_id type) {
 
       ChunkBlock nb = getBlock(nx, ny, nz);
       if (nb.isActive()) {
-        nb.block->onNeighborChange(*this, nx, ny, nz, x, y, z);
+        nb.getBlock()->onNeighborChange(*this, nx, ny, nz, x, y, z);
       }
     }
   }

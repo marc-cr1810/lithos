@@ -18,11 +18,11 @@ Chunk::Chunk()
       chunkPosition(0, 0, 0), world(nullptr), VAO(0), VBO(0), EBO(0) {
   // GL initialization deferred to Main Thread via initGL()
   // Initialize with air
-  Block *air = BlockRegistry::getInstance().getBlock(AIR);
+  //  Block *air = BlockRegistry::getInstance().getBlock(AIR);
   for (int x = 0; x < CHUNK_SIZE; ++x)
     for (int y = 0; y < CHUNK_SIZE; ++y)
       for (int z = 0; z < CHUNK_SIZE; ++z)
-        blocks[x][y][z] = {air, 0, 0};
+        blocks[x][y][z] = {AIR, 0, 0};
 
   for (int i = 0; i < 6; ++i)
     neighbors[i].reset();
@@ -78,7 +78,7 @@ void Chunk::render(Shader &shader, const glm::mat4 &viewProjection, int pass) {
 ChunkBlock Chunk::getBlock(int x, int y, int z) const {
   if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_SIZE || z < 0 ||
       z >= CHUNK_SIZE)
-    return {BlockRegistry::getInstance().getBlock(AIR), 0, 0};
+    return {AIR, 0, 0};
   return blocks[x][y][z];
 }
 
@@ -93,7 +93,7 @@ void Chunk::setBlockNoMeshUpdate(int x, int y, int z, block_id type) {
       z >= CHUNK_SIZE)
     return;
 
-  Block *oldBlock = blocks[x][y][z].block;
+  Block *oldBlock = blocks[x][y][z].getBlock();
   Block *newBlock = BlockRegistry::getInstance().getBlock(type);
 
   if (oldBlock == newBlock)
@@ -102,7 +102,7 @@ void Chunk::setBlockNoMeshUpdate(int x, int y, int z, block_id type) {
   bool oldOpaque = oldBlock->isOpaque();
   bool newOpaque = newBlock->isOpaque();
 
-  blocks[x][y][z].block = newBlock;
+  blocks[x][y][z].id = type;
   blocks[x][y][z].metadata = 0; // Reset metadata on block change!
 
   // Maintain Verticality Flags
@@ -279,8 +279,8 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
         ChunkBlock cb = cardNeighbors[ni]->getBlock(nx, ny, nz);
         borderCache[ni][u][v].isOpaque = cb.isOpaque();
         borderCache[ni][u][v].isLayered =
-            (cb.block &&
-             cb.block->getRenderShape() == Block::RenderShape::LAYERED);
+            (cb.isActive() &&
+             cb.getRenderShape() == Block::RenderShape::LAYERED);
       }
     }
   }
@@ -372,14 +372,14 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 if (!b.isOpaque()) {
                   // Special Case: Liquid Top Face should NOT be occluded by
                   // Solids (unless full height? No, safer to render)
-                  bool isLiquid = b.block->isLiquid();
-                  bool isLeaves = b.block->isLeaves();
+                  bool isLiquid = b.getBlock()->isLiquid();
+                  bool isLeaves = b.getBlock()->isLeaves();
 
                   if (isLiquid && faceDir == 4) {
                     // Only occlude if neighbor is also Liquid (same type)
                     // If neighbor is Stone, we still want to render Top of
                     // Water because water might be low.
-                    if (nb.block == b.block)
+                    if (nb.getBlock() == b.getBlock())
                       occluded = true;
                   }
                   // Leaves: Don't cull against other leaves (transparent look)
@@ -388,13 +388,13 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                       occluded = true;
                     } else {
                       // Check if neighbor is also leaf
-                      bool nbIsLeaves = nb.block->isLeaves();
+                      bool nbIsLeaves = nb.getBlock()->isLeaves();
                       if (nbIsLeaves)
                         internalFace = true;
                     }
                     // Else false (draw against air or other leaves)
                   } else {
-                    if (nb.block == b.block || nb.isOpaque())
+                    if (nb.getBlock() == b.getBlock() || nb.isOpaque())
                       occluded = true;
                   }
                 } else {
@@ -435,22 +435,22 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 ChunkBlock nb = n->getBlock(nnx, nny, nnz);
                 if (nb.isActive()) {
                   if (!b.isOpaque()) {
-                    bool isLiquid = b.block->isLiquid();
-                    bool isLeaves = b.block->isLeaves();
+                    bool isLiquid = b.getBlock()->isLiquid();
+                    bool isLeaves = b.getBlock()->isLeaves();
 
                     if (isLiquid && faceDir == 4) {
-                      if (nb.block == b.block)
+                      if (nb.getBlock() == b.getBlock())
                         occluded = true;
                     } else if (isLeaves) {
                       if (nb.isOpaque()) {
                         occluded = true;
                       } else {
-                        bool nbIsLeaves = nb.block->isLeaves();
+                        bool nbIsLeaves = nb.getBlock()->isLeaves();
                         if (nbIsLeaves)
                           internalFace = true;
                       }
                     } else {
-                      if (nb.block == b.block || nb.isOpaque())
+                      if (nb.getBlock() == b.getBlock() || nb.isOpaque())
                         occluded = true;
                     }
                   } else {
@@ -468,12 +468,12 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 ChunkBlock nb = world->getBlock(gx, gy, gz);
                 if (nb.isActive()) {
                   if (!b.isOpaque()) {
-                    bool isLiquid = b.block->isLiquid();
+                    bool isLiquid = b.getBlock()->isLiquid();
                     if (isLiquid && faceDir == 4) {
-                      if (nb.block == b.block)
+                      if (nb.getBlock() == b.getBlock())
                         occluded = true;
                     } else {
-                      if (nb.block == b.block || nb.isOpaque())
+                      if (nb.getBlock() == b.getBlock() || nb.isOpaque())
                         occluded = true;
                     }
                   } else {
@@ -493,7 +493,8 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 if (cb.isOpaque())
                   return true;
                 // Special case: Layered blocks cast contact shadows
-                if (cb.block->getRenderShape() == Block::RenderShape::LAYERED)
+                if (cb.getBlock()->getRenderShape() ==
+                    Block::RenderShape::LAYERED)
                   return true;
                 return false;
               };
@@ -576,9 +577,9 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
               aos[1] = sampleAO(u + 1, v, u, v - 1, u + 1, v - 1);
               aos[2] = sampleAO(u + 1, v, u, v + 1, u + 1, v + 1);
               aos[3] = sampleAO(u - 1, v, u, v + 1, u - 1, v + 1);
-              mask[u][v] = {b.block,    skyVal,
-                            blockVal,   {aos[0], aos[1], aos[2], aos[3]},
-                            b.metadata, internalFace};
+              mask[u][v] = {b.getBlock(), skyVal,
+                            blockVal,     {aos[0], aos[1], aos[2], aos[3]},
+                            b.metadata,   internalFace};
             }
           }
         }
@@ -807,7 +808,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                           return -1.0f;
                         }
                         bVec = world->getBlock(gx, gy, gz);
-                        if (!bVec.isActive() && !bVec.block)
+                        if (!bVec.isActive() && !bVec.getBlock())
                           isLoaded = false;
                       }
                     }
@@ -821,8 +822,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                   // Check if block above is liquid (Vertical Flow)
                   // Recursive check? Optimization: Don't recurse, just check
                   // one level up.
-                  ChunkBlock aboveVec = {
-                      BlockRegistry::getInstance().getBlock(AIR), 0, 0, 0};
+                  ChunkBlock aboveVec = {AIR, 0, 0, 0};
 
                   // Logic for "aboveVec" access similar to bVec...
                   // Can we reuse logic?
@@ -871,13 +871,12 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                     }
                   }
 
-                  if (aboveVec.isActive() && aboveVec.block->isLiquid()) {
+                  if (aboveVec.isActive() && aboveVec.getBlock()->isLiquid()) {
                     return 2.0f; // Flag: Force Full Height
                   }
 
                   // Check block BELOW to distinguish Shore vs Drop-off
-                  ChunkBlock belowVec = {
-                      BlockRegistry::getInstance().getBlock(AIR), 0, 0, 0};
+                  ChunkBlock belowVec = {AIR, 0, 0, 0};
                   // Logic to get block below (reuse neighbor cache logic if
                   // valid)
                   int bbx = bx;
@@ -931,14 +930,13 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                   return 0.0f; // Flag: Drop-off (Air/Liquid below) -> Slope
                                // down
                 }
-                if (bVec.block->isLiquid()) {
+                if (bVec.getBlock()->isLiquid()) {
                   // Check if this neighbor has liquid above it
                   bool isVertical = false;
 
                   // Same "aboveVec" logic again...
                   // Reuse logic:
-                  ChunkBlock aboveVec = {
-                      BlockRegistry::getInstance().getBlock(AIR), 0, 0, 0};
+                  ChunkBlock aboveVec = {AIR, 0, 0, 0};
                   int abx = bx;
                   int aby = by + 1;
                   int abz = bz;
@@ -984,7 +982,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                   }
 
                   if (aboveVec.isActive() &&
-                      aboveVec.block->getId() == bVec.block->getId()) {
+                      aboveVec.getType() == bVec.getType()) {
                     isVertical = true;
                   }
                   if (isVertical)
@@ -1101,7 +1099,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
               if (ly + 1 < CHUNK_SIZE) {
                 ChunkBlock ab = blocks[lx][ly + 1][lz];
                 if (ab.isActive() &&
-                    ab.block->getId() == current.block->getId())
+                    ab.getBlock()->getId() == current.block->getId())
                   hasLiquidAbove = true;
               } else {
                 // Check World
@@ -1110,8 +1108,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 int gz = chunkPosition.z * CHUNK_SIZE + lz;
                 if (world) {
                   ChunkBlock ab = world->getBlock(gx, gy, gz);
-                  if (ab.isActive() &&
-                      ab.block->getId() == current.block->getId())
+                  if (ab.isActive() && ab.getType() == current.block->getId())
                     hasLiquidAbove = true;
                 }
               }
@@ -1156,7 +1153,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
         if (!cb.isActive())
           continue;
 
-        Block::RenderShape shape = cb.block->getRenderShape();
+        Block::RenderShape shape = cb.getBlock()->getRenderShape();
         if (shape == Block::RenderShape::CUBE)
           continue;
 
@@ -1172,7 +1169,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
         r = 1.0f;
         g = 1.0f;
         b = 1.0f;
-        float alpha = cb.block->getAlpha();
+        float alpha = cb.getBlock()->getAlpha();
 
         uint8_t sky = cb.skyLight;
 
@@ -1182,8 +1179,8 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
         float tintIndex = 0.0f;
 
         // Climate Tinting (Pass 2)
-        if (cb.block->shouldTint(0, 0)) {
-          std::string mapCode = cb.block->getClimateColorMap();
+        if (cb.getBlock()->shouldTint(0, 0)) {
+          std::string mapCode = cb.getBlock()->getClimateColorMap();
           if (!mapCode.empty()) {
             getClimate(x, z, temp, humid);
             tintIndex = (float)ColorMapRegistry::Get().GetMapIndex(mapCode);
@@ -1195,7 +1192,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
         float l2Source = pow((float)bl / 15.0f, 0.8f);
 
         std::vector<float> &targetVerts =
-            (cb.block->getRenderLayer() == Block::RenderLayer::TRANSPARENT)
+            (cb.getRenderLayer() == Block::RenderLayer::TRANSPARENT)
                 ? transparentVertices
                 : opaqueVertices;
 
@@ -1248,7 +1245,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
 
         if (shape == Block::RenderShape::CROSS) {
           float uMin, vMin;
-          cb.block->getTextureUV(0, uMin, vMin, gx, gy, gz, cb.metadata);
+          cb.getBlock()->getTextureUV(0, uMin, vMin, gx, gy, gz, cb.metadata);
 
           // Randomize Rotation and Offset
           long long seed = ((long long)gx * 31337 + (long long)gy * 19283 +
@@ -1370,7 +1367,8 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             float l2 = pow((float)b / 15.0f, 0.8f);
 
             float uBase, vBase;
-            cb.block->getTextureUV(face, uBase, vBase, gx, gy, gz, cb.metadata);
+            cb.getBlock()->getTextureUV(face, uBase, vBase, gx, gy, gz,
+                                        cb.metadata);
 
             float w = (face <= 1 || face >= 4) ? (xMax - xMin) : (zMax - zMin);
             float h = (face >= 4) ? (zMax - zMin) : (yMax - yMin);
@@ -1485,7 +1483,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
 
           if (shape == Block::RenderShape::LAYERED) {
             // Layered blocks with variable height based on metadata
-            float blockHeight = cb.block->getBlockHeight(cb.metadata);
+            float blockHeight = cb.getBlock()->getBlockHeight(cb.metadata);
 
             // Render all 6 faces with adjusted height
             // Calculate AO for Top Face (Face 4: Y+) only
@@ -1656,7 +1654,8 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             // Texture UVs for Top
             // Texture UVs for Top
             float uBase, vBase;
-            cb.block->getTextureUV(4, uBase, vBase, gx, gy, gz, cb.metadata);
+            cb.getBlock()->getTextureUV(4, uBase, vBase, gx, gy, gz,
+                                        cb.metadata);
 
             // Get neighbors light above (y+1) for Top Face
             // Using world if available.
@@ -1771,7 +1770,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             }
           }
         } else if (shape == Block::RenderShape::MODEL) {
-          const Model *model = cb.block->getModel();
+          const Model *model = cb.getBlock()->getModel();
           if (model) {
             // Pre-calculate Max Light for fallback (Rotated elements or
             // internal)
@@ -1849,7 +1848,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 h = zMax - zMin;
               } // Top/Bottom
 
-              cb.block->getTextureUV(
+              cb.getBlock()->getTextureUV(
                   face, uBase, vBase, chunkPosition.x * CHUNK_SIZE + x,
                   chunkPosition.y * CHUNK_SIZE + y,
                   chunkPosition.z * CHUNK_SIZE + z, cb.metadata, 0);
@@ -1964,7 +1963,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 }
 
                 // Global Rotation for Logs
-                if (cb.block->isLog()) {
+                if (cb.getBlock()->isLog()) {
                   if (cb.metadata == 1) { // X-Axis
                     // Rotate 90 deg around Z axis
                     // Center is 0.5, 0.5, 0.5
@@ -2072,7 +2071,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 auto finalP3 = transform(p3) + glm::vec3(fx, fy, fz);
 
                 float uMin, vMin;
-                cb.block->getModelTextureUV(faceProp.texture, uMin, vMin);
+                cb.getBlock()->getModelTextureUV(faceProp.texture, uMin, vMin);
 
                 float localU1 = faceProp.uv[0];
                 float localV1 = 1.0f - faceProp.uv[1];
@@ -2081,7 +2080,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
 
                 // Check for Log Rotation UV Adjustment
                 bool rotateUV = false;
-                if (cb.block->isLog()) {
+                if (cb.getBlock()->isLog()) {
                   if (cb.metadata == 1 || cb.metadata == 2) {
                     // Rotate UVs for Bark Faces (0, 1, 2, 3) geometry-wise
                     // Faces 4 and 5 are Rings (Ends), usually don't need
@@ -2466,7 +2465,7 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
         ChunkBlock n = world->getBlock(bx, by, bz);
         if (!n.isActive())
           return -1.0f; // Treat as sink? Or different?
-        if (n.block->getId() != block->getId()) {
+        if (n.id != block->getId()) {
           if (n.isSolid())
             return 100.0f; // Blocked
           return -1.0f;    // Sink
@@ -2799,8 +2798,8 @@ bool Chunk::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist,
         // Check if raycast position is within actual block bounds
         // Check bounds using AABB
         glm::vec3 blockMin, blockMax;
-        blocks[x][y][z].block->getAABB(blocks[x][y][z].metadata, blockMin,
-                                       blockMax);
+        blocks[x][y][z].getBlock()->getAABB(blocks[x][y][z].metadata, blockMin,
+                                            blockMax);
 
         // Calculate local position within the block (0..1 range)
         float localY = pos.y - (float)y;
@@ -2883,7 +2882,7 @@ void Chunk::calculateSunlight() {
             if (blocks[x][y][z].isOpaque()) {
               break;
             } else {
-              if (blocks[x][y][z].block->isLiquid()) { // Decay in liquids
+              if (blocks[x][y][z].getBlock()->isLiquid()) { // Decay in liquids
                 currentLight -= 2;
                 if (currentLight < 0)
                   currentLight = 0;
@@ -3109,7 +3108,7 @@ void Chunk::spreadLight() {
       if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE && nz >= 0 &&
           nz < CHUNK_SIZE) {
         if (!blocks[nx][ny][nz].isOpaque()) {
-          int decay = (blocks[nx][ny][nz].block->getLightDecay());
+          int decay = (blocks[nx][ny][nz].getBlock()->getLightDecay());
           if (blocks[nx][ny][nz].skyLight < curLight - decay) {
             blocks[nx][ny][nz].skyLight = curLight - decay;
             skyQueue.push(glm::ivec3(nx, ny, nz));
@@ -3139,7 +3138,7 @@ void Chunk::spreadLight() {
       if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE && nz >= 0 &&
           nz < CHUNK_SIZE) {
         if (!blocks[nx][ny][nz].isOpaque()) {
-          int decay = (blocks[nx][ny][nz].block->getLightDecay());
+          int decay = (blocks[nx][ny][nz].getBlock()->getLightDecay());
           if (blocks[nx][ny][nz].blockLight < curLight - decay) {
             blocks[nx][ny][nz].blockLight = curLight - decay;
             blockQueue.push(glm::ivec3(nx, ny, nz));

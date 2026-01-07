@@ -29,7 +29,7 @@ void LiquidBlock::update(World &world, int x, int y, int z) const {
 
   // Flow down
   ChunkBlock below = world.getBlock(x, y - 1, z);
-  if (below.block->isReplaceable() && below.getType() != id) {
+  if (below.getBlock()->isReplaceable() && below.getType() != id) {
     if (meta == 0) { // Source flows down as falling liquid (meta 8 usually, but
                      // here we simplify)
       world.setBlock(x, y - 1, z, id);
@@ -41,7 +41,7 @@ void LiquidBlock::update(World &world, int x, int y, int z) const {
   }
 
   // Flow sideways if on solid ground
-  if (below.block->isSolid() || below.getType() == id) {
+  if (below.getBlock()->isSolid() || below.getType() == id) {
     if (meta < 7) { // 7 is max decay in this simple model
       trySpread(world, x + 1, y, z, meta + 1);
       trySpread(world, x - 1, y, z, meta + 1);
@@ -65,7 +65,7 @@ void LiquidBlock::onNeighborChange(World &world, int x, int y, int z, int nx,
 void LiquidBlock::trySpread(World &world, int x, int y, int z,
                             int newMeta) const {
   ChunkBlock target = world.getBlock(x, y, z);
-  if (target.block->isReplaceable() && target.getType() != id) {
+  if (target.getBlock()->isReplaceable() && target.getType() != id) {
     world.setBlock(x, y, z, id);
     world.setMetadata(x, y, z, newMeta);
   } else if (target.getType() == id && target.metadata > newMeta) {
