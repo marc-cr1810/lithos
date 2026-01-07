@@ -600,18 +600,9 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
   // block->setOpaque(false); // This line was removed from here.
 
   // Parse Climate Color Map
-  std::string climateMap = "";
-  if (def.climateColorMapByType.count(variantCode)) {
-    climateMap = def.climateColorMapByType.at(variantCode);
-  } else {
-    // Check patterns
-    for (const auto &[pattern, mapCode] : def.climateColorMapByType) {
-      if (matchesPattern(pattern, variantCode)) {
-        climateMap = mapCode;
-        break;
-      }
-    }
-  }
+  // Parse Climate Color Map
+  std::string climateMap =
+      resolveProperty<std::string>("", def.climateColorMapByType, variantCode);
 
   if (!climateMap.empty()) {
     block->setClimateColorMap(climateMap);

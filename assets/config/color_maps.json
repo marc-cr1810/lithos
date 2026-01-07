@@ -24,6 +24,14 @@
         "loadIntoBlockTextureAtlas": true
     },
     {
+        "code": "climateLightPlantTint",
+        "texture": {
+            "base": "environment/plant_tint_light"
+        },
+        "padding": 4,
+        "loadIntoBlockTextureAtlas": true
+    },
+    {
         "code": "climateLighterPlantTint",
         "texture": {
             "base": "environment/plant_tint_lighter"

@@ -9,7 +9,11 @@
     "blockMaterial": "Leaves",
     "drawType": "cube",
     "climateColorMapByType": {
-        "*": "climatePlantTint"
+        "*": "climatePlantTint",
+        "*_birch": "climateLighterPlantTint",
+        "*_jungle": "climateLightPlantTint",
+        "*_spruce": "climateDarkerPlantTint",
+        "*_dark_oak": "climateDarkerPlantTint"
     },
     "opaque": false,
     "renderBackfaces": true,
