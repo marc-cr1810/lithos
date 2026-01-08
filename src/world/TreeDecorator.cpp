@@ -24,21 +24,21 @@ static void resolveTreeIds() {
   if (idsResolved)
     return;
   auto &reg = BlockRegistry::getInstance();
-  WOOD = reg.getBlockId("lithos:log-oak-ud");
-  LEAVES = reg.getBlockId("lithos:leaves-oak");
-  GRASS = reg.getBlockId("lithos:grass-soil");
-  DIRT = reg.getBlockId("lithos:dirt-soil");
-  PODZOL = reg.getBlockId("lithos:podzol-soil");
-  MUD = reg.getBlockId("lithos:mud-soil");
+  WOOD = reg.getBlockId("lithos:oak_log");
+  LEAVES = reg.getBlockId("lithos:oak_leaves");
+  GRASS = reg.getBlockId("lithos:grass");
+  DIRT = reg.getBlockId("lithos:dirt");
+  PODZOL = reg.getBlockId("lithos:podzol");
+  MUD = reg.getBlockId("lithos:mud");
   SAND = reg.getBlockId("lithos:sand");
-  GRAVEL = reg.getBlockId("lithos:gravel");
-  COARSE_DIRT = reg.getBlockId("lithos:coarsedirt-soil");
-  TERRA_PRETA = reg.getBlockId("lithos:terra_preta-soil");
-  PEAT = reg.getBlockId("lithos:peat-soil");
-  CLAY = reg.getBlockId("lithos:clay-soil");
-  CLAYSTONE = reg.getBlockId("lithos:claystone-rock");
-  SNOW = reg.getBlockId("lithos:snow-block");
-  SNOW_LAYER = reg.getBlockId("lithos:snow-layer");
+  GRAVEL = reg.getBlockId("gravel");
+  COARSE_DIRT = reg.getBlockId("lithos:coarse_dirt");
+  TERRA_PRETA = reg.getBlockId("lithos:terra_preta");
+  PEAT = reg.getBlockId("lithos:peat");
+  CLAY = reg.getBlockId("lithos:clay");
+  CLAYSTONE = reg.getBlockId("lithos:rock_claystone");
+  SNOW = reg.getBlockId("lithos:snow_block");
+  SNOW_LAYER = reg.getBlockId("lithos:snow_layer");
   idsResolved = true;
 }
 
@@ -581,16 +581,11 @@ void TreeDecorator::Decorate(WorldGenerator &generator, WorldGenRegion &region,
         bool isSoil = true;
         block_id surfaceBlock = 0;
 
-        // Get the actual block from the region (works for all chunks in 3x3)
+        // Get the surface block - this works for current chunk and neighbors in
+        // 3x3 region
         surfaceBlock = region.getBlock(gx, height, gz);
 
-        // Verify the block is actually solid (not air from a cave)
-        Block *surfaceBlockPtr = region.getBlockPtr(gx, height, gz);
-        if (!surfaceBlockPtr || !surfaceBlockPtr->isSolid()) {
-          continue; // Skip if surface was carved by cave or is otherwise not
-                    // solid
-        }
-
+        // Check if it's a valid soil type
         isSoil = (surfaceBlock == GRASS || surfaceBlock == DIRT ||
                   surfaceBlock == PODZOL || surfaceBlock == MUD ||
                   surfaceBlock == SAND || surfaceBlock == GRAVEL ||
@@ -601,6 +596,13 @@ void TreeDecorator::Decorate(WorldGenerator &generator, WorldGenRegion &region,
 
         if (!isSoil)
           continue;
+
+        // Additional validation: verify it's actually solid (catches caves)
+        // Only do this check if it doesn't interfere with neighbor chunks
+        Block *surfaceBlockPtr = region.getBlockPtr(gx, height, gz);
+        if (surfaceBlockPtr && !surfaceBlockPtr->isSolid()) {
+          continue; // Surface was carved by cave or is otherwise not solid
+        }
 
         float realRainNorm = (rawRain + 1.0f) * 0.5f;
 
