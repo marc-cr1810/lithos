@@ -725,6 +725,41 @@ void World::unloadChunks(const glm::vec3 &playerPos, int renderDistance) {
       }
     }
   }
+
+  // Clean up orphaned columns (columns with no chunks remaining)
+  // This ensures that when chunks reload, columns are regenerated fresh with
+  // decorated=false, allowing trees, flora, and caves to be placed again
+  {
+    std::lock_guard<std::mutex> lock(columnMutex);
+    std::vector<std::pair<int, int>> columnsToRemove;
+
+    // Check each column to see if it still has any chunks loaded
+    for (auto &columnPair : columns) {
+      auto [colX, colZ] = columnPair.first;
+      bool hasChunks = false;
+
+      // Check all vertical chunks (Y levels 0-7) in this column
+      {
+        std::lock_guard<std::mutex> lock(worldMutex);
+        for (int y = 0; y < 8; y++) {
+          if (chunks.find(std::make_tuple(colX, y, colZ)) != chunks.end()) {
+            hasChunks = true;
+            break;
+          }
+        }
+      }
+
+      // If no chunks remain in this column, mark it for removal
+      if (!hasChunks) {
+        columnsToRemove.push_back(columnPair.first);
+      }
+    }
+
+    // Remove orphaned columns
+    for (const auto &colKey : columnsToRemove) {
+      columns.erase(colKey);
+    }
+  }
 }
 
 void World::addChunk(int x, int y, int z) {
