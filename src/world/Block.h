@@ -7,10 +7,12 @@
 #include <memory>
 #include <nlohmann/json.hpp>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
 #include "../core/LangRegistry.h"
+#include "../debug/Logger.h"
 #include "../render/Model.h"
 #include "../render/ModelLoader.h"
 #include "../render/TextureAtlas.h"
@@ -86,11 +88,17 @@ public:
         continue;
 
       // 1. Resolve Base Textures
-      float u, v;
-      if (atlas.GetTextureUV(textureNames[i], u, v)) {
+      float u, v, u2, v2;
+      if (atlas.GetTextureUV(textureNames[i], u, v, u2, v2)) {
         uMin[i] = u;
         vMin[i] = v;
-        textureVariants[i].push_back({u, v});
+        uMax[i] = u2;
+        vMax[i] = v2;
+        textureVariants[i].push_back(
+            {u, v, u2, v2}); // Needs struct/tuple update
+      } else {
+        LOG_RESOURCE_WARN("Block '{}' failed to resolve main texture '{}'",
+                          name, textureNames[i]);
       }
 
       // Check for variants name_0, name_1, ... name_64
@@ -98,23 +106,23 @@ public:
       for (int counter = 0; counter <= 64; ++counter) {
         std::string variantName =
             textureNames[i] + "_" + std::to_string(counter);
-        if (atlas.GetTextureUV(variantName, u, v)) {
-          textureVariants[i].push_back({u, v});
+        if (atlas.GetTextureUV(variantName, u, v, u2, v2)) {
+          textureVariants[i].push_back({u, v, u2, v2});
         }
       }
 
       // 2. Resolve Overlay Textures
       if (!overlayTextureNames[i].empty()) {
-        float u, v;
-        if (atlas.GetTextureUV(overlayTextureNames[i], u, v)) {
-          overlayVariants[i].push_back({u, v});
+        float u, v, u2, v2;
+        if (atlas.GetTextureUV(overlayTextureNames[i], u, v, u2, v2)) {
+          overlayVariants[i].push_back({u, v, u2, v2}); // Update vector type?
         }
         // Check for variants
         for (int counter = 0; counter <= 64; ++counter) {
           std::string variantName =
               overlayTextureNames[i] + "_" + std::to_string(counter);
-          if (atlas.GetTextureUV(variantName, u, v)) {
-            overlayVariants[i].push_back({u, v});
+          if (atlas.GetTextureUV(variantName, u, v, u2, v2)) {
+            overlayVariants[i].push_back({u, v, u2, v2});
           }
         }
       }
@@ -123,43 +131,49 @@ public:
     // Resolve Model Textures
     if (customModel) {
       for (const auto &[key, texParams] : customModel->textures) {
-        // texParams is string like "assets:block/plant/cactus/cactus_side"
+        // ... (name parsing logic omitted for brevity, keeping existing)
         std::string name = texParams;
-        // Strip "assets:block/" if it exists
         const std::string prefix = "assets:block/";
         if (name.compare(0, prefix.length(), prefix) == 0) {
           name = name.substr(prefix.length());
         } else {
-          // Fallback for names without prefix - use just the basename
           size_t lastSlash = name.find_last_of("/\\:");
           if (lastSlash != std::string::npos) {
             name = name.substr(lastSlash + 1);
           }
         }
 
-        float u, v;
-        if (atlas.GetTextureUV(name, u, v)) {
-          modelTextureUVs[key] = {u, v};
+        float u, v, u2, v2;
+        if (atlas.GetTextureUV(name, u, v, u2, v2)) {
+          modelTextureUVs[key] = {u, v, u2, v2}; // Needs struct update
         }
       }
     }
   }
 
   // Visuals
-  virtual void getTextureUV(int faceDir, float &u, float &v) const {
+  virtual void getTextureUV(int faceDir, float &u, float &v, float &u2,
+                            float &v2) const {
     if (faceDir >= 0 && faceDir < 6) {
       u = uMin[faceDir];
       v = vMin[faceDir];
+      u2 = uMax[faceDir];
+      v2 = vMax[faceDir];
     } else {
       u = 0;
       v = 0;
+      u2 = 1;
+      v2 = 1;
     }
   }
 
-  virtual void getTextureUV(int faceDir, float &u, float &v, int x, int y,
-                            int z, int layer = 0) const {
+  virtual void getTextureUV(int faceDir, float &u, float &v, float &u2,
+                            float &v2, int x, int y, int z,
+                            int layer = 0) const {
     u = 0;
     v = 0;
+    u2 = 1;
+    v2 = 1;
     if (faceDir >= 0 && faceDir < 6) {
       const auto &variants =
           (layer == 0) ? textureVariants[faceDir] : overlayVariants[faceDir];
@@ -167,53 +181,50 @@ public:
         // Deterministic random selection
         int hash = (x * 73856093) ^ (y * 19349663) ^ (z * 83492791);
         int index = std::abs(hash) % variants.size();
-        u = variants[index].first;
-        v = variants[index].second;
+        u = std::get<0>(variants[index]);
+        v = std::get<1>(variants[index]);
+        u2 = std::get<2>(variants[index]);
+        v2 = std::get<3>(variants[index]);
       } else {
-        // Fallback to defaults if no variants found (e.g. standard texture)
-        // For layer 0, use uMin. For layer 1, we might not have a "default" if
-        // variants are empty but overlay name set? Actually resolveUVs
-        // populates variants even for single texture if name matches. But logic
-        // above: 1. check name, add to variants. So variants should contain at
-        // least one if texture exists. Except for overlay logic: I pushed back
-        // overlayVariants.
+        // Fallback to defaults
         if (layer == 0) {
           u = uMin[faceDir];
           v = vMin[faceDir];
-        } else {
-          // If overlay variants empty but we are here, means no overlay.
-          // Caller should check hasOverlay first.
+          u2 = uMax[faceDir];
+          v2 = vMax[faceDir];
         }
       }
     }
   }
 
   // Overload with metadata support for blocks that need it
-  virtual void getTextureUV(int faceDir, float &u, float &v, int x, int y,
-                            int z, uint8_t metadata, int layer = 0) const {
+  virtual void getTextureUV(int faceDir, float &u, float &v, float &u2,
+                            float &v2, int x, int y, int z, uint8_t metadata,
+                            int layer = 0) const {
     // Default implementation ignores metadata and calls the regular version
-    getTextureUV(faceDir, u, v, x, y, z, layer);
+    getTextureUV(faceDir, u, v, u2, v2, x, y, z, layer);
   }
 
   // Model Texture UV Lookup
-  void getModelTextureUV(const std::string &key, float &u, float &v) const {
+  void getModelTextureUV(const std::string &key, float &u, float &v, float &u2,
+                         float &v2) const {
     // Key might be "#0", or just "0"?
-    // Blockbench: "texture": "#0"
-    // Model Textures map: "0" -> "path"
-    // So valid key in map is "0".
-    // We should strip '#' if present.
     std::string cleanKey = key;
     if (!cleanKey.empty() && cleanKey[0] == '#') {
       cleanKey = cleanKey.substr(1);
     }
 
     auto it = modelTextureUVs.find(cleanKey);
-    if (it != modelTextureUVs.end()) {
-      u = it->second.first;
-      v = it->second.second;
+    if (it != modelTextureUVs.end()) { // Update map to store tuple/struct?
+      u = std::get<0>(it->second);
+      v = std::get<1>(it->second);
+      u2 = std::get<2>(it->second);
+      v2 = std::get<3>(it->second);
     } else {
       u = 0;
       v = 0;
+      u2 = 1;
+      v2 = 1;
     }
   }
 
@@ -310,21 +321,22 @@ protected:
   std::vector<std::string> creativeTabs;
 
   std::string textureNames[6];
-  float uMin[6];
-  float vMin[6];
-  float uMax[6];
-  float vMax[6];
+  float uMin[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  float vMin[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  float uMax[6] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+  float vMax[6] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
 
   // Variants
-  std::vector<std::pair<float, float>> textureVariants[6];
+  std::vector<std::tuple<float, float, float, float>> textureVariants[6];
 
   // Overlay Support
   std::string overlayTextureNames[6];
-  std::vector<std::pair<float, float>> overlayVariants[6];
+  std::vector<std::tuple<float, float, float, float>> overlayVariants[6];
 
   // Custom Model
   std::shared_ptr<Model> customModel;
-  std::unordered_map<std::string, std::pair<float, float>> modelTextureUVs;
+  std::unordered_map<std::string, std::tuple<float, float, float, float>>
+      modelTextureUVs;
 
   RenderShape renderShape = RenderShape::CUBE;
 

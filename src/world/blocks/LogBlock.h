@@ -7,8 +7,9 @@
 class LogBlock : public SolidBlock {
 public:
   LogBlock(block_id id, const std::string &name);
-  void getTextureUV(int faceDir, float &u, float &v, int x, int y, int z,
-                    uint8_t metadata, int layer = 0) const override;
+  void getTextureUV(int faceDir, float &u, float &v, float &u2, float &v2,
+                    int x, int y, int z, uint8_t metadata,
+                    int layer = 0) const override;
   bool isLog() const override { return true; }
 };
 

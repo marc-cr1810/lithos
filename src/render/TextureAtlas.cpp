@@ -1,24 +1,26 @@
+
 #include "TextureAtlas.h"
 #include "../debug/Logger.h"
+#include <GL/glew.h>
 #include <algorithm>
 #include <cmath>
-#include <cstring> // for memcpy
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-
-#include <GL/glew.h>
 
 // STB Image (Already implemented in Texture.cpp, but we need definitions if we
 // want to use functions?) Actually stb_image implementation logic is strictly
 // in one file. We just need the header.
 #include "../vendor/stb_image.h"
 
+#define STB_RECT_PACK_IMPLEMENTATION
+#include "../vendor/stb_rect_pack.h"
+
 namespace fs = std::filesystem;
 
-TextureAtlas::TextureAtlas(int width, int height, int slotSize)
-    : width(width), height(height), slotSize(slotSize), nextSlotX(0),
-      nextSlotY(0), dirty(false) {
+TextureAtlas::TextureAtlas(int width, int height)
+    : width(width), height(height), dirty(false) {
   // Initialize transparent black
   data.resize(width * height * 4, 0);
 }
@@ -36,96 +38,57 @@ void TextureAtlas::Load(const std::string &directory) {
 
   for (const auto &entry : fs::recursive_directory_iterator(directory)) {
     if (entry.path().extension() == ".png") {
+      // Use generic path processing
       std::string path = entry.path().string();
       std::string filename = entry.path().filename().string();
-      // Use relative path from baseDir for name, without extension
       std::string name =
           fs::relative(entry.path(), baseDir).replace_extension("").string();
-      // Standardize to forward slashes for cross-compatibility and consistency
       std::replace(name.begin(), name.end(), '\\', '/');
 
-      // Load Image
       int w, h, c;
-      // Force 4 channels (RGBA)
       stbi_set_flip_vertically_on_load(true);
       unsigned char *img = stbi_load(path.c_str(), &w, &h, &c, 4);
       if (img) {
-        // Check for metadata
         int frameTime = 1;
         bool animated = false;
 
+        // Check JSON for metadata
         std::string jsonPath = path + ".json";
         if (fs::exists(jsonPath)) {
-          // Simple parse for "frametime"
           std::ifstream f(jsonPath);
-          std::string content((std::istreambuf_iterator<char>(f)),
-                              std::istreambuf_iterator<char>());
-
-          size_t pos = content.find("\"frametime\"");
-          if (pos != std::string::npos) {
-            // Find colon
-            size_t colon = content.find(':', pos);
-            if (colon != std::string::npos) {
-              // Parse number
-              frameTime = std::stoi(content.substr(colon + 1));
+          if (f.is_open()) {
+            std::string content((std::istreambuf_iterator<char>(f)),
+                                std::istreambuf_iterator<char>());
+            if (content.find("\"frametime\"") != std::string::npos) {
+              // Very basic parsing
+              size_t pos = content.find("\"frametime\"");
+              size_t colon = content.find(':', pos);
+              if (colon != std::string::npos) {
+                try {
+                  frameTime = std::stoi(content.substr(colon + 1));
+                  animated = true;
+                } catch (...) {
+                }
+              }
+            } else if (content.find("\"animation\"") != std::string::npos) {
               animated = true;
-            }
-          } else {
-            // Check if "animation" object exists, maybe default frametime?
-            if (content.find("\"animation\"") != std::string::npos) {
-              animated = true;
-              frameTime = 1; // Default if not detailed?
             }
           }
         }
 
-        // If height > width (strip), and not confirmed animated by JSON?
-        // In MC dealing, usually strip implies animation if N*width = height.
+        // Auto-detect strip
         if (h > w && h % w == 0 && (h / w) > 1) {
-          // Auto-detect animation if not specified, or if we want to support it
-          // without JSON But let's stick to explicit or implicit logic. Let's
-          // assume strip = animation for block textures if explicit JSON wasn't
-          // found but format looks like one? User said "Make note of .json
-          // files... ensure support". Let's rely on aspect ratio too.
           if (!animated) {
             animated = true;
-            frameTime = 20; // Default slow?
+            frameTime = 20;
           }
-        }
-
-        // Resize if larger than slotSize (Nearest Neighbor)
-        if (w > slotSize && w % slotSize == 0) {
-          int scale = w / slotSize;
-          int newW = slotSize;
-          int newH = h / scale;
-          std::vector<unsigned char> resizedData(newW * newH * 4);
-
-          for (int y = 0; y < newH; ++y) {
-            for (int x = 0; x < newW; ++x) {
-              int srcX = x * scale;
-              int srcY = y * scale;
-              int srcIdx = (srcY * w + srcX) * 4;
-              int destIdx = (y * newW + x) * 4;
-
-              resizedData[destIdx + 0] = img[srcIdx + 0]; // R
-              resizedData[destIdx + 1] = img[srcIdx + 1]; // G
-              resizedData[destIdx + 2] = img[srcIdx + 2]; // B
-              resizedData[destIdx + 3] = img[srcIdx + 3]; // A
-            }
-          }
-
-          // Replace img with resized data
-          stbi_image_free(img);
-          img = (unsigned char *)malloc(newW * newH * 4);
-          memcpy(img, resizedData.data(), newW * newH * 4);
-          w = newW;
-          h = newH;
         }
 
         int frames = 1;
         if (animated && w > 0)
           frames = h / w;
 
+        // Queue it
         PackTexture(name, img, w, h, 4, frames, frameTime);
 
         stbi_image_free(img);
@@ -136,108 +99,95 @@ void TextureAtlas::Load(const std::string &directory) {
     }
   }
 
-  LOG_RESOURCE_INFO("Texture Atlas Loaded. {} textures packed.",
+  // Now execute packing
+  if (pendingTextures.empty())
+    return;
+
+  // Prepare rects
+  std::vector<stbrp_rect> rects;
+  rects.reserve(pendingTextures.size());
+
+  for (size_t i = 0; i < pendingTextures.size(); ++i) {
+    stbrp_rect r;
+    r.id = (int)i;
+    r.w = pendingTextures[i].w;
+    r.h = pendingTextures[i].h /
+          pendingTextures[i].frames; // Pack single frame height
+    r.was_packed = 0;
+    rects.push_back(r);
+  }
+
+  // Pack
+  stbrp_context context;
+  std::vector<stbrp_node> nodes(width);
+  stbrp_init_target(&context, width, height, nodes.data(), nodes.size());
+  stbrp_pack_rects(&context, rects.data(), rects.size());
+
+  // Process results
+  for (const auto &r : rects) {
+    auto &pt = pendingTextures[r.id];
+    if (r.was_packed) {
+      // Upload first frame to atlas
+      SetRegion(r.x, r.y, r.w, r.h, pt.data.data(), pt.channels);
+
+      TextureInfo info;
+      info.uMin = (float)r.x / width;
+      info.vMin = (float)r.y / height;
+      info.uMax = (float)(r.x + r.w) / width;
+      info.vMax = (float)(r.y + r.h) / height;
+      info.slotX = r.x;
+      info.slotY = r.y;
+      info.isAnimated = pt.isAnimated;
+      info.frameCount = pt.frames;
+      info.frameTime = pt.frameTime;
+
+      textures[pt.name] = info;
+
+      if (pt.isAnimated) {
+        AnimatedTexture anim;
+        anim.name = pt.name;
+        anim.width = r.w;
+        anim.height = r.h;
+        anim.slotX = r.x;
+        anim.slotY = r.y;
+        anim.currentFrame = 0;
+        anim.timer = 0.0f;
+        anim.fps = 20 / (pt.frameTime > 0 ? pt.frameTime : 1);
+        if (anim.fps <= 0)
+          anim.fps = 1;
+
+        anim.frames = pt.data; // Copy full data
+        animatedTextures.push_back(anim);
+      }
+    } else {
+      LOG_RESOURCE_ERROR("TextureAtlas Full! Failed to pack '{}'", pt.name);
+    }
+  }
+
+  LOG_RESOURCE_INFO("Texture Atlas Built. {} textures packed.",
                     textures.size());
+  // Clear pending to free memory
+  pendingTextures.clear();
 }
 
 void TextureAtlas::PackTexture(const std::string &name, unsigned char *imgData,
                                int w, int h, int channels, int frameCount,
                                int frameTime) {
-  // Only support square slots for now (or frame width = slotSize)
-  // If texture is larger/smaller, we resize or just attempt to fit in slot?
-  // For this task, assuming pixel art 16x16 blocks.
-  int frameW = w;
-  int frameH = h / frameCount;
+  PendingTexture pt;
+  pt.name = name;
+  pt.w = w;
+  pt.h = h;
+  pt.channels = channels;
+  pt.frames = frameCount;
+  pt.frameTime = frameTime;
+  pt.isAnimated = (frameCount > 1);
 
-  int slotsUsedX = (frameW + slotSize - 1) / slotSize;
-  int slotsUsedY = (frameH + slotSize - 1) / slotSize;
+  // Copy data
+  size_t size = w * h * channels;
+  pt.data.resize(size);
+  memcpy(pt.data.data(), imgData, size);
 
-  int limitX = width / slotSize;
-
-  // If item doesn't fit in current row residue, or if it is multi-row tall,
-  // start new row? Strategy:
-  // 1. If multi-row tall, force start of new layout row (waste simple packing
-  // to right).
-  // 2. If single-row tall, try to fit in current row.
-
-  if (slotsUsedY > 1) {
-    // Move to start of next available line if we aren't already at 0
-    if (nextSlotX > 0) {
-      nextSlotX = 0;
-      nextSlotY++;
-    }
-  }
-
-  // Wrap X if needed
-  if (nextSlotX + slotsUsedX > limitX) {
-    nextSlotX = 0;
-    nextSlotY++;
-  }
-
-  // Check Y limit
-  if ((nextSlotY + slotsUsedY) * slotSize > height) {
-    LOG_RESOURCE_ERROR("Texture Atlas Full! Cannot pack {}", name);
-    return;
-  }
-
-  int slotX = nextSlotX;
-  int slotY = nextSlotY;
-
-  // Advance
-  if (slotsUsedY > 1) {
-    // For multi-row items, we consume full rows (naive)
-    nextSlotY += slotsUsedY;
-    nextSlotX = 0;
-  } else {
-    nextSlotX += slotsUsedX;
-  }
-
-  // Store Info
-  TextureInfo info;
-  info.slotX = slotX;
-  info.slotY = slotY;
-
-  // UVs (Use actual content size, not slot size if smaller?)
-  // But slots are fixed size grid conceptually for the UV calculation?
-  // No, we use pixel coords / width.
-  info.uMin = (float)(slotX * slotSize) / width;
-  info.vMin = (float)(slotY * slotSize) / height;
-  // Use frameW/H for Max UV to tightly wrap content?
-  // Standard block rendering might expect 16x16 UVs.
-  // If we pack 256x256, we want UV to cover 256x256.
-  info.uMax = (float)(slotX * slotSize + frameW) / width;
-  info.vMax = (float)(slotY * slotSize + frameH) / height;
-
-  info.isAnimated = (frameCount > 1);
-  info.frameCount = frameCount;
-  info.frameTime = frameTime;
-
-  textures[name] = info;
-
-  // Copy first frame to Atlas Data
-  SetRegion(slotX * slotSize, slotY * slotSize, frameW, frameH, imgData,
-            channels);
-
-  // Handle Animation
-  if (frameCount > 1) {
-    AnimatedTexture anim;
-    anim.name = name;
-    anim.width = frameW;
-    anim.height = frameH;
-    anim.slotX = slotX;
-    anim.slotY = slotY;
-    anim.currentFrame = 0;
-    anim.timer = 0.0f;
-    anim.fps = 20 / (frameTime > 0 ? frameTime : 1);
-    if (anim.fps <= 0)
-      anim.fps = 1;
-
-    size_t totalSize = w * h * 4;
-    anim.frames.resize(totalSize);
-    memcpy(anim.frames.data(), imgData, totalSize);
-
-    animatedTextures.push_back(anim);
-  }
+  pendingTextures.push_back(pt);
 }
 
 void TextureAtlas::SetRegion(int x, int y, int w, int h,
@@ -311,20 +261,21 @@ void TextureAtlas::UpdateTextureGPU(unsigned int textureID) {
     const unsigned char *frameData =
         anim.frames.data() + (anim.currentFrame * frameSize);
 
-    glTexSubImage2D(GL_TEXTURE_2D, 0, anim.slotX * slotSize,
-                    anim.slotY * slotSize, anim.width, anim.height, GL_RGBA,
-                    GL_UNSIGNED_BYTE, frameData);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, anim.slotX, anim.slotY, anim.width,
+                    anim.height, GL_RGBA, GL_UNSIGNED_BYTE, frameData);
   }
 
   dirty = false;
 }
 
 bool TextureAtlas::GetTextureUV(const std::string &name, float &uMin,
-                                float &vMin) const {
+                                float &vMin, float &uMax, float &vMax) const {
   auto it = textures.find(name);
   if (it != textures.end()) {
     uMin = it->second.uMin;
     vMin = it->second.vMin;
+    uMax = it->second.uMax;
+    vMax = it->second.vMax;
     return true;
   }
   return false;

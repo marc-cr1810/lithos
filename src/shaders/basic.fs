@@ -4,7 +4,7 @@ out vec4 FragColor;
 in vec4 ourColor;
 in vec2 TexCoord;
 in vec3 Lighting;
-in vec2 TexOrigin;
+in vec4 TexOrigin;
 in vec3 FragPos;
 in vec3 Climate;
 
@@ -16,7 +16,7 @@ uniform bool useTexture;
 uniform float sunStrength;
 uniform bool useLighting;
 uniform vec3 viewPos; // Camera Position for Fog
-uniform vec2 uvScale; // Atlas Slot Size
+// uniform vec2 uvScale; // Deprecated, using per-vertex size
 
 // Phase 4: Heatmap
 uniform bool useHeatmap;
@@ -35,8 +35,8 @@ void main()
     
     vec2 tileUV = fract(TexCoord);
     
-    // Dynamic UV Scale from Uniform
-    vec2 finalUV = TexOrigin + vec2(tileUV.x * uvScale.x, tileUV.y * uvScale.y);
+    // Dynamic UV Scale from Vertex Attribute
+    vec2 finalUV = TexOrigin.xy + vec2(tileUV.x * TexOrigin.z, tileUV.y * TexOrigin.w);
     
     vec4 texColor = texture(texture1, finalUV);
     if(!useTexture)

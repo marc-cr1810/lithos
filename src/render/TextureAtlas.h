@@ -28,7 +28,7 @@ struct AnimatedTexture {
 
 class TextureAtlas {
 public:
-  TextureAtlas(int width, int height, int slotSize);
+  TextureAtlas(int width, int height);
   ~TextureAtlas();
 
   // Load from directory
@@ -43,34 +43,42 @@ public:
   // helper here. Actually, we need the Texture ID to call glTexSubImage2D.
   void UpdateTextureGPU(unsigned int textureID);
 
+  // Queue texture for next Load/Build cycle
+  void PackTexture(const std::string &name, unsigned char *imgData, int w,
+                   int h, int channels, int frameCount = 1, int frameTime = 1);
+
   // Access raw data (for initial glTexImage2D)
-  unsigned char *GetData() { return data.data(); }
+  const std::vector<unsigned char> &GetData() const { return data; }
   int GetWidth() const { return width; }
   int GetHeight() const { return height; }
 
   // Query
-  bool GetTextureUV(const std::string &name, float &uMin, float &vMin) const;
+  bool GetTextureUV(const std::string &name, float &uMin, float &vMin,
+                    float &uMax, float &vMax) const;
   const TextureInfo *GetTextureInfo(const std::string &name) const;
-
-  // Manually add texture
-  void PackTexture(const std::string &name, unsigned char *imgData, int w,
-                   int h, int channels, int frameCount = 1, int frameTime = 1);
 
 private:
   int width;
   int height;
-  int slotSize;
   std::vector<unsigned char> data;
 
   std::unordered_map<std::string, TextureInfo> textures;
   std::vector<AnimatedTexture> animatedTextures;
 
+  struct PendingTexture {
+    std::string name;
+    std::vector<unsigned char> data; // Owns the data
+    int w, h, channels;
+    int frames;
+    int frameTime;
+    bool isAnimated;
+  };
+  std::vector<PendingTexture> pendingTextures;
+
   // Dirty flag for animation updates
   bool dirty;
 
-  // Simple grid packer state
-  int nextSlotX;
-  int nextSlotY;
+  // Internal helper to write texture data to the atlas buffer
   void SetRegion(int x, int y, int w, int h, const unsigned char *src,
                  int channels);
 };

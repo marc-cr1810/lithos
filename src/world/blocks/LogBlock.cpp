@@ -9,8 +9,9 @@ static BlockRegistrar registrar("LogBlock",
 LogBlock::LogBlock(block_id id, const std::string &name)
     : SolidBlock(id, name) {}
 
-void LogBlock::getTextureUV(int faceDir, float &u, float &v, int x, int y,
-                            int z, uint8_t metadata, int layer) const {
+void LogBlock::getTextureUV(int faceDir, float &u, float &v, float &u2,
+                            float &v2, int x, int y, int z, uint8_t metadata,
+                            int layer) const {
   // Metadata 0: Vertical (Y-Axis) - Default
   // Metadata 1: Horizontal X-Axis
   // Metadata 2: Horizontal Z-Axis
@@ -55,5 +56,5 @@ void LogBlock::getTextureUV(int faceDir, float &u, float &v, int x, int y,
 
   // Call base implementation with the "swapped" face direction to get correct
   // UVs from atlas
-  Block::getTextureUV(effectiveFace, u, v, x, y, z, metadata, layer);
+  Block::getTextureUV(effectiveFace, u, v, u2, v2, x, y, z, metadata, layer);
 }

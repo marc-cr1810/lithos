@@ -24,6 +24,14 @@ Chunk::Chunk()
       for (int z = 0; z < CHUNK_SIZE; ++z)
         blocks[x][y][z] = {AIR, 0, 0};
 
+  // Initialize Climate Maps
+  for (int x = 0; x < CHUNK_SIZE; ++x) {
+    for (int z = 0; z < CHUNK_SIZE; ++z) {
+      temperatureMap[x][z] = 127; // ~0.5
+      humidityMap[x][z] = 127;    // ~0.5
+    }
+  }
+
   for (int i = 0; i < 6; ++i)
     neighbors[i].reset();
 
@@ -1220,7 +1228,8 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
         };
 
         auto pushVert = [&](float vx, float vy, float vz, float u, float v,
-                            float uOrigin, float vOrigin, float aoVal = 0.0f,
+                            float uOrigin, float vOrigin, float uWidth,
+                            float vHeight, float aoVal = 0.0f,
                             float l1Override = -1.0f, float l2Override = -1.0f,
                             float shade = 1.0f) {
           targetVerts.push_back(vx);
@@ -1237,6 +1246,8 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
           targetVerts.push_back(aoVal);
           targetVerts.push_back(uOrigin);
           targetVerts.push_back(vOrigin);
+          targetVerts.push_back(uWidth);
+          targetVerts.push_back(vHeight);
           // New Attributes
           targetVerts.push_back(temp);
           targetVerts.push_back(humid);
@@ -1244,8 +1255,11 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
         };
 
         if (shape == Block::RenderShape::CROSS) {
-          float uMin, vMin;
-          cb.getBlock()->getTextureUV(0, uMin, vMin, gx, gy, gz, cb.metadata);
+          float uMin, vMin, uMax, vMax;
+          cb.getBlock()->getTextureUV(0, uMin, vMin, uMax, vMax, gx, gy, gz,
+                                      cb.metadata);
+          float uW = uMax - uMin;
+          float vH = vMax - vMin;
 
           // Randomize Rotation and Offset
           long long seed = ((long long)gx * 31337 + (long long)gy * 19283 +
@@ -1272,22 +1286,22 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
           float p1_x2 = centerX + cos(angle1) * scale;
           float p1_z2 = centerZ + sin(angle1) * scale;
 
-          pushVert(p1_x1, fy, p1_z1, 0.0f, 0.0f, uMin, vMin);
-          pushVert(p1_x2, fy, p1_z2, 1.0f, 0.0f, uMin, vMin);
-          pushVert(p1_x2, fy + 1.0f, p1_z2, 1.0f, 1.0f, uMin, vMin);
+          pushVert(p1_x1, fy, p1_z1, 0.0f, 0.0f, uMin, vMin, uW, vH);
+          pushVert(p1_x2, fy, p1_z2, 1.0f, 0.0f, uMin, vMin, uW, vH);
+          pushVert(p1_x2, fy + 1.0f, p1_z2, 1.0f, 1.0f, uMin, vMin, uW, vH);
 
-          pushVert(p1_x1, fy, p1_z1, 0.0f, 0.0f, uMin, vMin);
-          pushVert(p1_x2, fy + 1.0f, p1_z2, 1.0f, 1.0f, uMin, vMin);
-          pushVert(p1_x1, fy + 1.0f, p1_z1, 0.0f, 1.0f, uMin, vMin);
+          pushVert(p1_x1, fy, p1_z1, 0.0f, 0.0f, uMin, vMin, uW, vH);
+          pushVert(p1_x2, fy + 1.0f, p1_z2, 1.0f, 1.0f, uMin, vMin, uW, vH);
+          pushVert(p1_x1, fy + 1.0f, p1_z1, 0.0f, 1.0f, uMin, vMin, uW, vH);
 
           // Back Face Plane 1
-          pushVert(p1_x2, fy, p1_z2, 1.0f, 0.0f, uMin, vMin);
-          pushVert(p1_x1, fy, p1_z1, 0.0f, 0.0f, uMin, vMin);
-          pushVert(p1_x1, fy + 1.0f, p1_z1, 0.0f, 1.0f, uMin, vMin);
+          pushVert(p1_x2, fy, p1_z2, 1.0f, 0.0f, uMin, vMin, uW, vH);
+          pushVert(p1_x1, fy, p1_z1, 0.0f, 0.0f, uMin, vMin, uW, vH);
+          pushVert(p1_x1, fy + 1.0f, p1_z1, 0.0f, 1.0f, uMin, vMin, uW, vH);
 
-          pushVert(p1_x2, fy, p1_z2, 1.0f, 0.0f, uMin, vMin);
-          pushVert(p1_x1, fy + 1.0f, p1_z1, 0.0f, 1.0f, uMin, vMin);
-          pushVert(p1_x2, fy + 1.0f, p1_z2, 1.0f, 1.0f, uMin, vMin);
+          pushVert(p1_x2, fy, p1_z2, 1.0f, 0.0f, uMin, vMin, uW, vH);
+          pushVert(p1_x1, fy + 1.0f, p1_z1, 0.0f, 1.0f, uMin, vMin, uW, vH);
+          pushVert(p1_x2, fy + 1.0f, p1_z2, 1.0f, 1.0f, uMin, vMin, uW, vH);
 
           // Plane 2
           float angle2 = angle1 + 1.570796f;
@@ -1296,21 +1310,21 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
           float p2_x2 = centerX + cos(angle2) * scale;
           float p2_z2 = centerZ + sin(angle2) * scale;
 
-          pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f, uMin, vMin);
-          pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f, uMin, vMin);
-          pushVert(p2_x2, fy + 1.0f, p2_z2, 1.0f, 1.0f, uMin, vMin);
+          pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f, uMin, vMin, uW, vH);
+          pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f, uMin, vMin, uW, vH);
+          pushVert(p2_x2, fy + 1.0f, p2_z2, 1.0f, 1.0f, uMin, vMin, uW, vH);
 
-          pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f, uMin, vMin);
-          pushVert(p2_x2, fy + 1.0f, p2_z2, 1.0f, 1.0f, uMin, vMin);
-          pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f, uMin, vMin);
+          pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f, uMin, vMin, uW, vH);
+          pushVert(p2_x2, fy + 1.0f, p2_z2, 1.0f, 1.0f, uMin, vMin, uW, vH);
+          pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f, uMin, vMin, uW, vH);
 
           // Back Face Plane 2
-          pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f, uMin, vMin);
-          pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f, uMin, vMin);
-          pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f, uMin, vMin);
-          pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f, uMin, vMin);
-          pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f, uMin, vMin);
-          pushVert(p2_x2, fy + 1.0f, p2_z2, 1.0f, 1.0f, uMin, vMin);
+          pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f, uMin, vMin, uW, vH);
+          pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f, uMin, vMin, uW, vH);
+          pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f, uMin, vMin, uW, vH);
+          pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f, uMin, vMin, uW, vH);
+          pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f, uMin, vMin, uW, vH);
+          pushVert(p2_x2, fy + 1.0f, p2_z2, 1.0f, 1.0f, uMin, vMin, uW, vH);
         } else if (shape == Block::RenderShape::SLAB_BOTTOM ||
                    shape == Block::RenderShape::STAIRS ||
                    shape == Block::RenderShape::LAYERED) {
@@ -1366,9 +1380,11 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             float l1 = pow((float)s / 15.0f, 0.8f);
             float l2 = pow((float)b / 15.0f, 0.8f);
 
-            float uBase, vBase;
-            cb.getBlock()->getTextureUV(face, uBase, vBase, gx, gy, gz,
-                                        cb.metadata);
+            float uBase, vBase, uMax, vMax;
+            cb.getBlock()->getTextureUV(face, uBase, vBase, uMax, vMax, gx, gy,
+                                        gz, cb.metadata);
+            float uW = uMax - uBase;
+            float vH = vMax - vBase;
 
             float w = (face <= 1 || face >= 4) ? (xMax - xMin) : (zMax - zMin);
             float h = (face >= 4) ? (zMax - zMin) : (yMax - yMin);
@@ -1396,7 +1412,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             // Pass shade explicitly to pushVert
             if (face == 0) { // Z+ (Variable Z) -> Usually zMax
               pushVert(fx + xMin, fy + yMin, fz + zMax, u0, v0, uBase, vBase,
-                       aoBL, l1, l2, shade);
+                       uW, vH, aoBL, l1, l2, shade);
               pushVert(fx + xMax, fy + yMin, fz + zMax, u1, v0, uBase, vBase,
                        aoBR, l1, l2, shade);
               pushVert(fx + xMax, fy + yMax, fz + zMax, u1, v1, uBase, vBase,
@@ -1653,9 +1669,11 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
 
             // Texture UVs for Top
             // Texture UVs for Top
-            float uBase, vBase;
-            cb.getBlock()->getTextureUV(4, uBase, vBase, gx, gy, gz,
+            float uBase, vBase, uMax, vMax;
+            cb.getBlock()->getTextureUV(4, uBase, vBase, uMax, vMax, gx, gy, gz,
                                         cb.metadata);
+            float uW = uMax - uBase;
+            float vH = vMax - vBase;
 
             // Get neighbors light above (y+1) for Top Face
             // Using world if available.
@@ -1682,19 +1700,19 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             // ...
             // Let's replicate logic for Face 4 (Y+)
             // Shade = 1.0f for Top
-            pushVert(fx + 0, fy + blockHeight, fz + 1, 0, 0, uBase, vBase,
-                     (float)aoBL, l1Top, l2Top, 1.0f);
-            pushVert(fx + 1, fy + blockHeight, fz + 1, 1, 0, uBase, vBase,
-                     (float)aoBR, l1Top, l2Top, 1.0f);
-            pushVert(fx + 1, fy + blockHeight, fz + 0, 1, 1, uBase, vBase,
-                     (float)aoTR, l1Top, l2Top, 1.0f);
+            pushVert(fx + 0, fy + blockHeight, fz + 1, 0, 0, uBase, vBase, uW,
+                     vH, (float)aoBL, l1Top, l2Top, 1.0f);
+            pushVert(fx + 1, fy + blockHeight, fz + 1, 1, 0, uBase, vBase, uW,
+                     vH, (float)aoBR, l1Top, l2Top, 1.0f);
+            pushVert(fx + 1, fy + blockHeight, fz + 0, 1, 1, uBase, vBase, uW,
+                     vH, (float)aoTR, l1Top, l2Top, 1.0f);
 
-            pushVert(fx + 0, fy + blockHeight, fz + 1, 0, 0, uBase, vBase,
-                     (float)aoBL, l1Top, l2Top, 1.0f);
-            pushVert(fx + 1, fy + blockHeight, fz + 0, 1, 1, uBase, vBase,
-                     (float)aoTR, l1Top, l2Top, 1.0f);
-            pushVert(fx + 0, fy + blockHeight, fz + 0, 0, 1, uBase, vBase,
-                     (float)aoTL, l1Top, l2Top, 1.0f);
+            pushVert(fx + 0, fy + blockHeight, fz + 1, 0, 0, uBase, vBase, uW,
+                     vH, (float)aoBL, l1Top, l2Top, 1.0f);
+            pushVert(fx + 1, fy + blockHeight, fz + 0, 1, 1, uBase, vBase, uW,
+                     vH, (float)aoTR, l1Top, l2Top, 1.0f);
+            pushVert(fx + 0, fy + blockHeight, fz + 0, 0, 1, uBase, vBase, uW,
+                     vH, (float)aoTL, l1Top, l2Top, 1.0f);
 
             addFaceQuad(5, 0, 0, 0, 1, blockHeight, 1); // Y- (Bottom)
           } else {
@@ -1838,7 +1856,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
               float l1 = pow((float)s / 15.0f, 0.8f);
               float l2 = pow((float)b / 15.0f, 0.8f);
 
-              float uBase = 0.0f, vBase = 0.0f;
+              float uBase = 0.0f, vBase = 0.0f, uMax = 1.0f, vMax = 1.0f;
               float w = zMax - zMin; // Default for Side X
               float h = yMax - yMin;
               if (face <= 1)
@@ -1848,10 +1866,13 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 h = zMax - zMin;
               } // Top/Bottom
 
-              cb.getBlock()->getTextureUV(
-                  face, uBase, vBase, chunkPosition.x * CHUNK_SIZE + x,
-                  chunkPosition.y * CHUNK_SIZE + y,
-                  chunkPosition.z * CHUNK_SIZE + z, cb.metadata, 0);
+              cb.getBlock()->getTextureUV(face, uBase, vBase, uMax, vMax,
+                                          chunkPosition.x * CHUNK_SIZE + x,
+                                          chunkPosition.y * CHUNK_SIZE + y,
+                                          chunkPosition.z * CHUNK_SIZE + z,
+                                          cb.metadata, 0);
+              float uW = uMax - uBase;
+              float vH = vMax - vBase;
 
               // Face Dimming Logic
               float shade = 1.0f;
@@ -1865,8 +1886,8 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
               // Draw
               auto pV = [&](float vx, float vy, float vz, float u, float v,
                             float ao) {
-                pushVert(fx + vx, fy + vy, fz + vz, u, v, uBase, vBase, ao, l1,
-                         l2, shade);
+                pushVert(fx + vx, fy + vy, fz + vz, u, v, uBase, vBase, uW, vH,
+                         ao, l1, l2, shade);
               };
 
               // U,V mapping helpers
@@ -2070,8 +2091,11 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 auto finalP2 = transform(p2) + glm::vec3(fx, fy, fz);
                 auto finalP3 = transform(p3) + glm::vec3(fx, fy, fz);
 
-                float uMin, vMin;
-                cb.getBlock()->getModelTextureUV(faceProp.texture, uMin, vMin);
+                float uMin, vMin, uMax, vMax;
+                cb.getBlock()->getModelTextureUV(faceProp.texture, uMin, vMin,
+                                                 uMax, vMax);
+                float uW = uMax - uMin;
+                float vH = vMax - vMin;
 
                 float localU1 = faceProp.uv[0];
                 float localV1 = 1.0f - faceProp.uv[1];
@@ -2123,35 +2147,35 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                   float l1 = lights.first, l2 = lights.second;
 
                   pushVert(finalP0.x, finalP0.y, finalP0.z, u_p0, v_p0, uMin,
-                           vMin, 0.0f, l1, l2);
+                           vMin, uW, vH, 0.0f, l1, l2);
                   pushVert(finalP1.x, finalP1.y, finalP1.z, u_p1, v_p1, uMin,
-                           vMin, 0.0f, l1, l2);
+                           vMin, uW, vH, 0.0f, l1, l2);
                   pushVert(finalP2.x, finalP2.y, finalP2.z, u_p2, v_p2, uMin,
-                           vMin, 0.0f, l1, l2);
+                           vMin, uW, vH, 0.0f, l1, l2);
 
                   pushVert(finalP0.x, finalP0.y, finalP0.z, u_p0, v_p0, uMin,
-                           vMin, 0.0f, l1, l2);
+                           vMin, uW, vH, 0.0f, l1, l2);
                   pushVert(finalP2.x, finalP2.y, finalP2.z, u_p2, v_p2, uMin,
-                           vMin, 0.0f, l1, l2);
+                           vMin, uW, vH, 0.0f, l1, l2);
                   pushVert(finalP3.x, finalP3.y, finalP3.z, u_p3, v_p3, uMin,
-                           vMin, 0.0f, l1, l2);
+                           vMin, uW, vH, 0.0f, l1, l2);
                 } else {
                   std::pair<float, float> lights = getFaceLight(faceIdx);
                   float l1 = lights.first, l2 = lights.second;
 
                   pushVert(finalP0.x, finalP0.y, finalP0.z, localU1, localV2,
-                           uMin, vMin, 0.0f, l1, l2);
+                           uMin, vMin, uW, vH, 0.0f, l1, l2);
                   pushVert(finalP1.x, finalP1.y, finalP1.z, localU2, localV2,
-                           uMin, vMin, 0.0f, l1, l2);
+                           uMin, vMin, uW, vH, 0.0f, l1, l2);
                   pushVert(finalP2.x, finalP2.y, finalP2.z, localU2, localV1,
-                           uMin, vMin, 0.0f, l1, l2);
+                           uMin, vMin, uW, vH, 0.0f, l1, l2);
 
                   pushVert(finalP0.x, finalP0.y, finalP0.z, localU1, localV2,
-                           uMin, vMin, 0.0f, l1, l2);
+                           uMin, vMin, uW, vH, 0.0f, l1, l2);
                   pushVert(finalP2.x, finalP2.y, finalP2.z, localU2, localV1,
-                           uMin, vMin, 0.0f, l1, l2);
+                           uMin, vMin, uW, vH, 0.0f, l1, l2);
                   pushVert(finalP3.x, finalP3.y, finalP3.z, localU1, localV1,
-                           uMin, vMin, 0.0f, l1, l2);
+                           uMin, vMin, uW, vH, 0.0f, l1, l2);
                 }
               }
             }
@@ -2163,7 +2187,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
 
   // Stitch Vectors
   // Stitch Vectors
-  outOpaqueCount = opaqueVertices.size() / 17;
+  outOpaqueCount = opaqueVertices.size() / 19;
   opaqueVertices.insert(opaqueVertices.end(), transparentVertices.begin(),
                         transparentVertices.end());
   opaqueVertices.insert(opaqueVertices.end(), transparentVertices.begin(),
@@ -2182,11 +2206,11 @@ void Chunk::uploadMesh(const std::vector<float> &data, int opaqueCount) {
                GL_DYNAMIC_DRAW);
 
   vertexCount = opaqueCount;
-  vertexCountTransparent = (data.size() / 17) - opaqueCount;
+  vertexCountTransparent = (data.size() / 19) - opaqueCount;
 
   // Store transparent part for sorting
   if (vertexCountTransparent > 0) {
-    size_t opaqueFloats = opaqueCount * 17;
+    size_t opaqueFloats = opaqueCount * 19;
     if (opaqueFloats < data.size()) {
       transparentVertices.assign(data.begin() + opaqueFloats, data.end());
     }
@@ -2195,7 +2219,7 @@ void Chunk::uploadMesh(const std::vector<float> &data, int opaqueCount) {
   }
 
   // Attribs
-  float stride = 17 * sizeof(float); // 3+4+2+3+2+3 = 17
+  float stride = 19 * sizeof(float); // 3+4+2+3+4+3 = 19
 
   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void *)0); // Pos
   glEnableVertexAttribArray(0);
@@ -2208,12 +2232,14 @@ void Chunk::uploadMesh(const std::vector<float> &data, int opaqueCount) {
   glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride,
                         (void *)(9 * sizeof(float))); // Light(Sky,Block,AO)
   glEnableVertexAttribArray(3);
-  glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, stride,
-                        (void *)(12 * sizeof(float))); // TexOrigin
+  glVertexAttribPointer(
+      4, 4, GL_FLOAT, GL_FALSE, stride,
+      (void *)(12 *
+               sizeof(float))); // TexOrigin (vec4: uMin, vMin, uWidth, vHeight)
   glEnableVertexAttribArray(4);
   glVertexAttribPointer(
       5, 3, GL_FLOAT, GL_FALSE, stride,
-      (void *)(14 * sizeof(float))); // Climate (Temp, Humid, Index)
+      (void *)(16 * sizeof(float))); // Climate (Temp, Humid, Index)
   glEnableVertexAttribArray(5);
 }
 
@@ -2229,7 +2255,7 @@ void Chunk::sortAndUploadTransparent(const glm::vec3 &cameraPos) {
   }
   m_lastSortCameraPos = cameraPos;
 
-  int floatsPerVertex = 17; // As defined in uploadMesh
+  int floatsPerVertex = 19; // As defined in uploadMesh
   int vertsPerFace = 6;
   int numFloatsPerFace = floatsPerVertex * vertsPerFace;
 
@@ -2365,7 +2391,7 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
     l2 = pow((float)bl / 15.0f, 0.8f);
   }
 
-  float uMin = 0.00f, vMin = 0.00f;
+  float uMin = 0.00f, vMin = 0.00f, uMax = 1.0f, vMax = 1.0f;
 
   if (world) {
     int gx = chunkPosition.x * CHUNK_SIZE + x;
@@ -2385,17 +2411,22 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
     if (block->isLiquid() && faceDir == 4) {
       // Check if flowing
       if (metadata > 0) {
-        block->getTextureUV(0, uMin, vMin, gx, gy, gz, metadata,
+        block->getTextureUV(0, uMin, vMin, uMax, vMax, gx, gy, gz, metadata,
                             layer); // Use Side Texture
       } else {
-        block->getTextureUV(faceDir, uMin, vMin, gx, gy, gz, metadata, layer);
+        block->getTextureUV(faceDir, uMin, vMin, uMax, vMax, gx, gy, gz,
+                            metadata, layer);
       }
     } else {
-      block->getTextureUV(faceDir, uMin, vMin, gx, gy, gz, metadata, layer);
+      block->getTextureUV(faceDir, uMin, vMin, uMax, vMax, gx, gy, gz, metadata,
+                          layer);
     }
   } else {
-    block->getTextureUV(faceDir, uMin, vMin, 0, 0, 0, metadata, layer);
+    block->getTextureUV(faceDir, uMin, vMin, uMax, vMax, 0, 0, 0, metadata,
+                        layer);
   }
+  float uW = uMax - uMin;
+  float vH = vMax - vMin;
 
   float fx = (float)x, fy = (float)y, fz = (float)z;
 
@@ -2569,6 +2600,8 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
     vertices.push_back(ao);
     vertices.push_back(uMin);
     vertices.push_back(vMin);
+    vertices.push_back(uW);
+    vertices.push_back(vH);
     // New Attributes
     vertices.push_back(temp);
     vertices.push_back(humid);

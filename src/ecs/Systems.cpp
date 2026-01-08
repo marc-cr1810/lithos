@@ -639,17 +639,18 @@ void RenderSystem::Render(entt::registry &registry, World &world,
 
     shader.setMat4("model", model);
 
-    // Setup Texture Origin
-    Block *block = BlockRegistry::getInstance().getBlock(blockComp.type);
-    float u, v;
-    block->getTextureUV(2, u, v);
-    glVertexAttrib2f(4, u, v);
-
     // Sample Light
     // Sample at the center of the entity
     int x = std::floor(transform.position.x);
     int y = std::floor(transform.position.y);
     int z = std::floor(transform.position.z);
+
+    // Setup Texture Origin
+    Block *block = BlockRegistry::getInstance().getBlock(blockComp.type);
+    float uMin, vMin, uMax, vMax;
+    block->getTextureUV(2, uMin, vMin, uMax, vMax, x, y, z,
+                        0); // Face 2? Or generic?
+    glVertexAttrib4f(4, uMin, vMin, uMax - uMin, vMax - vMin);
 
     ChunkBlock b = world.getBlock(x, y, z);
     float sun = b.skyLight / 15.0f;

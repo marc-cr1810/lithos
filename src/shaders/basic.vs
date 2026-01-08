@@ -3,13 +3,13 @@ layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec4 aColor;
 layout (location = 2) in vec2 aTexCoord;
 layout (location = 3) in vec3 aLight;
-layout (location = 4) in vec2 aTexOrigin;
+layout (location = 4) in vec4 aTexOrigin; // xy=Origin, zw=Size
 layout (location = 5) in vec3 aClimate; // x=Temp, y=Humid, z=TintIndex
 
 out vec4 ourColor;
 out vec2 TexCoord;
 out vec3 Lighting;
-out vec2 TexOrigin;
+out vec4 TexOrigin;
 out vec3 FragPos;
 out vec3 Climate;
 

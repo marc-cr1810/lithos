@@ -19,8 +19,5 @@
         "down": "plant/cactus/cactus_bottom"
     },
     "opaque": false,
-    "shape": {
-        "base": "pixelbox"
-    },
     "id": 15
 }

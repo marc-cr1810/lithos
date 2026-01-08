@@ -56,8 +56,10 @@ void ResourceManager::LoadTextureAtlas(const std::string &name,
   }
 
   // Default size 1024x1024 for now, could be dynamic
-  int atlasSize = 1024;
-  auto atlas = std::make_unique<TextureAtlas>(atlasSize, atlasSize, tileSize);
+  // Default size 1024x1024 for now, could be dynamic (stb_rect_pack will just
+  // fail if full)
+  int atlasSize = 2048; // Increased for safety
+  auto atlas = std::make_unique<TextureAtlas>(atlasSize, atlasSize);
 
   // We assume TextureAtlas has a Load method that takes a directory
   try {
@@ -67,12 +69,23 @@ void ResourceManager::LoadTextureAtlas(const std::string &name,
       for (const auto &pair : maps) {
         const auto &map = pair.second;
         if (map.loadIntoBlockTextureAtlas && !map.data.empty()) {
-          // Add to atlas
+          // Add to atlas (Queued)
           atlas->PackTexture(map.code, (unsigned char *)map.data.data(),
                              map.width, map.height, map.channels);
-          LOG_INFO("Injected ColorMap '{}' into Block Atlas", map.code);
+          LOG_INFO("Queued ColorMap '{}' for Block Atlas", map.code);
+        }
+      }
+    }
 
-          // UV Retrieval
+    // This triggers the Packing of all queued + directory textures
+    atlas->Load(dirPath);
+
+    // After loading, we must resolve UVs for the manually added maps
+    if (name == "blocks") {
+      const auto &maps = ColorMapRegistry::Get().GetMaps();
+      for (const auto &pair : maps) {
+        const auto &map = pair.second;
+        if (map.loadIntoBlockTextureAtlas && !map.data.empty()) {
           const TextureInfo *info = atlas->GetTextureInfo(map.code);
           if (info) {
             float w = info->uMax - info->uMin;
@@ -84,11 +97,9 @@ void ResourceManager::LoadTextureAtlas(const std::string &name,
       }
     }
 
-    atlas->Load(dirPath);
-
     // Setup texture from atlas data
     auto texture = std::make_unique<Texture>(
-        atlas->GetWidth(), atlas->GetHeight(), atlas->GetData(), 4);
+        atlas->GetWidth(), atlas->GetHeight(), atlas->GetData().data(), 4);
     m_Textures[name] = std::move(texture);
 
     m_TextureAtlases[name] = std::move(atlas);

@@ -12,7 +12,15 @@
         {
             "code": "wood",
             "states": [
-                "oak"
+                "acacia",
+                "birch",
+                "dark_oak",
+                "jungle",
+                "mangrove",
+                ,
+                "oak",
+                "pale_oak",
+                "spruce"
             ]
         }
     ],

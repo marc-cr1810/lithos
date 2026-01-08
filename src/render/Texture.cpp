@@ -5,7 +5,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "../vendor/stb_image.h"
 
-Texture::Texture(int width, int height, unsigned char *data, int channels)
+Texture::Texture(int width, int height, const unsigned char *data, int channels)
     : Width(width), Height(height), nrChannels(channels) {
   glGenTextures(1, &ID);
   glBindTexture(GL_TEXTURE_2D, ID);
