@@ -1,4 +1,19 @@
 {
+    "validSoilBlocks": [
+        "lithos:grass",
+        "lithos:dirt",
+        "lithos:podzol",
+        "lithos:mud",
+        "lithos:sand",
+        "lithos:gravel",
+        "lithos:coarse_dirt",
+        "lithos:terra_preta",
+        "lithos:peat",
+        "lithos:clay",
+        "lithos:rock_claystone",
+        "lithos:snow_block",
+        "lithos:snow_layer"
+    ],
     "treesPerChunk": {
         "dist": "gaussian",
         "avg": 70,

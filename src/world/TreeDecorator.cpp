@@ -13,12 +13,12 @@
 #include <glm/glm.hpp>
 #include <iostream>
 #include <random>
+#include <unordered_set>
 #include <vector>
 
-static block_id WOOD = 0, LEAVES = 0, GRASS = 0, DIRT = 0, PODZOL = 0, MUD = 0,
-                SAND = 0, GRAVEL = 0, COARSE_DIRT = 0, TERRA_PRETA = 0,
-                PEAT = 0, CLAY = 0, CLAYSTONE = 0, SNOW = 0, SNOW_LAYER = 0;
+static block_id WOOD = 0, LEAVES = 0;
 static bool idsResolved = false;
+static std::unordered_set<block_id> validSoilBlockIds; // Loaded from config
 
 static void resolveTreeIds() {
   if (idsResolved)
@@ -26,19 +26,16 @@ static void resolveTreeIds() {
   auto &reg = BlockRegistry::getInstance();
   WOOD = reg.getBlockId("lithos:oak_log");
   LEAVES = reg.getBlockId("lithos:oak_leaves");
-  GRASS = reg.getBlockId("lithos:grass");
-  DIRT = reg.getBlockId("lithos:dirt");
-  PODZOL = reg.getBlockId("lithos:podzol");
-  MUD = reg.getBlockId("lithos:mud");
-  SAND = reg.getBlockId("lithos:sand");
-  GRAVEL = reg.getBlockId("gravel");
-  COARSE_DIRT = reg.getBlockId("lithos:coarse_dirt");
-  TERRA_PRETA = reg.getBlockId("lithos:terra_preta");
-  PEAT = reg.getBlockId("lithos:peat");
-  CLAY = reg.getBlockId("lithos:clay");
-  CLAYSTONE = reg.getBlockId("lithos:rock_claystone");
-  SNOW = reg.getBlockId("lithos:snow_block");
-  SNOW_LAYER = reg.getBlockId("lithos:snow_layer");
+
+  // Load valid soil blocks from config
+  const auto &config = TreeRegistry::Get().GetConfig();
+  for (const auto &blockCode : config.validSoilBlocks) {
+    block_id id = reg.getBlockId(blockCode);
+    if (id != 0) { // Skip if block not found
+      validSoilBlockIds.insert(id);
+    }
+  }
+
   idsResolved = true;
 }
 
@@ -585,14 +582,9 @@ void TreeDecorator::Decorate(WorldGenerator &generator, WorldGenRegion &region,
         // 3x3 region
         surfaceBlock = region.getBlock(gx, height, gz);
 
-        // Check if it's a valid soil type
-        isSoil = (surfaceBlock == GRASS || surfaceBlock == DIRT ||
-                  surfaceBlock == PODZOL || surfaceBlock == MUD ||
-                  surfaceBlock == SAND || surfaceBlock == GRAVEL ||
-                  surfaceBlock == COARSE_DIRT || surfaceBlock == TERRA_PRETA ||
-                  surfaceBlock == PEAT || surfaceBlock == CLAY ||
-                  surfaceBlock == CLAYSTONE || surfaceBlock == SNOW ||
-                  surfaceBlock == SNOW_LAYER);
+        // Check if it's a valid soil type (from config)
+        isSoil =
+            (validSoilBlockIds.find(surfaceBlock) != validSoilBlockIds.end());
 
         if (!isSoil)
           continue;

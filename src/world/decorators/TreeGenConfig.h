@@ -87,6 +87,9 @@ struct TreeGenConfig {
   float vinesMinRain = 0.0f;
   float vinesMinTemp = 0.0f;
 
+  std::vector<std::string>
+      validSoilBlocks; // Block codes that trees can grow on
+
   std::vector<TreeGenerator> treegens;
   std::vector<TreeGenerator> shrubgens;
 };
@@ -105,6 +108,9 @@ inline void from_json(const json &j, TreeGenConfig &c) {
     c.vinesMinRain = j.at("vinesMinRain").get<float>();
   if (j.contains("vinesMinTemp"))
     c.vinesMinTemp = j.at("vinesMinTemp").get<float>();
+
+  if (j.contains("validSoilBlocks"))
+    c.validSoilBlocks = j.at("validSoilBlocks").get<std::vector<std::string>>();
 
   if (j.contains("treegens"))
     c.treegens = j.at("treegens").get<std::vector<TreeGenerator>>();
