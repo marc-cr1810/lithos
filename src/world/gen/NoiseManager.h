@@ -32,8 +32,10 @@ public:
   float GetSurfacePatchNoise(int x,
                              int z) const; // New: For gravel/sand patches
   float GetTerrainOctave(float x, float z, int octave) const; // New
-  float GetLandformNeighborNoise(int x, int z) const;         // 2nd closest
-  float GetLandformNeighbor3Noise(int x, int z) const;        // 3rd closest
+  float GetTerrainOctave3D(int x, int y, int z,
+                           int octave) const;          // New: 3D for GetHeight
+  float GetLandformNeighborNoise(int x, int z) const;  // 2nd closest
+  float GetLandformNeighbor3Noise(int x, int z) const; // 3rd closest
   void GetLandformDistances(int x, int z, float &f1, float &f2,
                             float &f3) const; // Raw F1, F2, F3
   float GetStrata(int x, int z) const;
@@ -145,4 +147,5 @@ private:
   FastNoise::SmartNode<> cave3DNode;
   FastNoise::SmartNode<> caveEntranceNode;
   FastNoise::SmartNode<> surfacePatchNode; // Simplex
+  FastNoise::SmartNode<> terrainBaseNode; // Base Simplex for 3D terrain octaves
 };

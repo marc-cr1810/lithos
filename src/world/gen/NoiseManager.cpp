@@ -176,6 +176,12 @@ void NoiseManager::Initialize() {
   // 9. Surface Patch Noise
   auto surfacePatch = FastNoise::New<FastNoise::Simplex>();
   surfacePatchNode = surfacePatch;
+
+  // 10. Terrain Octave Source (for GetTerrainOctave3D /
+  // GenTerrainNoise3DOctaves) Replicating the "simplexSource" used in
+  // GenTerrainNoise3DOctaves
+  auto terrainBase = FastNoise::New<FastNoise::Simplex>();
+  terrainBaseNode = terrainBase;
 }
 
 // --------------------------------------------------------
@@ -272,6 +278,18 @@ float NoiseManager::GetTerrainOctave(float x, float z, int octave) const {
   // I'll use warpXNode (Simplex) or create a dedicated one in init.
   // For now, let's use warpXNode->GenSingle2D which is simplex.
   return warpXNode->GenSingle2D(x * freq, z * freq, seed + 100 + octave);
+}
+
+float NoiseManager::GetTerrainOctave3D(int x, int y, int z, int octave) const {
+  // Matches GenTerrainNoise3DOctaves logic
+  float baseFreq = 0.0005f;
+  float freq = baseFreq * std::pow(2.0f, (float)octave);
+
+  // Use independent Simplex node, NOT warp-based FBM
+  float noise = terrainBaseNode->GenSingle3D(
+      (float)x * freq, (float)y * freq, (float)z * freq, seed + 100 + octave);
+
+  return (noise + 1.0f) * 0.5f;
 }
 
 float NoiseManager::GetForestNoise(int x, int z) const {

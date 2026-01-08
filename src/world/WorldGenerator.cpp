@@ -761,7 +761,8 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
   // 5. Post-Processing
   {
     PROFILE_SCOPE_CONDITIONAL("ChunkGen_PostProcess", m_ProfilingEnabled);
-    CleanupFloatingIslands(chunk);
+    // CleanupFloatingIslands(chunk); // Disabled: Breaks tree generation (trees
+    // spawn on deleted islands)
   }
 
   // 6. Calculate Verticality Flags (for culling)
@@ -814,76 +815,11 @@ void WorldGenerator::Decorate(WorldGenRegion &region,
 
 // Helpers
 int WorldGenerator::GetHeight(int x, int z) {
-  float upheaval = noiseManager.GetUpheaval(x, z);
-  float hash1 = noiseManager.GetLandformNoise(x, z);
-  float hash2 = noiseManager.GetLandformNeighborNoise(x, z);
-  float hash3 = noiseManager.GetLandformNeighbor3Noise(x, z);
-
-  float t = noiseManager.GetTemperature(x, z);
-  float h = noiseManager.GetHumidity(x, z);
-
-  const Landform *lf1 = landformRegistry.Select(hash1, t, h);
-  const Landform *lf2 = landformRegistry.Select(hash2, t, h);
-  const Landform *lf3 = landformRegistry.Select(hash3, t, h);
-
-  float baseHeight = 64.0f + upheaval * 20.0f;
-  float detail = noiseManager.GetTerrainDetail(x, z);
-
-  auto calcHeight = [&](const Landform &lf) -> float {
-    // 1. Accumulate Octaves
-    float noiseSum = 0.0f;
-    for (int i = 0; i < (int)lf.terrainOctaves.size(); ++i) {
-      float octaveNoise = noiseManager.GetTerrainOctave((float)x, (float)z, i);
-      // Filter by threshold
-      float val = octaveNoise - lf.terrainOctaves[i].threshold;
-      if (val < 0)
-        val = 0; // VS often clamps or uses as hard threshold
-      noiseSum += val * lf.terrainOctaves[i].amplitude * 20.0f; // Scale factor
-    }
-
-    // 2. Adjust for Ocean / Base
-    float baseShift = 0.0f;
-    if (lf.name.find("Ocean") != std::string::npos) {
-      baseShift = -20.0f;
-    }
-
-    // 3. Find Surface Height via Binary Search of Density Thresholds
-    // Simple heuristic: Height is where DensityThreshold(y) + noiseSum ~= 0
-    // Note: Our convertsion th * 2 - 1 means -1 is dense, 1 is air.
-    // So we want Threshold(y) + noiseSum/Scale >= 0 ?
-    // Actually, in our converted system: Threshold 1.0 is air, -1.0 is solid.
-    // Noise is positive. So we want Threshold(y) + NoiseSum/40.0f >= 0.
-
-    int low = 1;
-    int high = config.worldHeight - 2;
-    int bestY = low;
-
-    // Noise normalization for threshold comparison
-    float normalizedNoise = noiseSum / 40.0f;
-
-    while (low <= high) {
-      int mid = low + (high - low) / 2;
-      float density = lf.GetDensityThreshold(mid) + normalizedNoise;
-      if (density >= 0) { // Air
-        high = mid - 1;
-      } else { // Solid
-        bestY = mid;
-        low = mid + 1;
-      }
-    }
-
-    return (float)bestY + baseShift + upheaval * 10.0f;
-  };
-
-  float h1 = calcHeight(*lf1);
-  float h2 = calcHeight(*lf2);
-  float h3 = calcHeight(*lf3);
-
+  // 1. Get Landform Weights (Match GenerateColumn R=0.3f logic)
   float f1, f2, f3;
   noiseManager.GetLandformDistances(x, z, f1, f2, f3);
 
-  float R = 0.2f;
-
+  float R = 0.3f;
   float w1 = 1.0f;
   float w2 = 0.0f;
   float w3 = 0.0f;
@@ -896,22 +832,89 @@ int WorldGenerator::GetHeight(int x, int z) {
     float t3 = 1.0f - (f3 - f1) / R;
     w3 = t3 * t3 * t3 * (t3 * (t3 * 6.0f - 15.0f) + 10.0f);
   }
-
   float totalW = w1 + w2 + w3;
-  float finalSurfaceY = (h1 * w1 + h2 * w2 + h3 * w3) / totalW;
+  w1 /= totalW;
+  w2 /= totalW;
+  w3 /= totalW;
 
-  float weight1 = w1 / totalW;
-  if (weight1 < 1.0f) {
-    float terrainDetail = noiseManager.GetTerrainDetail(x, z);
-    finalSurfaceY += terrainDetail * 15.0f * (1.0f - weight1);
+  // 2. Select Landforms
+  float noiseHash1 = noiseManager.GetLandformNoise(x, z);
+  float noiseHash2 = noiseManager.GetLandformNeighborNoise(x, z);
+  float noiseHash3 = noiseManager.GetLandformNeighbor3Noise(x, z);
+
+  float t = noiseManager.GetTemperature(x, z);
+  float h = noiseManager.GetHumidity(x, z);
+
+  const Landform *lf1 = landformRegistry.Select(noiseHash1, t, h);
+  const Landform *lf2 = landformRegistry.Select(noiseHash2, t, h);
+  const Landform *lf3 = landformRegistry.Select(noiseHash3, t, h);
+
+  // 3. Blend Octave Amplitudes
+  // GenerateColumn uses 9 octaves. Map landform octaves to these 9 slots.
+  const int numOctaves = 9;
+  std::vector<float> blendedAmps(numOctaves);
+
+  for (int i = 0; i < numOctaves; ++i) {
+    float amp1 = (i < (int)lf1->terrainOctaves.size())
+                     ? lf1->terrainOctaves[i].amplitude
+                     : 0.0f;
+    float amp2 = (i < (int)lf2->terrainOctaves.size())
+                     ? lf2->terrainOctaves[i].amplitude
+                     : 0.0f;
+    float amp3 = (i < (int)lf3->terrainOctaves.size())
+                     ? lf3->terrainOctaves[i].amplitude
+                     : 0.0f;
+    blendedAmps[i] = amp1 * w1 + amp2 * w2 + amp3 * w3;
   }
 
-  int surfaceY = (int)finalSurfaceY;
-  if (surfaceY < 5)
-    surfaceY = 5;
-  if (surfaceY > 255)
-    surfaceY = 255;
-  return surfaceY;
+  // 5. Binary Search for Surface
+  float upheaval = noiseManager.GetUpheaval(x, z);
+  float upheavalShift = upheaval * 40.0f;
+
+  int low = 5; // Bedrock
+  int high = config.worldHeight - 2;
+  int bestY = low;
+
+  while (low <= high) {
+    int mid = low + (high - low) / 2;
+    int shiftedY = (int)(mid - upheavalShift);
+
+    // Blend Density Thresholds for this Y
+    float th1 = lf1->GetDensityThreshold(shiftedY);
+    float th2 = lf2->GetDensityThreshold(shiftedY);
+    float th3 = lf3->GetDensityThreshold(shiftedY);
+
+    float blendedTh = th1 * w1 + th2 * w2 + th3 * w3;
+
+    // Optimization Checks (Match GenerateChunk)
+    bool isSolid = false;
+    if (blendedTh > 1.2f) {
+      isSolid = true;
+    } else if (blendedTh < -1.2f) {
+      isSolid = false;
+    } else {
+      // Calculate Noise Sum using 3D Noise (Expensive but necessary for
+      // accuracy)
+      float noiseSum = 0.0f;
+      for (int i = 0; i < numOctaves; ++i) {
+        if (blendedAmps[i] == 0.0f)
+          continue;
+        // Use 3D noise sampled at Absolute Y (mid), NOT Shifted Y
+        float octaveNoise = noiseManager.GetTerrainOctave3D(x, mid, z, i);
+        noiseSum += octaveNoise * blendedAmps[i];
+      }
+      isSolid = (blendedTh + noiseSum) > 0;
+    }
+
+    if (isSolid) { // Solid
+      bestY = mid;
+      low = mid + 1;
+    } else { // Air
+      high = mid - 1;
+    }
+  }
+
+  return bestY;
 }
 
 std::string WorldGenerator::GetLandformNameAt(int x, int z) {
@@ -1065,4 +1068,12 @@ void WorldGenerator::CleanupFloatingIslands(Chunk &chunk) {
       }
     }
   }
+}
+
+// Check if a block is inside a cave (stateless simulation)
+bool WorldGenerator::IsCave(int x, int y, int z) {
+  if (caveGenerator) {
+    return caveGenerator->IsCaveAt(x, y, z);
+  }
+  return false;
 }

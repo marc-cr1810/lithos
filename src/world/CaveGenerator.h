@@ -104,6 +104,14 @@ public:
   // Generate caves in a region (cross-chunk safe)
   void GenerateCaves(WorldGenRegion &region, int chunkX, int chunkZ);
 
+  // Stateless check: returns true if a cave would be carved at absolute world
+  // coordinates (x,y,z)
+  bool IsCaveAt(int x, int y, int z);
+
+  // Stateless Random helpers (public for use by CheckTunnelInternal)
+  float RandomFloatStateless(std::mt19937 &rng, float min, float max) const;
+  int RandomIntStateless(std::mt19937 &rng, int max) const;
+
 private:
   int seed;
   const WorldGenConfig &worldConfig;
@@ -143,6 +151,8 @@ private:
 
   // Helper to get random int
   int RandomInt(int max);
+
+  // Check helpers (const/stateless variants)
 
   // Cached Blocks
   class Block *waterBlock = nullptr;

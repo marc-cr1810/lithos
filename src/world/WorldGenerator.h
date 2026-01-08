@@ -58,6 +58,9 @@ public:
     return (int)(64.0f + hNoise * 20.0f);
   }
 
+  // Check if a block is inside a cave (stateless simulation)
+  bool IsCave(int x, int y, int z);
+
   // Profiling support
   bool IsProfilingEnabled() const { return m_ProfilingEnabled; }
   void EnableProfiling(bool enable) { m_ProfilingEnabled = enable; }

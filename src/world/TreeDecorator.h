@@ -24,14 +24,17 @@ private:
   // Build the selected tree
   void GenerateTree(WorldGenRegion *region, int x, int y, int z,
                     const TreeStructure &tree, std::mt19937 &rng,
-                    const struct ChunkNeighborhood &hood);
+                    const struct ChunkNeighborhood &hood, int targetChunkX,
+                    int targetChunkZ, WorldGenerator *generator = nullptr);
 
   void BuildSegment(WorldGenRegion *region, int x, int y, int z,
                     const TreeSegment &segment, glm::vec3 treeOrigin, float dx,
                     float dy, float dz, float angleVertStart,
                     float angleHorStart, float width, float progress, int depth,
                     int &totalSegments, const TreeStructure &tree,
-                    std::mt19937 &rng, const struct ChunkNeighborhood &hood);
+                    std::mt19937 &rng, const struct ChunkNeighborhood &hood,
+                    int targetChunkX, int targetChunkZ,
+                    WorldGenerator *generator = nullptr);
 
   float GrowBranches(WorldGenRegion *region, int x, int y, int z,
                      int branchQuantity, const TreeSegment &branchSeg,
@@ -41,7 +44,8 @@ private:
                      glm::vec3 treeOrigin, float trunkOffsetX,
                      float trunkOffsetZ, int &totalSegments,
                      const TreeStructure &tree, std::mt19937 &rng,
-                     const struct ChunkNeighborhood &hood);
+                     const struct ChunkNeighborhood &hood, int targetChunkX,
+                     int targetChunkZ, WorldGenerator *generator = nullptr);
 };
 
 #endif

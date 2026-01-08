@@ -46,12 +46,18 @@ static void resolveTreeIds() {
 
 void TreeDecorator::GenerateTree(WorldGenRegion *region, int x, int y, int z,
                                  const TreeStructure &tree, std::mt19937 &rng,
-                                 const ChunkNeighborhood &hood) {
+                                 const ChunkNeighborhood &hood,
+                                 int targetChunkX, int targetChunkZ,
+                                 WorldGenerator *generator) {
   // Determine World Limits safely
   int maxHeight = 320; // Default for benchmark
   if (region && region->getWorld()) {
     maxHeight = region->getWorld()->config.worldHeight;
   }
+
+  // Use generator if passed, or try to get from world if possible (circular
+  // dependency usually prevents this without casting) We prefer passing it
+  // down.
 
   // Basic root position check
   if (y + tree.yOffset < 0 || y + tree.yOffset >= maxHeight)
@@ -59,13 +65,10 @@ void TreeDecorator::GenerateTree(WorldGenRegion *region, int x, int y, int z,
 
   // Start with Trunks (Level 0)
   if (tree.trunks.empty()) {
-    // LOG_WARN("GenerateTree: No trunks defined for tree.");
     return;
   }
 
   // Initial State
-  // VS: Origin is integer coordinate (or whatever was passed), offsets handle
-  // +0.5
   glm::vec3 treeOrigin(x, y + tree.yOffset, z);
 
   // Pick a trunk template
@@ -74,7 +77,6 @@ void TreeDecorator::GenerateTree(WorldGenRegion *region, int x, int y, int z,
   std::uniform_int_distribution<int> trunkDist(0, tree.trunks.size() - 1);
   const TreeSegment &rootSeg = tree.trunks[trunkDist(rng)];
 
-  // VS: Calculate initial trunk width
   // size = sizeMultiplier + sizeVar
   float baseSize = tree.sizeMultiplier;
   if (!tree.sizeVar.dist.empty() && tree.sizeVar.dist != "none") {
@@ -82,11 +84,9 @@ void TreeDecorator::GenerateTree(WorldGenRegion *region, int x, int y, int z,
   }
   float width = baseSize * rootSeg.widthMultiplier;
 
-  // VS: Use trunk's own angles if specified, otherwise default upward
   float rootAngleVert = 0.0f;
   float rootAngleHori = 0.0f;
 
-  // VS: Use trunk's own angles if specified, otherwise default upward
   if (!rootSeg.angleVert.dist.empty() && rootSeg.angleVert.dist != "none") {
     rootAngleVert = rootSeg.angleVert.Sample(rng);
     rootAngleHori =
@@ -95,24 +95,22 @@ void TreeDecorator::GenerateTree(WorldGenRegion *region, int x, int y, int z,
             : 0.0f;
   }
 
-  // VS: dx/dz from root segment
   float rootDx = rootSeg.dx;
   float rootDz = rootSeg.dz;
 
   int totalSegments = 0;
   BuildSegment(region, x, y, z, rootSeg, treeOrigin, rootDx, 0.0f, rootDz,
                rootAngleVert, rootAngleHori, width, 0.0f, 0, totalSegments,
-               tree, rng, hood);
+               tree, rng, hood, targetChunkX, targetChunkZ, generator);
 }
 
-void TreeDecorator::BuildSegment(WorldGenRegion *region, int x, int y, int z,
-                                 const TreeSegment &segment,
-                                 glm::vec3 treeOrigin, float dx, float dy,
-                                 float dz, float angleVerStart,
-                                 float angleHorStart, float width,
-                                 float progress, int depth, int &totalSegments,
-                                 const TreeStructure &tree, std::mt19937 &rng,
-                                 const ChunkNeighborhood &hood) {
+void TreeDecorator::BuildSegment(
+    WorldGenRegion *region, int x, int y, int z, const TreeSegment &segment,
+    glm::vec3 treeOrigin, float dx, float dy, float dz, float angleVerStart,
+    float angleHorStart, float width, float progress, int depth,
+    int &totalSegments, const TreeStructure &tree, std::mt19937 &rng,
+    const ChunkNeighborhood &hood, int targetChunkX, int targetChunkZ,
+    WorldGenerator *generator) {
 
   if (!region)
     return;
@@ -285,20 +283,75 @@ void TreeDecorator::BuildSegment(WorldGenRegion *region, int x, int y, int z,
                          treeOrigin.z + dz);
     // 1. Place Log using world coordinates via region
     glm::ivec3 bPos = glm::vec3(currentPos);
-    if (bPos.y >= 0 && bPos.y < maxHeight) {
-      // Get current block at world position
-      Block *currentBlock = region->getBlockPtr(bPos.x, bPos.y, bPos.z);
-      block_id currentType = currentBlock->getId();
 
-      if (currentBlock->isSolid() && !currentBlock->isReplaceable() &&
-          currentType != currentSegmentBlockId && currentType != logId &&
-          currentType != branchyId && currentType != leavesId) {
-        alive = false;
-        break;
+    // Check if block is in target chunk
+    // We only write blocks to the current chunk to ensure stateless generation
+    int blockChunkX = (bPos.x >= 0) ? (bPos.x / CHUNK_SIZE)
+                                    : ((bPos.x - CHUNK_SIZE + 1) / CHUNK_SIZE);
+    int blockChunkZ = (bPos.z >= 0) ? (bPos.z / CHUNK_SIZE)
+                                    : ((bPos.z - CHUNK_SIZE + 1) / CHUNK_SIZE);
+
+    // PRE-PLACEMENT VALIDATION: Check if this location is valid BEFORE placing
+    // This prevents orphaned leaf blocks when trees hit obstacles
+    bool inTargetChunk =
+        (blockChunkX == targetChunkX && blockChunkZ == targetChunkZ);
+
+    if (bPos.y < 0 || bPos.y >= maxHeight) {
+      alive = false;
+      break;
+    }
+
+    // For any position, check if there's valid terrain support
+    // Use actual block data for all chunks in the region (3x3 loaded)
+    Block *checkBlock = region->getBlockPtr(bPos.x, bPos.y, bPos.z);
+    if (!checkBlock) {
+      alive = false;
+      break;
+    }
+
+    block_id checkType = checkBlock->getId();
+
+    // If we hit a solid, non-replaceable block that's not part of our tree,
+    // stop
+    if (checkBlock->isSolid() && !checkBlock->isReplaceable() &&
+        checkType != currentSegmentBlockId && checkType != logId &&
+        checkType != branchyId && checkType != leavesId) {
+      alive = false;
+      break;
+    }
+
+    // Additional validation: For leaf blocks, verify there's solid ground
+    // nearby This prevents placing leaves over voids/cliffs
+    if (currentSegmentBlockId == leavesId ||
+        currentSegmentBlockId == branchyId) {
+      // Check if there's solid ground within reasonable distance below
+      bool hasSupport = false;
+      int checkDist = std::min(10, bPos.y); // Check up to 10 blocks down
+
+      for (int checkY = bPos.y - 1; checkY >= bPos.y - checkDist && checkY >= 0;
+           checkY--) {
+        Block *belowBlock = region->getBlockPtr(bPos.x, checkY, bPos.z);
+        if (belowBlock && belowBlock->isSolid() &&
+            !belowBlock->isReplaceable()) {
+          // Found solid ground below
+          if (belowBlock->getId() !=
+              leavesId) { // Don't count other leaves as support
+            hasSupport = true;
+            break;
+          }
+        }
       }
 
+      if (!hasSupport) {
+        // No solid ground nearby, skip this leaf block
+        continue; // Skip this iteration but keep the tree alive
+      }
+    }
+
+    // Now actually place the block if we're in the target chunk
+    if (inTargetChunk) {
       // Replace if air or replaceable
-      if (currentBlock->isReplaceable() || currentType == AIR) {
+      if (checkBlock->isReplaceable() || checkType == AIR) {
         region->setBlock(bPos.x, bPos.y, bPos.z, currentSegmentBlockId);
       }
     }
@@ -325,11 +378,11 @@ void TreeDecorator::BuildSegment(WorldGenRegion *region, int x, int y, int z,
       int branchIdx = std::min(depth, (int)tree.branches.size() - 1);
       const TreeSegment &branchSeg = tree.branches[branchIdx];
 
-      curWidth =
-          GrowBranches(region, x, y, z, quantity, branchSeg, depth + 1,
-                       curWidth, branchWidthMultiplierStart, currentSequence,
-                       angleHor, dx, dy, dz, treeOrigin, trunkOffsetX,
-                       trunkOffsetZ, totalSegments, tree, rng, hood);
+      curWidth = GrowBranches(region, x, y, z, quantity, branchSeg, depth + 1,
+                              curWidth, branchWidthMultiplierStart,
+                              currentSequence, angleHor, dx, dy, dz, treeOrigin,
+                              trunkOffsetX, trunkOffsetZ, totalSegments, tree,
+                              rng, hood, targetChunkX, targetChunkZ, generator);
     }
   } // End while loop
 }
@@ -340,7 +393,8 @@ float TreeDecorator::GrowBranches(
     float branchWidthMultiplierStart, float currentSequence, float angleHor,
     float dx, float dy, float dz, glm::vec3 treeOrigin, float trunkOffsetX,
     float trunkOffsetZ, int &totalSegments, const TreeStructure &tree,
-    std::mt19937 &rng, const struct ChunkNeighborhood &hood) {
+    std::mt19937 &rng, const struct ChunkNeighborhood &hood, int targetChunkX,
+    int targetChunkZ, WorldGenerator *generator) {
 
   float branchWidth;
   float prevHorAngle = 0.0f;
@@ -386,9 +440,11 @@ float TreeDecorator::GrowBranches(
     float branchAngleHor = horAngle;
 
     // Recursive call
+    // Recursive call
     BuildSegment(region, x, y, z, branchSeg, treeOrigin, dx + trunkOffsetX, dy,
                  dz + trunkOffsetZ, branchAngleVer, branchAngleHor, branchWidth,
-                 0, newDepth, totalSegments, tree, rng, hood);
+                 0, newDepth, totalSegments, tree, rng, hood, targetChunkX,
+                 targetChunkZ, generator);
 
     first = false;
     prevHorAngle = angleHor + horAngle; // VS: accumulates? No, wait.
@@ -460,67 +516,109 @@ void TreeDecorator::Decorate(WorldGenerator &generator, WorldGenRegion &region,
 
   World *world = region.getWorld();
 
-  int colX = region.getCenterX();
-  int colZ = region.getCenterZ();
+  int targetX = region.getCenterX();
+  int targetZ = region.getCenterZ();
 
-  int startX = colX * CHUNK_SIZE;
-  int startZ = colZ * CHUNK_SIZE;
+  // To ensure seamless trees across chunk boundaries, we simulate tree
+  // generation for the current chunk AND its neighbors. We only write blocks if
+  // they fall into the current chunk (targetX, targetZ).
 
-  int seed = generator.GetSeed();
-  std::mt19937 rng(seed + startX * 342 + startZ * 521);
+  int range = 1; // 1 chunk radius is usually enough for trees
 
-  // ChunkNeighborhood is less relevant with region, but keep for compatibility
-  ChunkNeighborhood hood;
-  hood.world = world;
-  for (int i = 0; i < 3; ++i)
-    for (int j = 0; j < 3; ++j)
-      hood.chunks[i][j] = nullptr;
+  for (int ox = -range; ox <= range; ox++) {
+    for (int oz = -range; oz <= range; oz++) {
+      int cx = targetX + ox;
+      int cz = targetZ + oz;
 
-  const auto &config = TreeRegistry::Get().GetConfig();
-  int attempts = (int)config.treesPerChunk.Sample(rng);
-  attempts = attempts < 0 ? 0 : attempts;
+      int startX = cx * CHUNK_SIZE;
+      int startZ = cz * CHUNK_SIZE;
 
-  for (int i = 0; i < attempts; ++i) {
-    int lx = std::uniform_int_distribution<int>(0, CHUNK_SIZE - 1)(rng);
-    int lz = std::uniform_int_distribution<int>(0, CHUNK_SIZE - 1)(rng);
+      int seed = generator.GetSeed();
+      std::mt19937 rng(seed + startX * 342 + startZ * 521);
 
-    int gx = startX + lx;
-    int gz = startZ + lz;
-    int height = column.getHeight(lx, lz);
+      ChunkNeighborhood hood; // Dummy for now
+      hood.world = world;
 
-    if (height < generator.GetConfig().seaLevel)
-      continue;
+      const auto &config = TreeRegistry::Get().GetConfig();
+      int attempts = (int)config.treesPerChunk.Sample(rng);
+      attempts = attempts < 0 ? 0 : attempts;
 
-    // Get surface block using region
-    block_id surfaceBlock = region.getBlock(gx, height, gz);
+      for (int i = 0; i < attempts; ++i) {
+        int lx = std::uniform_int_distribution<int>(0, CHUNK_SIZE - 1)(rng);
+        int lz = std::uniform_int_distribution<int>(0, CHUNK_SIZE - 1)(rng);
 
-    bool isSoil = (surfaceBlock == GRASS || surfaceBlock == DIRT ||
-                   surfaceBlock == PODZOL || surfaceBlock == MUD ||
-                   surfaceBlock == SAND || surfaceBlock == GRAVEL ||
-                   surfaceBlock == COARSE_DIRT || surfaceBlock == TERRA_PRETA ||
-                   surfaceBlock == PEAT || surfaceBlock == CLAY ||
-                   surfaceBlock == CLAYSTONE || surfaceBlock == SNOW ||
-                   surfaceBlock == SNOW_LAYER);
+        int gx = startX + lx;
+        int gz = startZ + lz;
 
-    if (!isSoil)
-      continue;
+        // Compute Climate Data on demand (since neighbors might not be
+        // generated) Optimization: For current chunk (ox==0, oz==0), we could
+        // use 'column'
+        int height;
+        float realTemp, rawRain, forest;
 
-    float realTemp = column.temperatureMap[lx][lz];
-    float rawRain = column.humidityMap[lx][lz];
-    float realRain = (rawRain + 1.0f) * 0.5f;
-    float forest = column.forestNoiseMap[lx][lz];
+        if (ox == 0 && oz == 0) {
+          height = column.getHeight(lx, lz);
+          realTemp = column.temperatureMap[lx][lz];
+          rawRain = column.humidityMap[lx][lz];
+          forest = column.forestNoiseMap[lx][lz];
+        } else {
+          // For neighbors, we must compute from noise
+          // (This is stateless and safe)
+          height = generator.GetHeight(gx, gz);
+          realTemp = generator.GetTemperature(gx, gz);
+          rawRain = generator.GetHumidity(gx, gz);
+          forest = generator.GetForestNoise(gx, gz);
+        }
 
-    if (std::uniform_real_distribution<float>(0, 1)(rng) > forest)
-      continue;
+        if (height < generator.GetConfig().seaLevel)
+          continue;
 
-    const TreeGenerator *gen = TreeRegistry::Get().SelectTree(
-        realTemp, realRain, 100.0f, forest,
-        (float)height / (float)generator.GetConfig().worldHeight, rng);
-    if (gen) {
-      const TreeStructure *structure =
-          TreeRegistry::Get().GetTreeStructure(gen->generator);
-      if (structure) {
-        GenerateTree(&region, gx, height, gz, *structure, rng, hood);
+        // Surface block check:
+        // We need to verify the surface block is actually solid.
+        // Since caves are generated BEFORE decorators, we can check the actual
+        // block rather than simulating cave generation.
+
+        bool isSoil = true;
+        block_id surfaceBlock = 0;
+
+        // Get the actual block from the region (works for all chunks in 3x3)
+        surfaceBlock = region.getBlock(gx, height, gz);
+
+        // Verify the block is actually solid (not air from a cave)
+        Block *surfaceBlockPtr = region.getBlockPtr(gx, height, gz);
+        if (!surfaceBlockPtr || !surfaceBlockPtr->isSolid()) {
+          continue; // Skip if surface was carved by cave or is otherwise not
+                    // solid
+        }
+
+        isSoil = (surfaceBlock == GRASS || surfaceBlock == DIRT ||
+                  surfaceBlock == PODZOL || surfaceBlock == MUD ||
+                  surfaceBlock == SAND || surfaceBlock == GRAVEL ||
+                  surfaceBlock == COARSE_DIRT || surfaceBlock == TERRA_PRETA ||
+                  surfaceBlock == PEAT || surfaceBlock == CLAY ||
+                  surfaceBlock == CLAYSTONE || surfaceBlock == SNOW ||
+                  surfaceBlock == SNOW_LAYER);
+
+        if (!isSoil)
+          continue;
+
+        float realRainNorm = (rawRain + 1.0f) * 0.5f;
+
+        if (std::uniform_real_distribution<float>(0, 1)(rng) > forest)
+          continue;
+
+        const TreeGenerator *gen = TreeRegistry::Get().SelectTree(
+            realTemp, realRainNorm, 100.0f, forest,
+            (float)height / (float)generator.GetConfig().worldHeight, rng);
+
+        if (gen) {
+          const TreeStructure *structure =
+              TreeRegistry::Get().GetTreeStructure(gen->generator);
+          if (structure) {
+            GenerateTree(&region, gx, height, gz, *structure, rng, hood,
+                         targetX, targetZ, &generator);
+          }
+        }
       }
     }
   }
