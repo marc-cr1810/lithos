@@ -16,6 +16,5 @@
     },
     "textures": {
         "all": "liquid/lava_still"
-    },
-    "id": 10
+    }
 }

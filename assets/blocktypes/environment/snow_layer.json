@@ -17,7 +17,6 @@
         "hit": "game/step/snow",
         "walk": "game/step/snow"
     },
-    "id": 63,
     "emission": 0,
     "lightAbsorption": 0
 }

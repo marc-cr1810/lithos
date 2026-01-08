@@ -15,6 +15,5 @@
     },
     "textures": {
         "all": "stone/ore/gold_ore"
-    },
-    "id": 59
+    }
 }

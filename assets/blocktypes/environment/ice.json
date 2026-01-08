@@ -16,6 +16,5 @@
     "textures": {
         "all": "liquid/ice"
     },
-    "opaque": false,
-    "id": 14
+    "opaque": false
 }

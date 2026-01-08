@@ -38,13 +38,5 @@
     ],
     "textures": {
         "all": "plant/leaves/{wood}_leaves"
-    },
-    "idByType": {
-        "*_oak": 5,
-        "*_spruce": 17,
-        "*_acacia": 106,
-        "*_birch": 107,
-        "*_dark_oak": 108,
-        "*_jungle": 109
     }
 }

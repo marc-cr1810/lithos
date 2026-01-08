@@ -17,6 +17,5 @@
         "all": "stone/rock/glowstone"
     },
     "emission": 15,
-    "lightAbsorption": 0,
-    "id": 8
+    "lightAbsorption": 0
 }

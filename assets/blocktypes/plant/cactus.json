@@ -18,6 +18,5 @@
         "up": "plant/cactus/cactus_top",
         "down": "plant/cactus/cactus_bottom"
     },
-    "opaque": false,
-    "id": 15
+    "opaque": false
 }

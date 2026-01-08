@@ -36,15 +36,5 @@
         "all": "wood/bark/{wood}_log",
         "up": "wood/treetrunk/{wood}_log_top",
         "down": "wood/treetrunk/{wood}_log_top"
-    },
-    "idByType": {
-        "*_oak": 4,
-        "*_spruce": 16,
-        "*_acacia": 100,
-        "*_birch": 101,
-        "*_dark_oak": 102,
-        "*_jungle": 103,
-        "*_mangrove": 104,
-        "*_pale_oak": 105
     }
 }

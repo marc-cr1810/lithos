@@ -15,6 +15,5 @@
     },
     "textures": {
         "all": "soil/coarse_dirt"
-    },
-    "id": 60
+    }
 }

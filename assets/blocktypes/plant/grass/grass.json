@@ -42,11 +42,6 @@
             "all": "plant/tallgrass/tall_dry_grass"
         }
     },
-    "idByType": {
-        "*_tall_green": 18,
-        "*_dry_short": 21,
-        "*_dry_tall": 22
-    },
     "sounds": {
         "place": "game/step/grass",
         "breakSound": "game/step/grass",

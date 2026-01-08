@@ -16,6 +16,5 @@
         "breakSound": "game/step/stone",
         "hit": "game/step/stone"
     },
-    "id": 26,
     "resistance": 3.0
 }

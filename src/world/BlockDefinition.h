@@ -53,7 +53,7 @@ struct BehaviorDef {
 // Main block definition structure
 struct BlockDefinition {
   std::string code;
-  int id = -1; // Optional: Force a specific ID (for legacy/migration)
+  // id field removed (use idByType)
   std::string blockClass; // Optional custom C++ class name
   std::vector<VariantGroup> variantGroups;
 
@@ -98,7 +98,7 @@ struct BlockDefinition {
 
   // Conditional properties (byType patterns)
   std::unordered_map<std::string, std::string> drawTypeByType;
-  std::unordered_map<std::string, int> idByType;
+  // idByType removed
   std::unordered_map<std::string, float> resistanceByType;
   std::unordered_map<std::string, ShapeDef> shapeByType;
   std::unordered_map<std::string, std::unordered_map<std::string, bool>>

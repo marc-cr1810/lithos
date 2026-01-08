@@ -23,9 +23,6 @@
             ]
         }
     ],
-    "idByType": {
-        "*_oak": 25
-    },
     "textures": {
         "all": "wood/planks/{wood}_planks"
     },

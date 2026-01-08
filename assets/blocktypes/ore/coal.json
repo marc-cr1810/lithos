@@ -5,7 +5,6 @@
             "*"
         ]
     },
-    "id": 6,
     "blockMaterial": "Stone",
     "drawType": "cube",
     "resistance": 3.0,

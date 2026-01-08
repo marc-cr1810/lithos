@@ -20,6 +20,5 @@
     },
     "textures": {
         "all": "liquid/water_still"
-    },
-    "id": 9
+    }
 }

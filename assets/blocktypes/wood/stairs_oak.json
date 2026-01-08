@@ -17,6 +17,5 @@
         "hit": "game/step/wood",
         "walk": "game/step/wood"
     },
-    "id": 27,
     "resistance": 2.0
 }

@@ -81,21 +81,14 @@ BlockDef::BlockDefinition BlockLoader::parseJSON(const nlohmann::json &j) {
     def.code = j.at("code").get<std::string>();
   }
 
-  // Optional: id
-  if (j.contains("id")) {
-    def.id = j.at("id").get<int>();
-  }
+  // id parsing removed
   if (j.contains("solid")) {
     def.isSolid = j.at("solid").get<bool>();
   }
   if (j.contains("opaque")) {
     def.isOpaque = j.at("opaque").get<bool>();
   }
-  if (j.contains("idByType")) {
-    for (const auto &item : j.at("idByType").items()) {
-      def.idByType[item.key()] = item.value().get<int>();
-    }
-  }
+  // idByType parsing removed
 
   // Optional: class
   if (j.contains("class")) {
@@ -366,11 +359,8 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
     }
   }
 
-  // Determine ID: if JSON has explicit ID, use it (and ensure it doesn't
-  // conflict logic later if needed)
-  int resolvedId = resolveProperty(def.id, def.idByType, variantCode);
-  block_id finalId =
-      (resolvedId != -1) ? static_cast<block_id>(resolvedId) : blockId;
+  // Determine ID: always use the dynamically assigned blockId
+  block_id finalId = blockId;
 
   // Create block based on class or inferred type
   // Determine Class Name

@@ -17,6 +17,5 @@
         "up": "soil/podzol_top",
         "down": "soil/dirt",
         "all": "soil/podzol_side"
-    },
-    "id": 33
+    }
 }
