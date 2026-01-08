@@ -14,7 +14,3 @@ Block::RenderLayer SolidBlock::getRenderLayer() const {
   // (like IceBlock or LeavesBlock) By default, SolidBlocks are OPAQUE.
   return RenderLayer::OPAQUE;
 }
-
-bool SolidBlock::shouldTint(int faceDir, int layer) const {
-  return false; // Default: No tint for dirt, wood, etc.
-}

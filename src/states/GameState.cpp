@@ -5,6 +5,7 @@
 #include "../ecs/Components.h"
 #include "../ecs/Systems.h"
 #include "../world/Block.h"
+#include "../world/ColorMapRegistry.h"
 #include "../world/WorldGenerator.h"
 
 #include "backends/imgui_impl_glfw.h"
@@ -107,6 +108,26 @@ void GameState::InitRendering() {
       float uScale = 16.0f / m_Atlas->GetWidth();
       float vScale = 16.0f / m_Atlas->GetHeight();
       m_Shader->setVec2("uvScale", uScale, vScale);
+      m_Shader->setVec2("uvScale", uScale, vScale);
+    }
+
+    // Set Tint Rects for Shader (Atlas-based tinting)
+    auto &cmr = ColorMapRegistry::Get();
+    const auto &mapCodes = cmr.GetMapCodes();
+    for (size_t i = 0; i < mapCodes.size(); ++i) {
+      if (i >= 8)
+        break; // Shader limit
+      std::string uniformName = "u_TintRects[" + std::to_string(i) + "]";
+      m_Shader->setVec4(uniformName, cmr.GetAtlasUVRect(mapCodes[i]));
+    }
+
+    // Bind legacy/fallback tint maps (Units 1-8)
+    // Unit 0 is main texture.
+    cmr.BindTextures(1);
+    // Set samplers
+    for (int i = 0; i < 8; ++i) {
+      std::string uniformName = "tintMaps[" + std::to_string(i) + "]";
+      m_Shader->setInt(uniformName, 1 + i);
     }
   }
 

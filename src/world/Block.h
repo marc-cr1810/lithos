@@ -262,6 +262,10 @@ public:
   virtual RenderShape getRenderShape() const { return renderShape; }
   void setRenderShape(RenderShape shape) { renderShape = shape; }
 
+  enum class TintTarget : uint8_t { All, None, Base, Overlay };
+  void setTintTarget(TintTarget target) { tintTarget = target; }
+  TintTarget getTintTarget() const { return tintTarget; }
+
   // Get the height of the block (used for layered blocks, default is 1.0 for
   // full blocks)
   virtual float getBlockHeight(uint8_t metadata) const { return 1.0f; }
@@ -286,11 +290,15 @@ public:
   // Layer-based Tinting
   // layer 0 = base, layer 1 = overlay
   virtual bool shouldTint(int faceDir, int layer) const {
-    if (climateColorMap.empty())
+    if (climateColorMap.empty() || tintTarget == TintTarget::None)
       return false;
-    if (tintOverlayOnly)
-      return layer == 1; // Only tint overlay
-    return true;         // Tint everything
+    if (tintTarget == TintTarget::All)
+      return true;
+    if (tintTarget == TintTarget::Base)
+      return layer == 0;
+    if (tintTarget == TintTarget::Overlay)
+      return layer == 1;
+    return true;
   }
 
   void setOpaque(bool o) { isOpaque_ = o; }
@@ -304,9 +312,6 @@ public:
     climateColorMap = mapCode;
   }
   const std::string &getClimateColorMap() const { return climateColorMap; }
-
-  void setTintOverlayOnly(bool overlayOnly) { tintOverlayOnly = overlayOnly; }
-  bool isTintOverlayOnly() const { return tintOverlayOnly; }
 
 protected:
   block_id id;
@@ -343,7 +348,7 @@ protected:
   nlohmann::json attributes;
 
   std::string climateColorMap;
-  bool tintOverlayOnly = false;
+  TintTarget tintTarget = TintTarget::All;
 };
 
 // Singleton blocks

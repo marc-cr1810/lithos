@@ -5,7 +5,7 @@
             "*"
         ]
     },
-    "class": "TallGrassBlock",
+    "class": "PlantBlock",
     "blockMaterial": "Plant",
     "drawType": "cross",
     "climateColorMapByType": {

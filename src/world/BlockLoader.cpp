@@ -298,6 +298,18 @@ BlockDef::BlockDefinition BlockLoader::parseJSON(const nlohmann::json &j) {
     }
   }
 
+  // Tint Target
+  if (j.contains("tintTarget")) {
+    def.tintTarget = j.at("tintTarget").get<std::string>();
+  }
+  if (j.contains("tintTargetByType")) {
+    for (const auto &item : j.at("tintTargetByType").items()) {
+      if (item.value().is_string()) {
+        def.tintTargetByType[item.key()] = item.value().get<std::string>();
+      }
+    }
+  }
+
   return def;
 }
 
@@ -385,10 +397,7 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
       else
         className = "PlantBlock";
     } else if (drawType == "cube" || drawType == "json") {
-      if (variantCode == "grass")
-        className = "GrassBlock";
-      else
-        className = "SolidBlock";
+      className = "SolidBlock";
     }
   }
 
@@ -597,16 +606,28 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
   if (!climateMap.empty()) {
     block->setClimateColorMap(climateMap);
 
-    // Default behavior: if block has overlay, probably want to tint only
-    // overlay? Check JSON attributes for override
-    if (attributes.contains("tintOverlayOnly")) {
-      block->setTintOverlayOnly(attributes["tintOverlayOnly"].get<bool>());
-    } else {
-      // Heuristic: If we are "soil", default to overlay only.
-      if (className == "GrassBlock" || def.code == "soil") {
-        block->setTintOverlayOnly(true);
-      }
+    // Resolve tintTarget from definition
+    std::string targetStr =
+        resolveProperty(def.tintTarget, def.tintTargetByType, variantCode);
+
+    // Check attributes override
+    if (attributes.contains("tintTarget")) {
+      targetStr = attributes["tintTarget"].get<std::string>();
+    } else if (attributes.contains("tintOverlayOnly")) {
+      // Backwards compatibility
+      if (attributes["tintOverlayOnly"].get<bool>())
+        targetStr = "overlay";
     }
+
+    Block::TintTarget target = Block::TintTarget::All;
+    if (targetStr == "none")
+      target = Block::TintTarget::None;
+    else if (targetStr == "base")
+      target = Block::TintTarget::Base;
+    else if (targetStr == "overlay")
+      target = Block::TintTarget::Overlay;
+
+    block->setTintTarget(target);
   }
 
   return block;

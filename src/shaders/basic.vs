@@ -6,12 +6,17 @@ layout (location = 3) in vec3 aLight;
 layout (location = 4) in vec4 aTexOrigin; // xy=Origin, zw=Size
 layout (location = 5) in vec3 aClimate; // x=Temp, y=Humid, z=TintIndex
 
+layout (location = 6) in vec4 aOverlayOrigin;
+layout (location = 7) in float aOverlayEnabled;
+
 out vec4 ourColor;
 out vec2 TexCoord;
 out vec3 Lighting;
 out vec4 TexOrigin;
 out vec3 FragPos;
 out vec3 Climate;
+out vec4 OverlayOrigin;
+out float OverlayEnabled;
 
 uniform mat4 model;
 uniform mat4 view;
@@ -27,4 +32,6 @@ void main()
     Lighting = aLight; // x=Sky, y=Block, z=AO
     TexOrigin = aTexOrigin;
     Climate = aClimate;
+    OverlayOrigin = aOverlayOrigin;
+    OverlayEnabled = aOverlayEnabled;
 }

@@ -7,6 +7,8 @@ in vec3 Lighting;
 in vec4 TexOrigin;
 in vec3 FragPos;
 in vec3 Climate;
+in vec4 OverlayOrigin;
+in float OverlayEnabled;
 
 // texture sampler
 uniform sampler2D texture1;
@@ -16,7 +18,6 @@ uniform bool useTexture;
 uniform float sunStrength;
 uniform bool useLighting;
 uniform vec3 viewPos; // Camera Position for Fog
-// uniform vec2 uvScale; // Deprecated, using per-vertex size
 
 // Phase 4: Heatmap
 uniform bool useHeatmap;
@@ -38,13 +39,7 @@ void main()
     // Dynamic UV Scale from Vertex Attribute
     vec2 finalUV = TexOrigin.xy + vec2(tileUV.x * TexOrigin.z, tileUV.y * TexOrigin.w);
     
-    vec4 texColor = texture(texture1, finalUV);
-    if(!useTexture)
-        texColor = vec4(1.0, 1.0, 1.0, 1.0); // Use white if no texture
-
-    if(texColor.a < 0.1) discard;
-        
-    if(useHeatmap) {
+    if (useHeatmap) {
         // Red = Dark, Green = Light
         // Mix based on max light
         float val = max(Lighting.x * sunStrength, Lighting.y);
@@ -72,6 +67,8 @@ void main()
     // Apply Tint from Climate Data
     // Climate.z = Tint Index (0 = None, 1+ = Map Index)
     int tintIndex = int(Climate.z + 0.1); // Round safe
+    
+    vec4 tintColor = vec4(1.0);
     if (tintIndex > 0) {
         // Shared UV logic (Legacy uses 1.0 - y)
         vec2 localUV = vec2(Climate.x, 1.0 - Climate.y);
@@ -80,18 +77,10 @@ void main()
              int idx = tintIndex - 1;
              vec4 rect = u_TintRects[idx];
              
-             vec4 tintColor;
-             
-             // Check if this map is in the Atlas
-             // We use rect.z (width) as indicator. If > 0, it's valid Atlas rect.
              if (rect.z > 0.0) {
-                 // Sample from Atlas (texture1)
                  vec2 tintAtlasUV = rect.xy + localUV * rect.zw;
                  tintColor = texture(texture1, tintAtlasUV);
              } else {
-                 // Fallback: Sample from dedicated texture unit
-                 // GLSL 1.30+ requires constant indices for sampler arrays
-                 // Use switch statement instead of dynamic indexing
                  switch(idx) {
                      case 0: tintColor = texture(tintMaps[0], localUV); break;
                      case 1: tintColor = texture(tintMaps[1], localUV); break;
@@ -104,21 +93,50 @@ void main()
                      default: tintColor = vec4(1.0); break;
                  }
              }
-             
-             texColor *= tintColor;
         }
     }
 
+    // Overlay & Tinting Logic
+    // OverlayEnabled bits: 0: hasOverlay, 1: tintOverlay, 2: tintBase
+    int overlayFlags = int(OverlayEnabled + 0.1);
+    bool hasOverlay = (overlayFlags & 1) != 0;
+    bool tintOverlay = (overlayFlags & 2) != 0;
+    bool tintBase = (overlayFlags & 4) != 0;
+
+    vec4 texColor;
+    vec4 baseTexColor = texture(texture1, finalUV);
+    if (tintBase && tintIndex > 0) {
+        baseTexColor *= tintColor;
+    }
+
+    if (hasOverlay) {
+        vec2 overlayTileUV = fract(TexCoord);
+        vec2 overlayUV = OverlayOrigin.xy + vec2(overlayTileUV.x * OverlayOrigin.z, overlayTileUV.y * OverlayOrigin.w);
+        vec4 overlayTexColor = texture(texture1, overlayUV);
+        
+        if (tintOverlay && tintIndex > 0) {
+            overlayTexColor *= tintColor;
+        }
+        
+        texColor = mix(baseTexColor, overlayTexColor, overlayTexColor.a);
+    } else {
+        texColor = baseTexColor;
+    }
+
+    if (!useTexture)
+        texColor = vec4(1.0, 1.0, 1.0, 1.0); // Use white if no texture
+
+    if (texColor.a < 0.1) discard;
+
     // Combine texture color with vertex color (tint)
-    // Note: We multiply RGB and also Alpha
     vec4 result = texColor * ourColor; 
     
     // Apply lighting
     vec4 finalColor = vec4(result.rgb * lightVal * aoFactor, result.a);
     
-    if(useFog) {
+    if (useFog) {
         float distance = length(viewPos - FragPos);
-        float fogFactor = exp(-pow((distance / fogDist), 2.0)); // Exponential squared fog
+        float fogFactor = exp(-pow((distance / fogDist), 2.0)); 
         fogFactor = clamp(fogFactor, 0.0, 1.0);
         
         finalColor = mix(vec4(fogColor, 1.0), finalColor, fogFactor);

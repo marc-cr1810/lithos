@@ -86,6 +86,7 @@ struct BlockDefinition {
   bool isOpaque = true;
   std::unordered_map<std::string, bool> sideOpaque; // per-face opacity
   std::unordered_map<std::string, bool> sideSolid;  // per-face solidity
+  std::string tintTarget = "all"; // "all", "none", "base", "overlay"
 
   // Behaviors
   std::vector<BehaviorDef> behaviors;
@@ -109,6 +110,7 @@ struct BlockDefinition {
   std::unordered_map<std::string, BoundingBox> selectionBoxByType;
   std::unordered_map<std::string, nlohmann::json> attributesByType;
   std::unordered_map<std::string, std::string> climateColorMapByType;
+  std::unordered_map<std::string, std::string> tintTargetByType;
 };
 
 } // namespace BlockDef

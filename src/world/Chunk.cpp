@@ -1129,19 +1129,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             addFace(isTrans ? transparentVertices : opaqueVertices, lx, ly, lz,
                     faceDir, current.block, w, h, current.ao[0], current.ao[1],
                     current.ao[2], current.ao[3], current.metadata, hBL, hBR,
-                    hTR, hTL, 0, current.isInternal);
-
-            if (current.block->hasOverlay(faceDir)) {
-              // Render Overlay (Cutout)
-              // We put it in opaque queue usually or transparent?
-              // Overlay usually needs alpha testing (cutout).
-              // For now, put in same queue.
-              addFace(isTrans ? transparentVertices : opaqueVertices, lx, ly,
-                      lz, faceDir, current.block, w, h, current.ao[0],
-                      current.ao[1], current.ao[2], current.ao[3],
-                      current.metadata, hBL, hBR, hTR, hTL, 1,
-                      current.isInternal);
-            }
+                    hTR, hTL, current.isInternal);
 
             for (int j = 0; j < h; ++j)
               for (int i = 0; i < w; ++i)
@@ -1187,13 +1175,11 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
         float tintIndex = 0.0f;
 
         // Climate Tinting (Pass 2)
-        if (cb.getBlock()->shouldTint(0, 0)) {
-          std::string mapCode = cb.getBlock()->getClimateColorMap();
-          if (!mapCode.empty()) {
-            getClimate(x, z, temp, humid);
-            tintIndex = (float)ColorMapRegistry::Get().GetMapIndex(mapCode);
-            // No CPU multiplying!
-          }
+        // Climate Tinting (Pass 2)
+        if (cb.getBlock()->getClimateColorMap() != "") {
+          getClimate(x, z, temp, humid);
+          tintIndex = (float)ColorMapRegistry::Get().GetMapIndex(
+              cb.getBlock()->getClimateColorMap());
         }
         uint8_t bl = cb.blockLight;
         float l1Source = pow((float)sky / 15.0f, 0.8f);
@@ -1231,7 +1217,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                             float uOrigin, float vOrigin, float uWidth,
                             float vHeight, float aoVal = 0.0f,
                             float l1Override = -1.0f, float l2Override = -1.0f,
-                            float shade = 1.0f) {
+                            float shade = 1.0f, float overlayFlags = 0.0f) {
           targetVerts.push_back(vx);
           targetVerts.push_back(vy);
           targetVerts.push_back(vz);
@@ -1252,6 +1238,12 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
           targetVerts.push_back(temp);
           targetVerts.push_back(humid);
           targetVerts.push_back(tintIndex);
+          // Overlay (Special Shapes usually don't have overlays in this pass)
+          targetVerts.push_back(0.0f);         // Overlay Origin U
+          targetVerts.push_back(0.0f);         // Overlay Origin V
+          targetVerts.push_back(0.0f);         // Overlay Width
+          targetVerts.push_back(0.0f);         // Overlay Height
+          targetVerts.push_back(overlayFlags); // Bit flags for tint/overlay
         };
 
         if (shape == Block::RenderShape::CROSS) {
@@ -1274,6 +1266,12 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
           float rndZ = (myRand() - 0.5f) * 0.4f;
           float rotation = myRand() * 3.14159f * 2.0f;
 
+          // Special shapes flags: check base tint (bit 2 = 4.0f)
+          float overlayFlags = 0.0f;
+          if (cb.getBlock()->shouldTint(0, 0)) {
+            overlayFlags += 4.0f;
+          }
+
           float centerX = fx + 0.5f + rndX;
           float centerZ = fz + 0.5f + rndZ;
 
@@ -1286,22 +1284,34 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
           float p1_x2 = centerX + cos(angle1) * scale;
           float p1_z2 = centerZ + sin(angle1) * scale;
 
-          pushVert(p1_x1, fy, p1_z1, 0.0f, 0.0f, uMin, vMin, uW, vH);
-          pushVert(p1_x2, fy, p1_z2, 1.0f, 0.0f, uMin, vMin, uW, vH);
-          pushVert(p1_x2, fy + 1.0f, p1_z2, 1.0f, 1.0f, uMin, vMin, uW, vH);
+          pushVert(p1_x1, fy, p1_z1, 0.0f, 0.0f, uMin, vMin, uW, vH, 0.0f,
+                   -1.0f, -1.0f, 1.0f, overlayFlags);
+          pushVert(p1_x2, fy, p1_z2, 1.0f, 0.0f, uMin, vMin, uW, vH, 0.0f,
+                   -1.0f, -1.0f, 1.0f, overlayFlags);
+          pushVert(p1_x2, fy + 1.0f, p1_z2, 1.0f, 1.0f, uMin, vMin, uW, vH,
+                   0.0f, -1.0f, -1.0f, 1.0f, overlayFlags);
 
-          pushVert(p1_x1, fy, p1_z1, 0.0f, 0.0f, uMin, vMin, uW, vH);
-          pushVert(p1_x2, fy + 1.0f, p1_z2, 1.0f, 1.0f, uMin, vMin, uW, vH);
-          pushVert(p1_x1, fy + 1.0f, p1_z1, 0.0f, 1.0f, uMin, vMin, uW, vH);
+          pushVert(p1_x1, fy, p1_z1, 0.0f, 0.0f, uMin, vMin, uW, vH, 0.0f,
+                   -1.0f, -1.0f, 1.0f, overlayFlags);
+          pushVert(p1_x2, fy + 1.0f, p1_z2, 1.0f, 1.0f, uMin, vMin, uW, vH,
+                   0.0f, -1.0f, -1.0f, 1.0f, overlayFlags);
+          pushVert(p1_x1, fy + 1.0f, p1_z1, 0.0f, 1.0f, uMin, vMin, uW, vH,
+                   0.0f, -1.0f, -1.0f, 1.0f, overlayFlags);
 
           // Back Face Plane 1
-          pushVert(p1_x2, fy, p1_z2, 1.0f, 0.0f, uMin, vMin, uW, vH);
-          pushVert(p1_x1, fy, p1_z1, 0.0f, 0.0f, uMin, vMin, uW, vH);
-          pushVert(p1_x1, fy + 1.0f, p1_z1, 0.0f, 1.0f, uMin, vMin, uW, vH);
+          pushVert(p1_x2, fy, p1_z2, 1.0f, 0.0f, uMin, vMin, uW, vH, 0.0f,
+                   -1.0f, -1.0f, 1.0f, overlayFlags);
+          pushVert(p1_x1, fy, p1_z1, 0.0f, 0.0f, uMin, vMin, uW, vH, 0.0f,
+                   -1.0f, -1.0f, 1.0f, overlayFlags);
+          pushVert(p1_x1, fy + 1.0f, p1_z1, 0.0f, 1.0f, uMin, vMin, uW, vH,
+                   0.0f, -1.0f, -1.0f, 1.0f, overlayFlags);
 
-          pushVert(p1_x2, fy, p1_z2, 1.0f, 0.0f, uMin, vMin, uW, vH);
-          pushVert(p1_x1, fy + 1.0f, p1_z1, 0.0f, 1.0f, uMin, vMin, uW, vH);
-          pushVert(p1_x2, fy + 1.0f, p1_z2, 1.0f, 1.0f, uMin, vMin, uW, vH);
+          pushVert(p1_x2, fy, p1_z2, 1.0f, 0.0f, uMin, vMin, uW, vH, 0.0f,
+                   -1.0f, -1.0f, 1.0f, overlayFlags);
+          pushVert(p1_x1, fy + 1.0f, p1_z1, 0.0f, 1.0f, uMin, vMin, uW, vH,
+                   0.0f, -1.0f, -1.0f, 1.0f, overlayFlags);
+          pushVert(p1_x2, fy + 1.0f, p1_z2, 1.0f, 1.0f, uMin, vMin, uW, vH,
+                   0.0f, -1.0f, -1.0f, 1.0f, overlayFlags);
 
           // Plane 2
           float angle2 = angle1 + 1.570796f;
@@ -1310,21 +1320,33 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
           float p2_x2 = centerX + cos(angle2) * scale;
           float p2_z2 = centerZ + sin(angle2) * scale;
 
-          pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f, uMin, vMin, uW, vH);
-          pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f, uMin, vMin, uW, vH);
-          pushVert(p2_x2, fy + 1.0f, p2_z2, 1.0f, 1.0f, uMin, vMin, uW, vH);
+          pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f, uMin, vMin, uW, vH, 0.0f,
+                   -1.0f, -1.0f, 1.0f, overlayFlags);
+          pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f, uMin, vMin, uW, vH, 0.0f,
+                   -1.0f, -1.0f, 1.0f, overlayFlags);
+          pushVert(p2_x2, fy + 1.0f, p2_z2, 1.0f, 1.0f, uMin, vMin, uW, vH,
+                   0.0f, -1.0f, -1.0f, 1.0f, overlayFlags);
 
-          pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f, uMin, vMin, uW, vH);
-          pushVert(p2_x2, fy + 1.0f, p2_z2, 1.0f, 1.0f, uMin, vMin, uW, vH);
-          pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f, uMin, vMin, uW, vH);
+          pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f, uMin, vMin, uW, vH, 0.0f,
+                   -1.0f, -1.0f, 1.0f, overlayFlags);
+          pushVert(p2_x2, fy + 1.0f, p2_z2, 1.0f, 1.0f, uMin, vMin, uW, vH,
+                   0.0f, -1.0f, -1.0f, 1.0f, overlayFlags);
+          pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f, uMin, vMin, uW, vH,
+                   0.0f, -1.0f, -1.0f, 1.0f, overlayFlags);
 
           // Back Face Plane 2
-          pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f, uMin, vMin, uW, vH);
-          pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f, uMin, vMin, uW, vH);
-          pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f, uMin, vMin, uW, vH);
-          pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f, uMin, vMin, uW, vH);
-          pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f, uMin, vMin, uW, vH);
-          pushVert(p2_x2, fy + 1.0f, p2_z2, 1.0f, 1.0f, uMin, vMin, uW, vH);
+          pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f, uMin, vMin, uW, vH, 0.0f,
+                   -1.0f, -1.0f, 1.0f, overlayFlags);
+          pushVert(p2_x1, fy, p2_z1, 0.0f, 0.0f, uMin, vMin, uW, vH, 0.0f,
+                   -1.0f, -1.0f, 1.0f, overlayFlags);
+          pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f, uMin, vMin, uW, vH,
+                   0.0f, -1.0f, -1.0f, 1.0f, overlayFlags);
+          pushVert(p2_x2, fy, p2_z2, 1.0f, 0.0f, uMin, vMin, uW, vH, 0.0f,
+                   -1.0f, -1.0f, 1.0f, overlayFlags);
+          pushVert(p2_x1, fy + 1.0f, p2_z1, 0.0f, 1.0f, uMin, vMin, uW, vH,
+                   0.0f, -1.0f, -1.0f, 1.0f, overlayFlags);
+          pushVert(p2_x2, fy + 1.0f, p2_z2, 1.0f, 1.0f, uMin, vMin, uW, vH,
+                   0.0f, -1.0f, -1.0f, 1.0f, overlayFlags);
         } else if (shape == Block::RenderShape::SLAB_BOTTOM ||
                    shape == Block::RenderShape::STAIRS ||
                    shape == Block::RenderShape::LAYERED) {
@@ -1407,93 +1429,119 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
               v1 = yMax; // e.g. 0.5
             }
 
+            // Calc overlayFlags for this specific face
+            float faceOverlayFlags = 0.0f;
+            if (cb.getBlock()->shouldTint(face, 0)) {
+              faceOverlayFlags += 4.0f;
+            }
+            if (cb.getBlock()->hasOverlay(face)) {
+              faceOverlayFlags += 1.0f;
+            }
+            if (cb.getBlock()->shouldTint(face, 1)) {
+              faceOverlayFlags += 2.0f;
+            }
+
+            // Fetch Overlay UVs (Standard PASS 2 doesn't usually use them, but
+            // for completeness)
+            float u2Min = 0.0f, v2Min = 0.0f, u2Max = 0.0f, v2Max = 0.0f;
+            if ((int(faceOverlayFlags) & 1) != 0) {
+              cb.getBlock()->getTextureUV(face, u2Min, v2Min, u2Max, v2Max, gx,
+                                          gy, gz, cb.metadata, 1);
+            }
+            // (Note: pushVert doesn't currently take OverlayOrigin for special
+            // shapes in generateGeometry, but we can pass it if we want. For
+            // now, basic.fs just uses 0,0,0,0 if not provided by pushVert
+            // signature) Wait, pushVert in generateGeometry IS hardcoded to 0s
+            // for Overlay Origin. Let's just focus on tinting for now as
+            // requested.
+
             // Draw
             // 0=Z+, 1=Z-, 2=X-, 3=X+, 4=Y+, 5=Y-
             // Pass shade explicitly to pushVert
             if (face == 0) { // Z+ (Variable Z) -> Usually zMax
               pushVert(fx + xMin, fy + yMin, fz + zMax, u0, v0, uBase, vBase,
-                       uW, vH, aoBL, l1, l2, shade);
+                       uW, vH, aoBL, l1, l2, shade, faceOverlayFlags);
               pushVert(fx + xMax, fy + yMin, fz + zMax, u1, v0, uBase, vBase,
-                       aoBR, l1, l2, shade);
+                       uW, vH, aoBR, l1, l2, shade, faceOverlayFlags);
               pushVert(fx + xMax, fy + yMax, fz + zMax, u1, v1, uBase, vBase,
-                       aoTR, l1, l2, shade);
+                       uW, vH, aoTR, l1, l2, shade, faceOverlayFlags);
 
               pushVert(fx + xMin, fy + yMin, fz + zMax, u0, v0, uBase, vBase,
-                       aoBL, l1, l2, shade);
+                       uW, vH, aoBL, l1, l2, shade, faceOverlayFlags);
               pushVert(fx + xMax, fy + yMax, fz + zMax, u1, v1, uBase, vBase,
-                       aoTR, l1, l2, shade);
+                       uW, vH, aoTR, l1, l2, shade, faceOverlayFlags);
               pushVert(fx + xMin, fy + yMax, fz + zMax, u0, v1, uBase, vBase,
-                       aoTL, l1, l2, shade);
+                       uW, vH, aoTL, l1, l2, shade, faceOverlayFlags);
             } else if (face == 1) { // Z-
               pushVert(fx + xMax, fy + yMin, fz + zMin, u0, v0, uBase, vBase,
-                       aoBR, l1, l2, shade);
+                       uW, vH, aoBR, l1, l2, shade, faceOverlayFlags);
               pushVert(fx + xMin, fy + yMin, fz + zMin, u1, v0, uBase, vBase,
-                       aoBL, l1, l2, shade);
+                       uW, vH, aoBL, l1, l2, shade, faceOverlayFlags);
               pushVert(fx + xMin, fy + yMax, fz + zMin, u1, v1, uBase, vBase,
-                       aoTL, l1, l2, shade);
+                       uW, vH, aoTL, l1, l2, shade, faceOverlayFlags);
 
               pushVert(fx + xMax, fy + yMin, fz + zMin, u0, v0, uBase, vBase,
-                       aoBR, l1, l2, shade);
+                       uW, vH, aoBR, l1, l2, shade, faceOverlayFlags);
               pushVert(fx + xMin, fy + yMax, fz + zMin, u1, v1, uBase, vBase,
-                       aoTL, l1, l2, shade);
+                       uW, vH, aoTL, l1, l2, shade, faceOverlayFlags);
               pushVert(fx + xMax, fy + yMax, fz + zMin, u0, v1, uBase, vBase,
-                       aoTR, l1, l2, shade);
+                       uW, vH, aoTR, l1, l2, shade, faceOverlayFlags);
             } else if (face == 2) { // X-
               pushVert(fx + xMin, fy + yMin, fz + zMin, u0, v0, uBase, vBase,
-                       aoBL, l1, l2, shade);
+                       uW, vH, aoBL, l1, l2, shade, faceOverlayFlags);
               pushVert(fx + xMin, fy + yMin, fz + zMax, u1, v0, uBase, vBase,
-                       aoBR, l1, l2, shade);
+                       uW, vH, aoBR, l1, l2, shade, faceOverlayFlags);
               pushVert(fx + xMin, fy + yMax, fz + zMax, u1, v1, uBase, vBase,
-                       aoTR, l1, l2, shade);
+                       uW, vH, aoTR, l1, l2, shade, faceOverlayFlags);
 
               pushVert(fx + xMin, fy + yMin, fz + zMin, u0, v0, uBase, vBase,
-                       aoBL, l1, l2, shade);
+                       uW, vH, aoBL, l1, l2, shade, faceOverlayFlags);
               pushVert(fx + xMin, fy + yMax, fz + zMax, u1, v1, uBase, vBase,
-                       aoTR, l1, l2, shade);
+                       uW, vH, aoTR, l1, l2, shade, faceOverlayFlags);
               pushVert(fx + xMin, fy + yMax, fz + zMin, u0, v1, uBase, vBase,
-                       aoTL, l1, l2, shade);
+                       uW, vH, aoTL, l1, l2, shade, faceOverlayFlags);
             } else if (face == 3) { // X+
               pushVert(fx + xMax, fy + yMin, fz + zMax, u0, v0, uBase, vBase,
-                       aoBL, l1, l2, shade);
+                       uW, vH, aoBL, l1, l2, shade, faceOverlayFlags);
               pushVert(fx + xMax, fy + yMin, fz + zMin, u1, v0, uBase, vBase,
-                       aoBR, l1, l2, shade);
+                       uW, vH, aoBR, l1, l2, shade, faceOverlayFlags);
               pushVert(fx + xMax, fy + yMax, fz + zMin, u1, v1, uBase, vBase,
-                       aoTR, l1, l2, shade);
+                       uW, vH, aoTR, l1, l2, shade, faceOverlayFlags);
 
               pushVert(fx + xMax, fy + yMin, fz + zMax, u0, v0, uBase, vBase,
-                       aoBL, l1, l2, shade);
+                       uW, vH, aoBL, l1, l2, shade, faceOverlayFlags);
               pushVert(fx + xMax, fy + yMax, fz + zMin, u1, v1, uBase, vBase,
-                       aoTR, l1, l2, shade);
+                       uW, vH, aoTR, l1, l2, shade, faceOverlayFlags);
               pushVert(fx + xMax, fy + yMax, fz + zMax, u0, v1, uBase, vBase,
-                       aoTL, l1, l2, shade);
+                       uW, vH, aoTL, l1, l2, shade, faceOverlayFlags);
             } else if (face == 4) { // Y+
-              pushVert(fx + xMin, fy + yMax, fz + zMax, 0, 0, uBase, vBase,
-                       aoBL, l1, l2, shade);
-              pushVert(fx + xMax, fy + yMax, fz + zMax, 1, 0, uBase, vBase,
-                       aoBR, l1, l2, shade);
-              pushVert(fx + xMax, fy + yMax, fz + zMin, 1, 1, uBase, vBase,
-                       aoTR, l1, l2, shade);
+              pushVert(fx + xMin, fy + yMax, fz + zMax, 0, 0, uBase, vBase, uW,
+                       vH, aoBL, l1, l2, shade, faceOverlayFlags);
+              pushVert(fx + xMax, fy + yMax, fz + zMax, 1, 0, uBase, vBase, uW,
+                       vH, aoBR, l1, l2, shade, faceOverlayFlags);
+              pushVert(fx + xMax, fy + yMax, fz + zMin, 1, 1, uBase, vBase, uW,
+                       vH, aoTR, l1, l2, shade, faceOverlayFlags);
 
-              pushVert(fx + xMin, fy + yMax, fz + zMax, 0, 0, uBase, vBase,
-                       aoBL, l1, l2, shade);
-              pushVert(fx + xMax, fy + yMax, fz + zMin, 1, 1, uBase, vBase,
-                       aoTR, l1, l2, shade);
-              pushVert(fx + xMin, fy + yMax, fz + zMin, 0, 1, uBase, vBase,
-                       aoTL, l1, l2, shade);
+              pushVert(fx + xMin, fy + yMax, fz + zMax, 0, 0, uBase, vBase, uW,
+                       vH, aoBL, l1, l2, shade, faceOverlayFlags);
+              pushVert(fx + xMax, fy + yMax, fz + zMin, 1, 1, uBase, vBase, uW,
+                       vH, aoTR, l1, l2, shade, faceOverlayFlags);
+              pushVert(fx + xMin, fy + yMax, fz + zMin, 0, 1, uBase, vBase, uW,
+                       vH, aoTL, l1, l2, shade, faceOverlayFlags);
             } else if (face == 5) { // Y-
-              pushVert(fx + xMin, fy + yMin, fz + zMin, 0, 0, uBase, vBase,
-                       aoTL, l1, l2, shade);
-              pushVert(fx + xMax, fy + yMin, fz + zMin, 1, 0, uBase, vBase,
-                       aoTR, l1, l2, shade);
-              pushVert(fx + xMax, fy + yMin, fz + zMax, 1, 1, uBase, vBase,
-                       aoBR, l1, l2, shade);
+              pushVert(fx + xMin, fy + yMin, fz + zMin, 0, 0, uBase, vBase, uW,
+                       vH, aoTL, l1, l2, shade, faceOverlayFlags);
+              pushVert(fx + xMax, fy + yMin, fz + zMin, 1, 0, uBase, vBase, uW,
+                       vH, aoTR, l1, l2, shade, faceOverlayFlags);
+              pushVert(fx + xMax, fy + yMin, fz + zMax, 1, 1, uBase, vBase, uW,
+                       vH, aoBR, l1, l2, shade, faceOverlayFlags);
 
-              pushVert(fx + xMin, fy + yMin, fz + zMin, 0, 0, uBase, vBase,
-                       aoTL, l1, l2, shade);
-              pushVert(fx + xMax, fy + yMin, fz + zMax, 1, 1, uBase, vBase,
-                       aoBR, l1, l2, shade);
-              pushVert(fx + xMin, fy + yMin, fz + zMax, 0, 1, uBase, vBase,
-                       aoBL, l1, l2, shade);
+              pushVert(fx + xMin, fy + yMin, fz + zMin, 0, 0, uBase, vBase, uW,
+                       vH, aoTL, l1, l2, shade, faceOverlayFlags);
+              pushVert(fx + xMax, fy + yMin, fz + zMax, 1, 1, uBase, vBase, uW,
+                       vH, aoBR, l1, l2, shade, faceOverlayFlags);
+              pushVert(fx + xMin, fy + yMin, fz + zMax, 0, 1, uBase, vBase, uW,
+                       vH, aoBL, l1, l2, shade, faceOverlayFlags);
             }
           };
 
@@ -1700,19 +1748,30 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
             // ...
             // Let's replicate logic for Face 4 (Y+)
             // Shade = 1.0f for Top
-            pushVert(fx + 0, fy + blockHeight, fz + 1, 0, 0, uBase, vBase, uW,
-                     vH, (float)aoBL, l1Top, l2Top, 1.0f);
-            pushVert(fx + 1, fy + blockHeight, fz + 1, 1, 0, uBase, vBase, uW,
-                     vH, (float)aoBR, l1Top, l2Top, 1.0f);
-            pushVert(fx + 1, fy + blockHeight, fz + 0, 1, 1, uBase, vBase, uW,
-                     vH, (float)aoTR, l1Top, l2Top, 1.0f);
+            float topOverlayFlags = 0.0f;
+            if (cb.getBlock()->shouldTint(4, 0)) {
+              topOverlayFlags += 4.0f;
+            }
+            if (cb.getBlock()->hasOverlay(4)) {
+              topOverlayFlags += 1.0f;
+            }
+            if (cb.getBlock()->shouldTint(4, 1)) {
+              topOverlayFlags += 2.0f;
+            }
 
             pushVert(fx + 0, fy + blockHeight, fz + 1, 0, 0, uBase, vBase, uW,
-                     vH, (float)aoBL, l1Top, l2Top, 1.0f);
+                     vH, (float)aoBL, l1Top, l2Top, 1.0f, topOverlayFlags);
+            pushVert(fx + 1, fy + blockHeight, fz + 1, 1, 0, uBase, vBase, uW,
+                     vH, (float)aoBR, l1Top, l2Top, 1.0f, topOverlayFlags);
             pushVert(fx + 1, fy + blockHeight, fz + 0, 1, 1, uBase, vBase, uW,
-                     vH, (float)aoTR, l1Top, l2Top, 1.0f);
+                     vH, (float)aoTR, l1Top, l2Top, 1.0f, topOverlayFlags);
+
+            pushVert(fx + 0, fy + blockHeight, fz + 1, 0, 0, uBase, vBase, uW,
+                     vH, (float)aoBL, l1Top, l2Top, 1.0f, topOverlayFlags);
+            pushVert(fx + 1, fy + blockHeight, fz + 0, 1, 1, uBase, vBase, uW,
+                     vH, (float)aoTR, l1Top, l2Top, 1.0f, topOverlayFlags);
             pushVert(fx + 0, fy + blockHeight, fz + 0, 0, 1, uBase, vBase, uW,
-                     vH, (float)aoTL, l1Top, l2Top, 1.0f);
+                     vH, (float)aoTL, l1Top, l2Top, 1.0f, topOverlayFlags);
 
             addFaceQuad(5, 0, 0, 0, 1, blockHeight, 1); // Y- (Bottom)
           } else {
@@ -1886,8 +1945,20 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
               // Draw
               auto pV = [&](float vx, float vy, float vz, float u, float v,
                             float ao) {
+                // Calc overlayFlags for this specific model face
+                float modelFaceOverlayFlags = 0.0f;
+                if (cb.getBlock()->shouldTint(face, 0)) {
+                  modelFaceOverlayFlags += 4.0f;
+                }
+                if (cb.getBlock()->hasOverlay(face)) {
+                  modelFaceOverlayFlags += 1.0f;
+                }
+                if (cb.getBlock()->shouldTint(face, 1)) {
+                  modelFaceOverlayFlags += 2.0f;
+                }
+
                 pushVert(fx + vx, fy + vy, fz + vz, u, v, uBase, vBase, uW, vH,
-                         ao, l1, l2, shade);
+                         ao, l1, l2, shade, modelFaceOverlayFlags);
               };
 
               // U,V mapping helpers
@@ -2146,36 +2217,72 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                   std::pair<float, float> lights = getFaceLight(faceIdx);
                   float l1 = lights.first, l2 = lights.second;
 
-                  pushVert(finalP0.x, finalP0.y, finalP0.z, u_p0, v_p0, uMin,
-                           vMin, uW, vH, 0.0f, l1, l2);
-                  pushVert(finalP1.x, finalP1.y, finalP1.z, u_p1, v_p1, uMin,
-                           vMin, uW, vH, 0.0f, l1, l2);
-                  pushVert(finalP2.x, finalP2.y, finalP2.z, u_p2, v_p2, uMin,
-                           vMin, uW, vH, 0.0f, l1, l2);
+                  // Calc overlayFlags for this specific custom model face
+                  float customFaceOverlayFlags = 0.0f;
+                  if (cb.getBlock()->shouldTint(faceIdx, 0)) {
+                    customFaceOverlayFlags += 4.0f;
+                  }
+                  if (cb.getBlock()->hasOverlay(faceIdx)) {
+                    customFaceOverlayFlags += 1.0f;
+                  }
+                  if (cb.getBlock()->shouldTint(faceIdx, 1)) {
+                    customFaceOverlayFlags += 2.0f;
+                  }
 
                   pushVert(finalP0.x, finalP0.y, finalP0.z, u_p0, v_p0, uMin,
-                           vMin, uW, vH, 0.0f, l1, l2);
+                           vMin, uW, vH, 0.0f, l1, l2, 1.0f,
+                           customFaceOverlayFlags);
+                  pushVert(finalP1.x, finalP1.y, finalP1.z, u_p1, v_p1, uMin,
+                           vMin, uW, vH, 0.0f, l1, l2, 1.0f,
+                           customFaceOverlayFlags);
                   pushVert(finalP2.x, finalP2.y, finalP2.z, u_p2, v_p2, uMin,
-                           vMin, uW, vH, 0.0f, l1, l2);
+                           vMin, uW, vH, 0.0f, l1, l2, 1.0f,
+                           customFaceOverlayFlags);
+
+                  pushVert(finalP0.x, finalP0.y, finalP0.z, u_p0, v_p0, uMin,
+                           vMin, uW, vH, 0.0f, l1, l2, 1.0f,
+                           customFaceOverlayFlags);
+                  pushVert(finalP2.x, finalP2.y, finalP2.z, u_p2, v_p2, uMin,
+                           vMin, uW, vH, 0.0f, l1, l2, 1.0f,
+                           customFaceOverlayFlags);
                   pushVert(finalP3.x, finalP3.y, finalP3.z, u_p3, v_p3, uMin,
-                           vMin, uW, vH, 0.0f, l1, l2);
+                           vMin, uW, vH, 0.0f, l1, l2, 1.0f,
+                           customFaceOverlayFlags);
                 } else {
                   std::pair<float, float> lights = getFaceLight(faceIdx);
                   float l1 = lights.first, l2 = lights.second;
 
-                  pushVert(finalP0.x, finalP0.y, finalP0.z, localU1, localV2,
-                           uMin, vMin, uW, vH, 0.0f, l1, l2);
-                  pushVert(finalP1.x, finalP1.y, finalP1.z, localU2, localV2,
-                           uMin, vMin, uW, vH, 0.0f, l1, l2);
-                  pushVert(finalP2.x, finalP2.y, finalP2.z, localU2, localV1,
-                           uMin, vMin, uW, vH, 0.0f, l1, l2);
+                  // Calc overlayFlags for this specific custom model face
+                  float customFaceOverlayFlags = 0.0f;
+                  if (cb.getBlock()->shouldTint(faceIdx, 0)) {
+                    customFaceOverlayFlags += 4.0f;
+                  }
+                  if (cb.getBlock()->hasOverlay(faceIdx)) {
+                    customFaceOverlayFlags += 1.0f;
+                  }
+                  if (cb.getBlock()->shouldTint(faceIdx, 1)) {
+                    customFaceOverlayFlags += 2.0f;
+                  }
 
                   pushVert(finalP0.x, finalP0.y, finalP0.z, localU1, localV2,
-                           uMin, vMin, uW, vH, 0.0f, l1, l2);
+                           uMin, vMin, uW, vH, 0.0f, l1, l2, 1.0f,
+                           customFaceOverlayFlags);
+                  pushVert(finalP1.x, finalP1.y, finalP1.z, localU2, localV2,
+                           uMin, vMin, uW, vH, 0.0f, l1, l2, 1.0f,
+                           customFaceOverlayFlags);
                   pushVert(finalP2.x, finalP2.y, finalP2.z, localU2, localV1,
-                           uMin, vMin, uW, vH, 0.0f, l1, l2);
+                           uMin, vMin, uW, vH, 0.0f, l1, l2, 1.0f,
+                           customFaceOverlayFlags);
+
+                  pushVert(finalP0.x, finalP0.y, finalP0.z, localU1, localV2,
+                           uMin, vMin, uW, vH, 0.0f, l1, l2, 1.0f,
+                           customFaceOverlayFlags);
+                  pushVert(finalP2.x, finalP2.y, finalP2.z, localU2, localV1,
+                           uMin, vMin, uW, vH, 0.0f, l1, l2, 1.0f,
+                           customFaceOverlayFlags);
                   pushVert(finalP3.x, finalP3.y, finalP3.z, localU1, localV1,
-                           uMin, vMin, uW, vH, 0.0f, l1, l2);
+                           uMin, vMin, uW, vH, 0.0f, l1, l2, 1.0f,
+                           customFaceOverlayFlags);
                 }
               }
             }
@@ -2187,9 +2294,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
 
   // Stitch Vectors
   // Stitch Vectors
-  outOpaqueCount = opaqueVertices.size() / 19;
-  opaqueVertices.insert(opaqueVertices.end(), transparentVertices.begin(),
-                        transparentVertices.end());
+  outOpaqueCount = opaqueVertices.size() / 24;
   opaqueVertices.insert(opaqueVertices.end(), transparentVertices.begin(),
                         transparentVertices.end());
 
@@ -2206,11 +2311,11 @@ void Chunk::uploadMesh(const std::vector<float> &data, int opaqueCount) {
                GL_DYNAMIC_DRAW);
 
   vertexCount = opaqueCount;
-  vertexCountTransparent = (data.size() / 19) - opaqueCount;
+  vertexCountTransparent = (data.size() / 24) - opaqueCount;
 
   // Store transparent part for sorting
   if (vertexCountTransparent > 0) {
-    size_t opaqueFloats = opaqueCount * 19;
+    size_t opaqueFloats = opaqueCount * 24;
     if (opaqueFloats < data.size()) {
       transparentVertices.assign(data.begin() + opaqueFloats, data.end());
     }
@@ -2219,7 +2324,7 @@ void Chunk::uploadMesh(const std::vector<float> &data, int opaqueCount) {
   }
 
   // Attribs
-  float stride = 19 * sizeof(float); // 3+4+2+3+4+3 = 19
+  float stride = 24 * sizeof(float); // 3+4+2+3+4+3+4+1 = 24
 
   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void *)0); // Pos
   glEnableVertexAttribArray(0);
@@ -2241,6 +2346,13 @@ void Chunk::uploadMesh(const std::vector<float> &data, int opaqueCount) {
       5, 3, GL_FLOAT, GL_FALSE, stride,
       (void *)(16 * sizeof(float))); // Climate (Temp, Humid, Index)
   glEnableVertexAttribArray(5);
+  glVertexAttribPointer(
+      6, 4, GL_FLOAT, GL_FALSE, stride,
+      (void *)(19 * sizeof(float))); // OverlayOrigin (u, v, w, h)
+  glEnableVertexAttribArray(6);
+  glVertexAttribPointer(7, 1, GL_FLOAT, GL_FALSE, stride,
+                        (void *)(23 * sizeof(float))); // OverlayEnabled
+  glEnableVertexAttribArray(7);
 }
 
 void Chunk::sortAndUploadTransparent(const glm::vec3 &cameraPos) {
@@ -2255,7 +2367,7 @@ void Chunk::sortAndUploadTransparent(const glm::vec3 &cameraPos) {
   }
   m_lastSortCameraPos = cameraPos;
 
-  int floatsPerVertex = 19; // As defined in uploadMesh
+  int floatsPerVertex = 24; // As defined in uploadMesh
   int vertsPerFace = 6;
   int numFloatsPerFace = floatsPerVertex * vertsPerFace;
 
@@ -2334,7 +2446,7 @@ void Chunk::updateMesh() {
 void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
                     int faceDir, const Block *block, int width, int height,
                     int aoBL, int aoBR, int aoTR, int aoTL, uint8_t metadata,
-                    float hBL, float hBR, float hTR, float hTL, int layer,
+                    float hBL, float hBR, float hTR, float hTL,
                     bool isInternal) {
   float r = 1.0f;
   float g = 1.0f;
@@ -2345,12 +2457,12 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
   float tintIndex = 0.0f;
 
   // Decide tint
-  if (block->shouldTint(faceDir, layer)) {
-    std::string mapCode = block->getClimateColorMap();
-    if (!mapCode.empty()) {
-      getClimate(x, z, temp, humid);
-      tintIndex = (float)ColorMapRegistry::Get().GetMapIndex(mapCode);
-    }
+  std::string mapCode = block->getClimateColorMap();
+  if (!mapCode.empty()) {
+    getClimate(x, z, temp, humid);
+    // We pass the tint index if exists. The shader handles whether to apply to
+    // base or overlay.
+    tintIndex = (float)ColorMapRegistry::Get().GetMapIndex(mapCode);
   }
 
   float alpha = block->getAlpha();
@@ -2392,60 +2504,60 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
   }
 
   float uMin = 0.00f, vMin = 0.00f, uMax = 1.0f, vMax = 1.0f;
+  float u2Min = 0.0f, v2Min = 0.0f, u2Max = 0.0f, v2Max = 0.0f;
+  float overlayEnabled = 0.0f;
+
+  bool hasOverlay = block->hasOverlay(faceDir);
+  bool tintBaseFlag = block->shouldTint(faceDir, 0);
+  bool tintOverlayFlag = block->shouldTint(faceDir, 1);
 
   if (world) {
     int gx = chunkPosition.x * CHUNK_SIZE + x;
     int gy = chunkPosition.y * CHUNK_SIZE + y;
     int gz = chunkPosition.z * CHUNK_SIZE + z;
     // Use Flow Texture (Face 0) for Top Face (4) if flowing (meta > 0)
-    // Actually, user wants flow texture on top if it is flowing.
-    // If metadata > 0, it is flowing. Source (0) is still?
-    // Actually source blocks can flow too if they have velocity, but in
-    // this simplicity: Any liquid that has flow vector should probably use
-    // flow texture? Let's stick to user request: "flowing water... should
-    // have flowing texture". If metadata > 0 (decaying flow), definitely
-    // flowing. If metadata == 0 (source), might be still unless it's a
-    // source block flowing into a hole? Let's check neighbors to see if
-    // it's flowing. Simpler: If meta > 0, use flow. If meta == 0, use
-    // still. BUT user said "direction in which they are flowing".
     if (block->isLiquid() && faceDir == 4) {
-      // Check if flowing
       if (metadata > 0) {
-        block->getTextureUV(0, uMin, vMin, uMax, vMax, gx, gy, gz, metadata,
-                            layer); // Use Side Texture
+        block->getTextureUV(0, uMin, vMin, uMax, vMax, gx, gy, gz, metadata, 0);
       } else {
         block->getTextureUV(faceDir, uMin, vMin, uMax, vMax, gx, gy, gz,
-                            metadata, layer);
+                            metadata, 0);
       }
     } else {
       block->getTextureUV(faceDir, uMin, vMin, uMax, vMax, gx, gy, gz, metadata,
-                          layer);
+                          0);
+    }
+
+    if (hasOverlay) {
+      block->getTextureUV(faceDir, u2Min, v2Min, u2Max, v2Max, gx, gy, gz,
+                          metadata, 1);
     }
   } else {
-    block->getTextureUV(faceDir, uMin, vMin, uMax, vMax, 0, 0, 0, metadata,
-                        layer);
+    block->getTextureUV(faceDir, uMin, vMin, uMax, vMax, 0, 0, 0, metadata, 0);
+    if (hasOverlay) {
+      block->getTextureUV(faceDir, u2Min, v2Min, u2Max, v2Max, 0, 0, 0,
+                          metadata, 1);
+    }
   }
+
+  // Pack flags into overlayEnabled float
+  // Bit 0: Has Overlay
+  // Bit 1: Tint Overlay
+  // Bit 2: Tint Base
+  overlayEnabled = 0.0f;
+  if (hasOverlay)
+    overlayEnabled += 1.0f;
+  if (tintOverlayFlag)
+    overlayEnabled += 2.0f;
+  if (tintBaseFlag)
+    overlayEnabled += 4.0f;
+
   float uW = uMax - uMin;
   float vH = vMax - vMin;
+  float u2W = u2Max - u2Min;
+  float v2H = v2Max - v2Min;
 
   float fx = (float)x, fy = (float)y, fz = (float)z;
-
-  // Overlay Offset to avoid Z-fighting
-  if (layer == 1) {
-    float offset = 0.002f;
-    if (faceDir == 0)
-      fz += offset;
-    else if (faceDir == 1)
-      fz -= offset;
-    else if (faceDir == 2)
-      fx -= offset;
-    else if (faceDir == 3)
-      fx += offset;
-    else if (faceDir == 4)
-      fy += offset;
-    else if (faceDir == 5)
-      fy -= offset;
-  }
   float fw = (float)width, fh = (float)height;
 
   // Fluid Height Logic
@@ -2458,9 +2570,6 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
   }
 
   // Adjust height for side faces if this is a fluid?
-  // Actually, "height" argument is the greedy-meshed height (number of
-  // blocks). If NOT liquid, force h=1.0f for Top/Bottom, or h=height for
-  // Sides
   if (!block->isLiquid()) {
     if (faceDir <= 3) { // Side Faces: height is Y-extent
       float H = (float)height;
@@ -2468,8 +2577,7 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
       hBR = H;
       hTR = H;
       hTL = H;
-    } else { // Top/Bottom Faces: height is Z-extent (or X), Y-extent is 1
-             // block
+    } else { // Top/Bottom Faces: height is Z-extent (or X), Y-extent is 1 block
       hBL = 1.0f;
       hBR = 1.0f;
       hTR = 1.0f;
@@ -2480,11 +2588,6 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
   // Flow rotation logic
   float rAngle = 0.0f;
   if (block->isLiquid() && faceDir == 4) {
-    // Calculate Flow Vector
-    // Check neighbors (using World if available, else cache?)
-    // We are in addFace, called from generateGeometry, where we don't have
-    // easy random access to world without locking/etc. But we have 'world'
-    // pointer and coords.
     if (world) {
       float dx = 0.0f;
       float dz = 0.0f;
@@ -2495,67 +2598,47 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
       auto getLiquidHeight = [&](int bx, int by, int bz) -> float {
         ChunkBlock n = world->getBlock(bx, by, bz);
         if (!n.isActive())
-          return -1.0f; // Treat as sink? Or different?
+          return -1.0f;
         if (n.id != block->getId()) {
           if (n.isSolid())
-            return 100.0f; // Blocked
-          return -1.0f;    // Sink
+            return 100.0f;
+          return -1.0f;
         }
-        return (float)n.metadata; // Higher meta = lower liquid = flow towards
+        return (float)n.metadata;
       };
 
-      // Neighbors
       float hL = getLiquidHeight(gx - 1, gy, gz);
       float hR = getLiquidHeight(gx + 1, gy, gz);
       float hF = getLiquidHeight(gx, gy, gz + 1); // Z+
       float hB = getLiquidHeight(gx, gy, gz - 1); // Z-
 
-      // If neighbor is -1 (sink), treats as strong flow towards it.
-      // If neighbor is 100 (solid), treats as blocked.
-      // If neighbor is liquid, compare metadata.
-
       float myMeta = (float)metadata;
 
-      // X-Axis
       if (hL == -1.0f || (hL != 100.0f && hL > myMeta))
-        dx -= 1.0f; // Flow Left
+        dx -= 1.0f;
       if (hR == -1.0f || (hR != 100.0f && hR > myMeta))
-        dx += 1.0f; // Flow Right
-
-      // Z-Axis
+        dx += 1.0f;
       if (hB == -1.0f || (hB != 100.0f && hB > myMeta))
-        dz -= 1.0f; // Flow Back (Z-)
+        dz -= 1.0f;
       if (hF == -1.0f || (hF != 100.0f && hF > myMeta))
-        dz += 1.0f; // Flow Front (Z+)
+        dz += 1.0f;
 
       if (dx != 0.0f || dz != 0.0f) {
-        // Only rotate if NOT Lava Source (Lava Still should not rotate)
-        // Water Source can rotate (visual choice) but User specifically
-        // complained about Lava Still.
         if (block->isLiquid() && block->getEmission() > 0 && metadata == 0) {
           rAngle = 0.0f;
         } else {
-          rAngle = atan2(dz, dx) + 1.5708f; // +PI/2 to align texture correctly
+          rAngle = atan2(dz, dx) + 1.5708f;
         }
-        // Normalize to 0..2PI or just use sin/cos
-        // Texture Default Alignment: Assuming Flow Texture points UP/NORTH?
-        // Standard minecraft water flow texture usually has lines going
-        // vertically? If vertical lines = Z axis? Need to experiment or
-        // check defaults. Let's assume standard UV orientation.
       }
     }
   } else if (block->isLog()) {
-
-    // Log Rotation
     if (metadata == 1) { // X-Axis
       if (faceDir == 0 || faceDir == 1 || faceDir == 4 || faceDir == 5) {
-        rAngle = 1.5708f; // 90 degrees
+        rAngle = 1.5708f;
       }
     } else if (metadata == 2) { // Z-Axis
-      // Only rotate sides (X-faces). Top/Bottom (Y-faces) are already Z-aligned
-      // by default.
       if (faceDir == 2 || faceDir == 3) {
-        rAngle = 1.5708f; // 90 degrees
+        rAngle = 1.5708f;
       }
     }
   }
@@ -2573,24 +2656,24 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
     // Rotate UV if needed
     float fu = u;
     float fv = v;
+    float fu2 = u;
+    float fv2 = v;
     if (rAngle != 0.0f) {
-      // Center of rotation (0.5, 0.5)
       float cu = 0.5f;
       float cv = 0.5f;
       float s = sin(rAngle);
       float c = cos(rAngle);
 
-      // Translate to origin
       float tu = u - cu;
       float tv = v - cv;
 
-      // Rotate
       float ru = tu * c - tv * s;
       float rv = tu * s + tv * c;
 
-      // Translate back
       fu = ru + cu;
       fv = rv + cv;
+      fu2 = fu;
+      fv2 = fv;
     }
 
     vertices.push_back(fu);
@@ -2606,6 +2689,12 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
     vertices.push_back(temp);
     vertices.push_back(humid);
     vertices.push_back(tintIndex);
+    // Overlay Attributes - Origin and Enabled
+    vertices.push_back(u2Min);
+    vertices.push_back(v2Min);
+    vertices.push_back(u2W);
+    vertices.push_back(v2H);
+    vertices.push_back(overlayEnabled);
   };
 
   // Corners Mapping:

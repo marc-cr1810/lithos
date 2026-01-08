@@ -52,12 +52,16 @@ public:
     return mapIndexToCode;
   }
 
+  // Get all registered map codes (ordered by runtime index)
+  const std::vector<std::string> &GetMapCodes() const { return mapIndexToCode; }
+
 private:
   ColorMapRegistry() = default;
 
   std::unordered_map<std::string, ColorMap> maps;
   std::vector<std::string> mapIndexToCode; // To look up map by index
 
+  // Resolve property value based on variant using byType patterns
   // Helper to load texture data from disk
   bool LoadTexture(const std::string &path, ColorMap &outMap);
 };

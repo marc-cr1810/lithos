@@ -1,6 +1,6 @@
 {
     "code": "grass",
-    "class": "GrassBlock",
+    "class": "SolidBlock",
     "creativeInventory": {
         "terrain": [
             "*"
@@ -8,6 +8,7 @@
     },
     "blockMaterial": "Soil",
     "drawType": "cube",
+    "tintTarget": "overlay",
     "climateColorMapByType": {
         "*": "climatePlantTint"
     },
@@ -19,13 +20,16 @@
     },
     "textures": {
         "up": {
-            "base": "soil/grass_block_top"
+            "base": "soil/dirt",
+            "overlays": [
+                "soil/grass_block_top"
+            ]
         },
         "down": {
             "base": "soil/dirt"
         },
         "horizontals": {
-            "base": "soil/grass_block_side",
+            "base": "soil/dirt",
             "overlays": [
                 "soil/grass_block_side_overlay"
             ]
