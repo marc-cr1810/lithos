@@ -13,6 +13,7 @@ static BlockBehaviorRegistrar registrarLower("growth", [](Block *block) {
 
 BlockBehaviorGrowth::BlockBehaviorGrowth(Block *block) : BlockBehavior(block) {
   block->setRandomTickable(true);
+  LOG_INFO("BlockBehaviorGrowth attached to block, randomTickable set to true");
 }
 
 void BlockBehaviorGrowth::onLoaded(const nlohmann::json &properties) {
@@ -30,16 +31,24 @@ void BlockBehaviorGrowth::onLoaded(const nlohmann::json &properties) {
 void BlockBehaviorGrowth::onRandomTick(World &world, int x, int y, int z,
                                        std::mt19937 &rng) const {
   std::uniform_real_distribution<float> dist(0.0f, 1.0f);
-  if (dist(rng) > growthChance) {
+  float roll = dist(rng);
+
+  // LOG_INFO("Growth tick at ({},{},{}) roll={:.2f} chance={:.2f}", x, y, z,
+  // roll, growthChance);
+
+  if (roll > growthChance) {
     return;
   }
 
   if (!nextBlock.empty()) {
-    // Note: getBlockId usage requires looking up by domain:name if it has it
-    // Assuming nextBlock is fully qualified or we might need helper
     block_id nextID = BlockRegistry::getInstance().getBlockId(nextBlock);
+
     if (nextID != 0) {
-      world.setBlock(x, y, z, nextID);
+      world.queueBlockChange(x, y, z, nextID);
+    } else {
+      LOG_ERROR("Growth failed - could not resolve nextBlock '{}'", nextBlock);
     }
+  } else {
+    LOG_WARN("Growth behavior has empty nextBlock");
   }
 }

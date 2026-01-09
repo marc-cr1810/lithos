@@ -87,6 +87,7 @@ struct BlockDefinition {
   std::unordered_map<std::string, bool> sideOpaque; // per-face opacity
   std::unordered_map<std::string, bool> sideSolid;  // per-face solidity
   std::string tintTarget = "all"; // "all", "none", "base", "overlay"
+  bool isRandomTickable = false;
 
   // Behaviors
   std::vector<BehaviorDef> behaviors;

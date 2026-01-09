@@ -1,0 +1,123 @@
+{
+    "code": "test_growth",
+    "variantGroups": [
+        {
+            "code": "stage",
+            "states": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7"
+            ]
+        }
+    ],
+    "class": "PlantBlock",
+    "randomTickable": true,
+    "drawType": "cross",
+    "selectable": true,
+    "solid": false,
+    "opaque": false,
+    "textures": {
+        "all": "plant/wheat/wheat_1"
+    },
+    "texturesByType": {
+        "test_growth_0": {
+            "all": "plant/wheat/wheat_1"
+        },
+        "test_growth_1": {
+            "all": "plant/wheat/wheat_2"
+        },
+        "test_growth_2": {
+            "all": "plant/wheat/wheat_3"
+        },
+        "test_growth_3": {
+            "all": "plant/wheat/wheat_4"
+        },
+        "test_growth_4": {
+            "all": "plant/wheat/wheat_5"
+        },
+        "test_growth_5": {
+            "all": "plant/wheat/wheat_6"
+        },
+        "test_growth_6": {
+            "all": "plant/wheat/wheat_7"
+        },
+        "test_growth_7": {
+            "all": "plant/wheat/wheat_7"
+        }
+    },
+    "behaviorsByType": {
+        "test_growth_0": [
+            {
+                "name": "Growth",
+                "properties": {
+                    "growthChance": 0.9,
+                    "nextBlock": "lithos:test_growth_1"
+                }
+            }
+        ],
+        "test_growth_1": [
+            {
+                "name": "Growth",
+                "properties": {
+                    "growthChance": 0.9,
+                    "nextBlock": "lithos:test_growth_2"
+                }
+            }
+        ],
+        "test_growth_2": [
+            {
+                "name": "Growth",
+                "properties": {
+                    "growthChance": 0.9,
+                    "nextBlock": "lithos:test_growth_3"
+                }
+            }
+        ],
+        "test_growth_3": [
+            {
+                "name": "Growth",
+                "properties": {
+                    "growthChance": 0.9,
+                    "nextBlock": "lithos:test_growth_4"
+                }
+            }
+        ],
+        "test_growth_4": [
+            {
+                "name": "Growth",
+                "properties": {
+                    "growthChance": 0.9,
+                    "nextBlock": "lithos:test_growth_5"
+                }
+            }
+        ],
+        "test_growth_5": [
+            {
+                "name": "Growth",
+                "properties": {
+                    "growthChance": 0.9,
+                    "nextBlock": "lithos:test_growth_6"
+                }
+            }
+        ],
+        "test_growth_6": [
+            {
+                "name": "Growth",
+                "properties": {
+                    "growthChance": 0.9,
+                    "nextBlock": "lithos:test_growth_7"
+                }
+            }
+        ]
+    },
+    "creativeInventory": {
+        "general": [
+            "test_growth_0"
+        ]
+    }
+}

@@ -64,6 +64,11 @@ public:
   int worldSeed;
   ChunkBlock getBlock(int x, int y, int z) const;
   void setBlock(int x, int y, int z, block_id type);
+
+  // Queue a block change to be applied later (used by random ticks to avoid
+  // deadlock)
+  void queueBlockChange(int x, int y, int z, block_id type);
+
   // Get terrain height from column (cached)
   int getHeight(int x, int z) const;
 
@@ -115,6 +120,13 @@ private:
                      key_hash>
       chunks;
   mutable std::mutex worldMutex;
+
+  // Queue for block changes from random ticks (to avoid deadlock)
+  struct PendingBlockChange {
+    int x, y, z;
+    block_id type;
+  };
+  std::vector<PendingBlockChange> pendingBlockChanges;
 
   // Worker Thread
   std::vector<std::thread> meshThreads;

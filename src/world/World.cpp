@@ -157,6 +157,32 @@ void World::Tick() {
   currentTick++;
   updateBlocks();
 
+  // Random Ticks
+  {
+    std::lock_guard<std::mutex> lock(worldMutex);
+    int tickCount = config.randomTickSpeed;
+
+    std::mt19937 rng(std::random_device{}());
+
+    for (auto &pair : chunks) {
+      if (pair.second) {
+        pair.second->processRandomTicks(tickCount, rng);
+      }
+    }
+  }
+
+  // Apply queued block changes (outside lock to avoid deadlock)
+  std::vector<PendingBlockChange> changes;
+  {
+    std::lock_guard<std::mutex> lock(worldMutex);
+    changes = std::move(pendingBlockChanges);
+    pendingBlockChanges.clear();
+  }
+
+  for (const auto &change : changes) {
+    setBlock(change.x, change.y, change.z, change.type);
+  }
+
   // ECS Update (Fixed Time Step: 1/20 = 0.05s)
   PhysicsSystem::Update(registry, 0.05f);
   CollisionSystem::Update(registry, *this, 0.05f);
@@ -375,26 +401,6 @@ void World::GenerationWorkerLoop() {
       // Queue mesh update
       QueueMeshUpdate(c);
 
-      // Process Random Ticks
-      // 3 random ticks per section (sub-chunk) is standard Minecraft behavior.
-      // Our Chunks are 32x32x32.
-      // Standard chunk = 16x16x16 sections.
-      // Volume ratio: (32*32*32) / (16*16*16) = 8.
-      // So we should do 3 * 8 = 24 ticks per chunk to match density?
-      // Let's start with a configurable amount, say 10.
-      int randomTicksPerChunk = 12;
-
-      {
-        std::lock_guard<std::mutex> lock(worldMutex);
-        for (auto &pair : chunks) {
-          if (pair.second) {
-            pair.second->processRandomTicks(randomTicksPerChunk, rng);
-          }
-        }
-      }
-
-      // Update Entities
-      // ...
       // Update neighbors
       int dirs_indices[] = {
           Chunk::DIR_LEFT, Chunk::DIR_RIGHT, Chunk::DIR_FRONT,
@@ -501,12 +507,11 @@ void World::GenerationWorkerLoop() {
           }
         }
       }
-    }
-
-    // Remove from generating set
-    {
-      std::lock_guard<std::mutex> lock(genMutex);
-      generatingChunks.erase(coord);
+      // Remove from generating set
+      {
+        std::lock_guard<std::mutex> lock(genMutex);
+        generatingChunks.erase(coord);
+      }
     }
   }
 }
@@ -659,37 +664,29 @@ void World::loadChunks(const glm::vec3 &playerPos, int renderDistance,
 }
 
 void World::unloadChunks(const glm::vec3 &playerPos, int renderDistance) {
-  int cx = (int)floor(playerPos.x / CHUNK_SIZE);
-  int cz = (int)floor(playerPos.z / CHUNK_SIZE);
+  std::vector<std::tuple<int, int, int>> chunksToRemove;
+  int unloadDist = renderDistance + 2; // Keep a buffer
+  int unloadDistSq = unloadDist * unloadDist;
 
-  // Unload distance = render distance + buffer to avoid thrashing
-  int unloadDistance = renderDistance + 2;
-  int unloadDistSq = unloadDistance * unloadDistance;
-
-  std::vector<std::tuple<int, int, int>> toUnload;
-
-  // Find chunks to unload
+  // Identify chunks to remove
   {
     std::lock_guard<std::mutex> lock(worldMutex);
     for (auto &pair : chunks) {
-      auto [x, y, z] = pair.first;
-      int dx = x - cx;
-      int dz = z - cz;
-      int distSq = dx * dx + dz * dz;
+      glm::vec3 chunkWorldPos =
+          glm::vec3(pair.second->chunkPosition) * (float)CHUNK_SIZE;
+      float distSq = glm::distance2(
+          glm::vec3(playerPos.x, 0, playerPos.z),
+          glm::vec3(chunkWorldPos.x, 0, chunkWorldPos.z)); // 2D distance
 
-      // Only check horizontal distance, keep all Y levels
-      if (distSq > unloadDistSq) {
-        toUnload.push_back(pair.first);
+      if (distSq > unloadDistSq * CHUNK_SIZE * CHUNK_SIZE) {
+        chunksToRemove.push_back(pair.first);
       }
     }
   }
 
-  // Unload chunks
-  for (auto &key : toUnload) {
-    auto [x, y, z] = key;
-
-    // Get chunk before erasing
-    std::shared_ptr<Chunk> chunkToUnload = nullptr;
+  // Remove chunks safely
+  for (const auto &key : chunksToRemove) {
+    std::shared_ptr<Chunk> chunkToUnload;
     {
       std::lock_guard<std::mutex> lock(worldMutex);
       auto it = chunks.find(key);
@@ -711,8 +708,7 @@ void World::unloadChunks(const glm::vec3 &playerPos, int renderDistance) {
       for (int i = 0; i < 6; ++i) {
         if (auto neighbor = chunkToUnload->getNeighbor(dirs[i])) {
           neighbor->neighbors[opps[i]].reset();
-          neighbor
-              ->updateSealedStatus(); // Neighbors are now unsealed on this face
+          neighbor->updateSealedStatus();
         }
       }
 
@@ -720,8 +716,6 @@ void World::unloadChunks(const glm::vec3 &playerPos, int renderDistance) {
       {
         std::lock_guard<std::mutex> lock(queueMutex);
         meshPriorityMap.erase(chunkToUnload.get());
-        // Note: Can't easily remove from deque, but erasing from map
-        // prevents processing
       }
 
       // Remove from upload queue if present (CRITICAL!)
@@ -739,7 +733,6 @@ void World::unloadChunks(const glm::vec3 &playerPos, int renderDistance) {
       {
         std::lock_guard<std::mutex> lock(genMutex);
         generatingChunks.erase(key);
-        // Note: Can't easily remove from deque
       }
 
       // Finally, erase the chunk
@@ -751,8 +744,6 @@ void World::unloadChunks(const glm::vec3 &playerPos, int renderDistance) {
   }
 
   // Clean up orphaned columns (columns with no chunks remaining)
-  // This ensures that when chunks reload, columns are regenerated fresh with
-  // decorated=false, allowing trees, flora, and caves to be placed again
   {
     std::lock_guard<std::mutex> lock(columnMutex);
     std::vector<std::pair<int, int>> columnsToRemove;
@@ -1040,7 +1031,8 @@ void World::setBlock(int x, int y, int z, block_id type) {
 
     // Mark for lighting recalculation (done in worker thread)
     c->needsLightingUpdate = true;
-    QueueMeshUpdate(c, 1000000.0f); // High priority for instant visual feedback
+    QueueMeshUpdate(c,
+                    1000000.0f); // High priority for instant visual feedback
 
     // Update neighbor chunks
     int nDx[] = {-1, 1, 0, 0, 0, 0};
@@ -1437,4 +1429,9 @@ void World::renderDebugBorders(Shader &shader,
       glDrawArrays(GL_LINES, 0, 24);
     }
   }
+}
+
+void World::queueBlockChange(int x, int y, int z, block_id type) {
+  // MUST be called with worldMutex held (e.g. from Random Ticks)
+  pendingBlockChanges.push_back({x, y, z, type});
 }

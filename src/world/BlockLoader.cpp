@@ -89,6 +89,9 @@ BlockDef::BlockDefinition BlockLoader::parseJSON(const nlohmann::json &j) {
   if (j.contains("opaque")) {
     def.isOpaque = j.at("opaque").get<bool>();
   }
+  if (j.contains("randomTickable")) {
+    def.isRandomTickable = j.at("randomTickable").get<bool>();
+  }
   // idByType parsing removed
 
   // Optional: class
@@ -623,6 +626,7 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
   block->setSolid(def.isSolid);
   block->setReplaceable(def.replaceable > 0);
   block->setEmission(def.emission);
+  block->setRandomTickable(def.isRandomTickable);
   // The following line was moved to be inside the function scope.
   // block->setOpaque(false); // This line was removed from here.
 

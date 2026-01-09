@@ -3343,8 +3343,9 @@ int Chunk::vertexAO(bool side1, bool side2, bool corner) {
 }
 
 void Chunk::processRandomTicks(int tickCount, std::mt19937 &rng) {
-  if (isAllAir)
+  if (isAllAir) {
     return;
+  }
 
   std::uniform_int_distribution<int> dist(0, CHUNK_SIZE - 1);
 
@@ -3354,9 +3355,10 @@ void Chunk::processRandomTicks(int tickCount, std::mt19937 &rng) {
     int z = dist(rng);
 
     ChunkBlock &cb = blocks[x][y][z];
+
     if (cb.id != AIR) {
       Block *block = cb.getBlock();
-      if (block->isRandomTickable()) {
+      if (block && block->isRandomTickable()) {
         block->onRandomTick(*world, chunkPosition.x * CHUNK_SIZE + x,
                             chunkPosition.y * CHUNK_SIZE + y,
                             chunkPosition.z * CHUNK_SIZE + z, rng);

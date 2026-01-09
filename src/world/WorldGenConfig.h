@@ -61,6 +61,7 @@ struct WorldGenConfig {
   bool enableOre = true;
   bool enableTrees = true;
   bool enableFlora = true;
+  int randomTickSpeed = 24;
 
   // New Noise Scales for Rework
   float upheavalScale = 0.0005f; // Large scale for generalized height shifts
@@ -142,6 +143,7 @@ inline void to_json(json &j, const WorldGenConfig &c) {
            {"riverThreshold", c.riverThreshold},
            {"riverDepth", c.riverDepth},
            {"lakeLevel", c.lakeLevel},
+           {"randomTickSpeed", c.randomTickSpeed},
            {"enableOre", c.enableOre},
            {"enableTrees", c.enableTrees},
            {"enableFlora", c.enableFlora},
@@ -188,6 +190,8 @@ inline void from_json(const json &j, WorldGenConfig &c) {
   j.at("riverThreshold").get_to(c.riverThreshold);
   j.at("riverDepth").get_to(c.riverDepth);
   j.at("lakeLevel").get_to(c.lakeLevel);
+  if (j.contains("randomTickSpeed"))
+    j.at("randomTickSpeed").get_to(c.randomTickSpeed);
   j.at("enableOre").get_to(c.enableOre);
   j.at("enableTrees").get_to(c.enableTrees);
   j.at("enableFlora").get_to(c.enableFlora);
