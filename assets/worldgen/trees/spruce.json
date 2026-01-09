@@ -90,7 +90,7 @@
         }
     ],
     "treeBlocks": {
-        "logBlockCode": "lithos:log_spruce",
+        "logBlockCode": "lithos:log_spruce_ud",
         "leavesBlockCode": "lithos:leaves_spruce",
         "leavesBranchyBlockCode": "lithos:leaves_spruce",
         "vinesBlockCode": "lithos:air",

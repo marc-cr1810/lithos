@@ -1,6 +1,10 @@
 #include "BlockLoader.h"
 #include "../debug/Logger.h"
 #include "BlockFactory.h"
+#include "behaviors/BlockBehaviorBreakIfFloating.h"
+#include "behaviors/BlockBehaviorHorizontalOrientable.h"
+#include "behaviors/BlockBehaviorOrientable.h"
+#include "behaviors/BlockBehaviorPillar.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -55,15 +59,15 @@ BlockLoader::loadFromFile(const std::filesystem::path &path) {
     LOG_DEBUG("  -> Parsing block definition...");
     BlockDef::BlockDefinition def = parseJSON(j);
     LOG_DEBUG("  -> Expanding variants...");
-    std::vector<std::string> variants = expandVariants(def);
+    std::vector<BlockLoader::VariantContext> variants = expandVariants(def);
     LOG_DEBUG("  -> Creating {} variant(s)...", variants.size());
 
-    for (const auto &variant : variants) {
-      LOG_DEBUG("    -> Creating block for variant: {}", variant);
-      Block *block = createBlockFromDefinition(def, variant, nextBlockId++);
+    for (const auto &ctx : variants) {
+      LOG_DEBUG("    -> Creating block for variant: {}", ctx.fullCode);
+      Block *block = createBlockFromDefinition(def, ctx, nextBlockId++);
       if (block) {
         blocks.push_back(block);
-        LOG_TRACE("Loaded block definition: {}", variant);
+        LOG_TRACE("Loaded block definition: {}", ctx.fullCode);
       }
     }
   } catch (const std::exception &e) {
@@ -270,12 +274,28 @@ BlockDef::BlockDefinition BlockLoader::parseJSON(const nlohmann::json &j) {
         behaviorDef.name = behavior.at("name").get<std::string>();
       }
       if (behavior.contains("properties")) {
-        for (auto it = behavior.at("properties").begin();
-             it != behavior.at("properties").end(); ++it) {
-          behaviorDef.properties[it.key()] = it.value().dump();
-        }
+        behaviorDef.properties = behavior.at("properties");
       }
       def.behaviors.push_back(behaviorDef);
+    }
+  }
+
+  // Behaviors By Type
+  if (j.contains("behaviorsByType")) {
+    for (auto it = j.at("behaviorsByType").begin();
+         it != j.at("behaviorsByType").end(); ++it) {
+      std::vector<BlockDef::BehaviorDef> behaviorList;
+      for (const auto &behavior : it.value()) {
+        BlockDef::BehaviorDef behaviorDef;
+        if (behavior.contains("name")) {
+          behaviorDef.name = behavior.at("name").get<std::string>();
+        }
+        if (behavior.contains("properties")) {
+          behaviorDef.properties = behavior.at("properties");
+        }
+        behaviorList.push_back(behaviorDef);
+      }
+      def.behaviorsByType[it.key()] = behaviorList;
     }
   }
 
@@ -313,26 +333,28 @@ BlockDef::BlockDefinition BlockLoader::parseJSON(const nlohmann::json &j) {
   return def;
 }
 
-std::vector<std::string>
+std::vector<BlockLoader::VariantContext>
 BlockLoader::expandVariants(const BlockDef::BlockDefinition &def) {
-  std::vector<std::string> variants;
+  std::vector<VariantContext> variants;
 
   if (def.variantGroups.empty()) {
     // No variants, just use the base code
-    variants.push_back(def.code);
+    variants.push_back({def.code, {}});
     return variants;
   }
 
   // Start with base code
-  variants.push_back(def.code);
+  variants.push_back({def.code, {}});
 
   // Expand each variant group
   for (const auto &group : def.variantGroups) {
-    std::vector<std::string> newVariants;
-    for (const auto &existingVariant : variants) {
+    std::vector<VariantContext> newVariants;
+    for (const auto &existingCtx : variants) {
       for (const auto &state : group.states) {
-        std::string newVariant = existingVariant + "_" + state;
-        newVariants.push_back(newVariant);
+        VariantContext newCtx = existingCtx;
+        newCtx.fullCode = existingCtx.fullCode + "_" + state;
+        newCtx.variables[group.code] = state;
+        newVariants.push_back(newCtx);
       }
     }
     variants = newVariants;
@@ -343,8 +365,9 @@ BlockLoader::expandVariants(const BlockDef::BlockDefinition &def) {
 
 Block *
 BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
-                                       const std::string &variantCode,
+                                       const VariantContext &ctx,
                                        block_id blockId) {
+  const std::string &variantCode = ctx.fullCode;
 
   // Determine drawtype for this variant
   std::string drawType =
@@ -438,12 +461,14 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
       // 1. Apply 'all' first if it exists in this pattern
       if (texMap.count("all")) {
         const auto &texDef = texMap.at("all");
-        std::string texturePath = substituteVariables(texDef.base, variantCode);
+        std::string texturePath =
+            substituteVariables(texDef.base, variantCode, ctx.variables);
         block->setTexture(texturePath);
         for (int i = 0; i < 6; ++i) {
+          block->setFaceRotation(i, texDef.rotation);
           for (size_t k = 0; k < texDef.overlays.size(); ++k) {
-            std::string overlayPath =
-                substituteVariables(texDef.overlays[k], variantCode);
+            std::string overlayPath = substituteVariables(
+                texDef.overlays[k], variantCode, ctx.variables);
             block->setOverlayTexture(i, overlayPath);
           }
         }
@@ -454,14 +479,16 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
         if (face == "all")
           continue;
 
-        std::string texturePath = substituteVariables(texDef.base, variantCode);
+        std::string texturePath =
+            substituteVariables(texDef.base, variantCode, ctx.variables);
 
         // Function to apply texture and overlays for a face index
         auto applyTex = [&](int faceIdx) {
           block->setTexture(faceIdx, texturePath);
+          block->setFaceRotation(faceIdx, texDef.rotation);
           for (size_t i = 0; i < texDef.overlays.size(); ++i) {
-            std::string overlayPath =
-                substituteVariables(texDef.overlays[i], variantCode);
+            std::string overlayPath = substituteVariables(
+                texDef.overlays[i], variantCode, ctx.variables);
             block->setOverlayTexture(faceIdx, overlayPath);
           }
         };
@@ -495,12 +522,14 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
     // 1. Apply 'all' first if it exists
     if (def.textures.count("all")) {
       const auto &texDef = def.textures.at("all");
-      std::string texturePath = substituteVariables(texDef.base, variantCode);
+      std::string texturePath =
+          substituteVariables(texDef.base, variantCode, ctx.variables);
       block->setTexture(texturePath);
       for (int i = 0; i < 6; ++i) {
+        block->setFaceRotation(i, texDef.rotation);
         for (size_t k = 0; k < texDef.overlays.size(); ++k) {
-          std::string overlayPath =
-              substituteVariables(texDef.overlays[k], variantCode);
+          std::string overlayPath = substituteVariables(
+              texDef.overlays[k], variantCode, ctx.variables);
           block->setOverlayTexture(i, overlayPath);
         }
       }
@@ -511,13 +540,15 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
       if (face == "all")
         continue;
 
-      std::string texturePath = substituteVariables(texDef.base, variantCode);
+      std::string texturePath =
+          substituteVariables(texDef.base, variantCode, ctx.variables);
 
       auto applyTex = [&](int faceIdx) {
         block->setTexture(faceIdx, texturePath);
+        block->setFaceRotation(faceIdx, texDef.rotation);
         for (size_t i = 0; i < texDef.overlays.size(); ++i) {
-          std::string overlayPath =
-              substituteVariables(texDef.overlays[i], variantCode);
+          std::string overlayPath = substituteVariables(
+              texDef.overlays[i], variantCode, ctx.variables);
           block->setOverlayTexture(faceIdx, overlayPath);
         }
       };
@@ -630,6 +661,31 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
     block->setTintTarget(target);
   }
 
+  // Attach Behaviors
+  auto behaviors =
+      resolveProperty(def.behaviors, def.behaviorsByType, variantCode);
+  for (const auto &bDef : behaviors) {
+    if (bDef.name == "BreakIfFloating") {
+      auto behavior = std::make_shared<BlockBehaviorBreakIfFloating>(block);
+      behavior->onLoaded(bDef.properties);
+      block->addBehavior(behavior);
+    } else if (bDef.name == "HorizontalOrientable") {
+      auto behavior =
+          std::make_shared<BlockBehaviorHorizontalOrientable>(block);
+      behavior->onLoaded(bDef.properties);
+      block->addBehavior(behavior);
+    } else if (bDef.name == "Pillar") {
+      auto behavior = std::make_shared<BlockBehaviorPillar>(block);
+      behavior->onLoaded(bDef.properties);
+      block->addBehavior(behavior);
+    } else if (bDef.name == "Orientable") {
+      auto behavior = std::make_shared<BlockBehaviorOrientable>(block);
+      behavior->onLoaded(bDef.properties);
+      block->addBehavior(behavior);
+    }
+    // Add other behaviors here as they are implemented
+  }
+
   return block;
 }
 
@@ -655,25 +711,38 @@ bool BlockLoader::matchesPattern(const std::string &pattern,
   return prefixMatch && suffixMatch;
 }
 
-std::string BlockLoader::substituteVariables(const std::string &str,
-                                             const std::string &variantCode) {
+std::string BlockLoader::substituteVariables(
+    const std::string &str, const std::string &variantCode,
+    const std::unordered_map<std::string, std::string> &vars) {
   std::string result = str;
-  // Simple placeholder substitution
-  // Determine variant value (part after first underscore)
-  size_t underscore = variantCode.find('_');
-  if (underscore != std::string::npos) {
-    std::string variantVal = variantCode.substr(underscore + 1);
 
-    // Replace {wood}, {start}, {whatever} with the variant value
-    // We assume there's only one main variant variable for now
-    size_t start = result.find('{');
-    while (start != std::string::npos) {
-      size_t end = result.find('}', start);
-      if (end != std::string::npos) {
-        result.replace(start, end - start + 1, variantVal);
-        start = result.find('{', start + variantVal.length());
-      } else {
-        break;
+  // 1. Use specific variables if available
+  if (!vars.empty()) {
+    for (const auto &[key, value] : vars) {
+      std::string placeholder = "{" + key + "}";
+      size_t pos = 0;
+      while ((pos = result.find(placeholder, pos)) != std::string::npos) {
+        result.replace(pos, placeholder.length(), value);
+        pos += value.length();
+      }
+    }
+  } else {
+    // 2. Fallback: Simple placeholder substitution (old behavior)
+    // Determine variant value (part after first underscore)
+    size_t underscore = variantCode.find('_');
+    if (underscore != std::string::npos) {
+      std::string variantVal = variantCode.substr(underscore + 1);
+
+      // Replace {wood}, {start}, {whatever} with the variant value
+      size_t start = result.find('{');
+      while (start != std::string::npos) {
+        size_t end = result.find('}', start);
+        if (end != std::string::npos) {
+          result.replace(start, end - start + 1, variantVal);
+          start = result.find('{', start + variantVal.length());
+        } else {
+          break;
+        }
       }
     }
   }

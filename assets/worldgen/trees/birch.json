@@ -75,7 +75,7 @@
         }
     ],
     "treeBlocks": {
-        "logBlockCode": "lithos:log_birch",
+        "logBlockCode": "lithos:log_birch_ud",
         "leavesBlockCode": "lithos:leaves_birch",
         "leavesBranchyBlockCode": "lithos:leaves_birch",
         "vinesBlockCode": "lithos:air",

@@ -144,7 +144,7 @@
         }
     ],
     "treeBlocks": {
-        "logBlockCode": "lithos:log_oak",
+        "logBlockCode": "lithos:log_oak_ud",
         "leavesBlockCode": "lithos:leaves_oak",
         "leavesBranchyBlockCode": "lithos:leaves_oak",
         "vinesBlockCode": "lithos:air",

@@ -5,6 +5,11 @@
             "*"
         ]
     },
+    "behaviors": [
+        {
+            "name": "BreakIfFloating"
+        }
+    ],
     "class": "LeavesBlock",
     "blockMaterial": "Leaves",
     "drawType": "cube",

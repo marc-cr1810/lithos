@@ -21,13 +21,18 @@ private:
   // Parse JSON into BlockDefinition
   static BlockDef::BlockDefinition parseJSON(const nlohmann::json &j);
 
+  struct VariantContext {
+    std::string fullCode;
+    std::unordered_map<std::string, std::string> variables;
+  };
+
   // Expand variant groups into individual variant codes
-  static std::vector<std::string>
+  static std::vector<VariantContext>
   expandVariants(const BlockDef::BlockDefinition &def);
 
   // Create a Block instance from definition and variant code
   static Block *createBlockFromDefinition(const BlockDef::BlockDefinition &def,
-                                          const std::string &variantCode,
+                                          const VariantContext &ctx,
                                           block_id blockId);
 
   // Resolve property value based on variant using byType patterns
@@ -35,6 +40,7 @@ private:
   static T resolveProperty(const T &defaultValue,
                            const std::unordered_map<std::string, T> &byTypeMap,
                            const std::string &variantCode) {
+    // ... implementation unchanged (templated in header) ...
     // Find the most specific matching pattern
     std::string bestMatch;
     T bestValue = defaultValue;
@@ -64,8 +70,9 @@ private:
                              const std::string &value);
 
   // Apply texture substitutions {wood} -> oak, etc.
-  static std::string substituteVariables(const std::string &str,
-                                         const std::string &variantCode);
+  static std::string
+  substituteVariables(const std::string &str, const std::string &variantCode,
+                      const std::unordered_map<std::string, std::string> &vars);
 
   // Counter for auto-assigning block IDs
   static block_id nextBlockId;

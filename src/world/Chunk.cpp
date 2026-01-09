@@ -2631,15 +2631,10 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
         }
       }
     }
-  } else if (block->isLog()) {
-    if (metadata == 1) { // X-Axis
-      if (faceDir == 0 || faceDir == 1 || faceDir == 4 || faceDir == 5) {
-        rAngle = 1.5708f;
-      }
-    } else if (metadata == 2) { // Z-Axis
-      if (faceDir == 2 || faceDir == 3) {
-        rAngle = 1.5708f;
-      }
+  } else {
+    int rot = block->getFaceRotation(faceDir);
+    if (rot != 0) {
+      rAngle = glm::radians((float)rot);
     }
   }
 
@@ -2866,7 +2861,8 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
 }
 
 bool Chunk::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist,
-                    glm::ivec3 &outputPos, glm::ivec3 &outputPrePos) {
+                    glm::ivec3 &outputPos, glm::ivec3 &outputPrePos,
+                    int *outputFace) {
   // 1. Quick AABB Check
   glm::vec3 min = glm::vec3(chunkPosition * CHUNK_SIZE);
   glm::vec3 max = min + glm::vec3(CHUNK_SIZE);
@@ -2929,9 +2925,48 @@ bool Chunk::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist,
         // Only hit if ray position is within the block's actual vertical bounds
         if (localY >= blockMin.y && localY <= blockMax.y) {
           outputPos = glm::ivec3(x, y, z);
-          outputPrePos =
-              glm::ivec3((int)floor(lastPos.x), (int)floor(lastPos.y),
-                         (int)floor(lastPos.z));
+          int lx = (int)floor(lastPos.x);
+          int ly = (int)floor(lastPos.y);
+          int lz = (int)floor(lastPos.z);
+          outputPrePos = glm::ivec3(lx, ly, lz);
+
+          if (outputFace) {
+            int dx = lx - x;
+            int dy = ly - y;
+            int dz = lz - z;
+
+            if (dx == 1)
+              *outputFace = 3; // Right (X+)
+            else if (dx == -1)
+              *outputFace = 2; // Left (X-)
+            else if (dy == 1)
+              *outputFace = 4; // Top (Y+)
+            else if (dy == -1)
+              *outputFace = 5; // Bottom (Y-)
+            else if (dz == 1)
+              *outputFace = 0; // Front (Z+)
+            else if (dz == -1)
+              *outputFace = 1; // Back (Z-)
+            else {
+              // Fallback: Calculate face based on hit position within block
+              float fx = pos.x - std::floor(pos.x);
+              float fy = pos.y - std::floor(pos.y);
+              float fz = pos.z - std::floor(pos.z);
+
+              float distX = std::min(fx, 1.0f - fx);
+              float distY = std::min(fy, 1.0f - fy);
+              float distZ = std::min(fz, 1.0f - fz);
+
+              if (distX < distY && distX < distZ) {
+                *outputFace = (fx < 0.5f) ? 2 : 3;
+              } else if (distY < distZ) {
+                *outputFace = (fy < 0.5f) ? 5 : 4;
+              } else {
+                *outputFace = (fz < 0.5f) ? 1 : 0;
+              }
+            }
+          }
+
           return true;
         }
       }

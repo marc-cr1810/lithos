@@ -2,13 +2,12 @@
     "code": "log",
     "creativeInventory": {
         "general": [
-            "*"
+            "*_ud"
         ],
         "construction": [
-            "*"
+            "*_ud"
         ]
     },
-    "class": "LogBlock",
     "blockMaterial": "Wood",
     "drawType": "cube",
     "resistance": 2.0,
@@ -30,11 +29,43 @@
                 "mangrove",
                 "pale_oak"
             ]
+        },
+        {
+            "code": "rotation",
+            "states": [
+                "ud",
+                "ns",
+                "we"
+            ]
+        }
+    ],
+    "behaviors": [
+        {
+            "name": "Pillar"
         }
     ],
     "textures": {
         "all": "wood/bark/{wood}_log",
         "up": "wood/treetrunk/{wood}_log_top",
         "down": "wood/treetrunk/{wood}_log_top"
+    },
+    "texturesByType": {
+        "*_ud": {
+            "all": "wood/bark/{wood}_log",
+            "up": "wood/treetrunk/{wood}_log_top",
+            "down": "wood/treetrunk/{wood}_log_top"
+        },
+        "*_ns": {
+            "all": "wood/bark/{wood}_log",
+            "north": "wood/treetrunk/{wood}_log_top",
+            "south": "wood/treetrunk/{wood}_log_top",
+            "rotation": 90
+        },
+        "*_we": {
+            "all": "wood/bark/{wood}_log",
+            "east": "wood/treetrunk/{wood}_log_top",
+            "west": "wood/treetrunk/{wood}_log_top",
+            "rotation": 90
+        }
     }
 }

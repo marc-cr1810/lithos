@@ -47,7 +47,7 @@ struct BoundingBox {
 // Block behavior definition
 struct BehaviorDef {
   std::string name;
-  std::unordered_map<std::string, std::string> properties;
+  nlohmann::json properties;
 };
 
 // Main block definition structure
@@ -90,6 +90,7 @@ struct BlockDefinition {
 
   // Behaviors
   std::vector<BehaviorDef> behaviors;
+  std::unordered_map<std::string, std::vector<BehaviorDef>> behaviorsByType;
 
   // Creative Inventory
   std::unordered_map<std::string, std::vector<std::string>> creativeInventory;

@@ -1,0 +1,43 @@
+{
+    "code": "orientable",
+    "class": "SolidBlock",
+    "creativeInventory": {
+        "general": [
+            "*_north"
+        ]
+    },
+    "behaviors": [
+        {
+            "name": "HorizontalOrientable"
+        }
+    ],
+    "variantGroups": [
+        {
+            "code": "side",
+            "states": [
+                "north",
+                "east",
+                "south",
+                "west"
+            ]
+        }
+    ],
+    "texturesByType": {
+        "*_north": {
+            "all": "wood/planks/oak_planks",
+            "north": "wood/bark/oak_log"
+        },
+        "*_east": {
+            "all": "wood/planks/oak_planks",
+            "east": "wood/bark/oak_log"
+        },
+        "*_south": {
+            "all": "wood/planks/oak_planks",
+            "south": "wood/bark/oak_log"
+        },
+        "*_west": {
+            "all": "wood/planks/oak_planks",
+            "west": "wood/bark/oak_log"
+        }
+    }
+}

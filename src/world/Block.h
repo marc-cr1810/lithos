@@ -24,6 +24,7 @@ using block_id = uint16_t;  // 0-65,535 blocks
 constexpr block_id AIR = 0; // Air block always gets ID 0
 
 class World; // Forward declaration
+#include "behaviors/BlockBehavior.h"
 
 class Block {
 public:
@@ -57,6 +58,19 @@ public:
   void setTexture(int face, const std::string &texName) {
     if (face >= 0 && face < 6)
       textureNames[face] = texName;
+  }
+
+  void setFaceRotation(int face, int rotation) {
+    if (face >= 0 && face < 6) {
+      faceRotation[face] = rotation;
+    }
+  }
+
+  int getFaceRotation(int face) const {
+    if (face >= 0 && face < 6) {
+      return faceRotation[face];
+    }
+    return 0;
   }
 
   // Overlay Configuration
@@ -279,11 +293,41 @@ public:
     outMax = glm::vec3(1.0f, getBlockHeight(metadata), 1.0f);
   }
 
+  // Behaviors
+  void addBehavior(std::shared_ptr<BlockBehavior> behavior) {
+    behaviors.push_back(behavior);
+  }
+
   // Events
-  virtual void onPlace(World &world, int x, int y, int z) const {}
+  virtual void onPlace(World &world, int x, int y, int z) const {
+    for (const auto &b : behaviors) {
+      b->onPlace(world, x, y, z);
+    }
+  }
   virtual void onNeighborChange(World &world, int x, int y, int z, int nx,
-                                int ny, int nz) const {}
-  virtual void update(World &world, int x, int y, int z) const {}
+                                int ny, int nz) const {
+    for (const auto &b : behaviors) {
+      b->onNeighborChange(world, x, y, z, nx, ny, nz);
+    }
+  }
+  virtual void update(World &world, int x, int y, int z) const {
+    for (const auto &b : behaviors) {
+      b->update(world, x, y, z);
+    }
+  }
+
+  // Hook for modifying block ID before placement (e.g. rotation)
+  virtual block_id getPlacedBlockID(World &world, int x, int y, int z,
+                                    const glm::vec3 &playerPos,
+                                    const glm::vec3 &playerHeading,
+                                    int clickedFace) const {
+    block_id placedId = id;
+    for (const auto &b : behaviors) {
+      placedId = b->getPlacedBlockID(world, x, y, z, playerPos, playerHeading,
+                                     clickedFace, placedId);
+    }
+    return placedId;
+  }
 
   virtual float getAlpha() const { return 1.0f; }
 
@@ -330,6 +374,7 @@ protected:
   float vMin[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
   float uMax[6] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
   float vMax[6] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+  int faceRotation[6] = {0, 0, 0, 0, 0, 0}; // 0, 90, 180, 270
 
   // Variants
   std::vector<std::tuple<float, float, float, float>> textureVariants[6];
@@ -349,6 +394,8 @@ protected:
 
   std::string climateColorMap;
   TintTarget tintTarget = TintTarget::All;
+
+  std::vector<std::shared_ptr<BlockBehavior>> behaviors;
 };
 
 // Singleton blocks

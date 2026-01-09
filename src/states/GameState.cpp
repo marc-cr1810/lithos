@@ -32,22 +32,22 @@ static void resolveGameStateIds() {
   auto &reg = BlockRegistry::getInstance();
   WATER = reg.getBlockId("lithos:water");
   LAVA = reg.getBlockId("lithos:lava");
-  DIRT = reg.getBlockId("lithos:dirt-soil");
+  DIRT = reg.getBlockId("lithos:dirt");
   STONE = reg.getBlockId("lithos:stone");
-  GRASS = reg.getBlockId("lithos:grass-soil");
-  WOOD = reg.getBlockId("lithos:log-oak-ud");
-  WOOD_PLANKS = reg.getBlockId("lithos:planks-oak");
+  GRASS = reg.getBlockId("lithos:grass");
+  WOOD = reg.getBlockId("lithos:log_oak_ud");
+  WOOD_PLANKS = reg.getBlockId("lithos:planks_oak");
   COBBLESTONE = reg.getBlockId("lithos:cobblestone");
   OBSIDIAN = reg.getBlockId("lithos:obsidian");
   SAND = reg.getBlockId("lithos:sand");
   GLOWSTONE = reg.getBlockId("lithos:glowstone");
-  SPRUCE_LOG = reg.getBlockId("lithos:log-spruce-ud");
-  ACACIA_LOG = reg.getBlockId("lithos:log-acacia-ud");
-  BIRCH_LOG = reg.getBlockId("lithos:log-birch-ud");
-  DARK_OAK_LOG = reg.getBlockId("lithos:log-dark_oak-ud");
-  JUNGLE_LOG = reg.getBlockId("lithos:log-jungle-ud");
-  MANGROVE_LOG = reg.getBlockId("lithos:log-mangrove-ud");
-  PALE_OAK_LOG = reg.getBlockId("lithos:log-pale_oak-ud");
+  SPRUCE_LOG = reg.getBlockId("lithos:log_spruce_ud");
+  ACACIA_LOG = reg.getBlockId("lithos:log_acacia_ud");
+  BIRCH_LOG = reg.getBlockId("lithos:log_birch_ud");
+  DARK_OAK_LOG = reg.getBlockId("lithos:log_dark_oak_ud");
+  JUNGLE_LOG = reg.getBlockId("lithos:log_jungle_ud");
+  MANGROVE_LOG = reg.getBlockId("lithos:log_mangrove_ud");
+  PALE_OAK_LOG = reg.getBlockId("lithos:log_pale_oak_ud");
 
   g_GameStateIdsResolved = true;
 }
@@ -366,35 +366,24 @@ void GameState::HandleInput(Application *app) {
           if (!collision || !BlockRegistry::getInstance()
                                  .getBlock(m_SelectedBlock)
                                  ->isSolid()) {
+            // Apply Placement Behaviors (Orientation, etc)
+            Block *placingBlockObj =
+                BlockRegistry::getInstance().getBlock(m_SelectedBlock);
+            block_id finalBlockId = m_SelectedBlock;
+            if (placingBlockObj) {
+              finalBlockId = placingBlockObj->getPlacedBlockID(
+                  *app->GetWorld(), m_PrePos.x, m_PrePos.y, m_PrePos.z,
+                  app->GetCamera().Position, app->GetCamera().Front, m_HitFace);
+
+              LOG_INFO("Placement Debug: HitFace={}, Original='{}', Final='{}'",
+                       m_HitFace, placingBlockObj->getName(),
+                       BlockRegistry::getInstance()
+                           .getBlock(finalBlockId)
+                           ->getName());
+            }
+
             app->GetWorld()->setBlock(m_PrePos.x, m_PrePos.y, m_PrePos.z,
-                                      m_SelectedBlock);
-
-            int placementMeta = m_SelectedBlockMetadata;
-
-            // Directional Logs Logic
-            if (m_SelectedBlock == WOOD || m_SelectedBlock == SPRUCE_LOG ||
-                m_SelectedBlock == ACACIA_LOG || m_SelectedBlock == BIRCH_LOG ||
-                m_SelectedBlock == DARK_OAK_LOG ||
-                m_SelectedBlock == JUNGLE_LOG ||
-                m_SelectedBlock == MANGROVE_LOG ||
-                m_SelectedBlock == PALE_OAK_LOG) {
-              int dx = m_PrePos.x - m_HitPos.x;
-              int dy = m_PrePos.y - m_HitPos.y;
-              int dz = m_PrePos.z - m_HitPos.z;
-
-              if (dy != 0) {
-                placementMeta = 0; // Vertical (Y-Axis)
-              } else if (dx != 0) {
-                placementMeta = 1; // Horizontal (X-Axis)
-              } else if (dz != 0) {
-                placementMeta = 2; // Horizontal (Z-Axis)
-              }
-            }
-
-            if (placementMeta > 0) {
-              app->GetWorld()->setMetadata(m_PrePos.x, m_PrePos.y, m_PrePos.z,
-                                           placementMeta);
-            }
+                                      finalBlockId);
           }
         }
       }
@@ -545,7 +534,7 @@ void GameState::Update(Application *app, float dt) {
     }
     m_Hit = app->GetWorld()->raycast(app->GetCamera().Position,
                                      app->GetCamera().Front, reachDistance,
-                                     m_HitPos, m_PrePos);
+                                     m_HitPos, m_PrePos, &m_HitFace);
   }
 }
 

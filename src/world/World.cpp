@@ -1261,18 +1261,21 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection,
 // Removed getSuperChunk/getOrCreateSuperChunk definitions
 
 bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist,
-                    glm::ivec3 &outputPos, glm::ivec3 &outputPrePos) {
+                    glm::ivec3 &outputPos, glm::ivec3 &outputPrePos,
+                    int *outputFace) {
   // Naive: check all chunks, find closest hit
   bool hitAny = false;
   float closestDist = maxDist + 1.0f;
   glm::ivec3 bestPos;
   glm::ivec3 bestPrePos;
+  int bestFace = 0;
 
   std::lock_guard<std::mutex> lock(worldMutex);
 
   for (auto &pair : chunks) {
     Chunk *c = pair.second.get();
     glm::ivec3 hitPos, prePos;
+    int hitFace = 0;
     // Transform origin for chunk is handled inside Chunk::raycast now? No,
     // I updated it to do the subtraction. So we just pass global origin.
 
@@ -1288,7 +1291,7 @@ bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist,
     if (distToCenterSq > cullDist * cullDist)
       continue;
 
-    if (c->raycast(origin, direction, maxDist, hitPos, prePos)) {
+    if (c->raycast(origin, direction, maxDist, hitPos, prePos, &hitFace)) {
       // Calculate distance to hitPos (global)
       // hitPos is block coord (int). Center? Corner?
       // Chunk::raycast returns the block coords (chunk-local +
@@ -1324,6 +1327,7 @@ bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist,
         closestDist = dist;
         bestPos = globalHit;
         bestPrePos = globalPre;
+        bestFace = hitFace;
         hitAny = true;
       }
     }
@@ -1332,6 +1336,8 @@ bool World::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist,
   if (hitAny) {
     outputPos = bestPos;
     outputPrePos = bestPrePos;
+    if (outputFace)
+      *outputFace = bestFace;
     return true;
   }
   return false;

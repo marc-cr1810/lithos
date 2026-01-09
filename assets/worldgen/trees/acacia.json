@@ -103,7 +103,7 @@
         }
     ],
     "treeBlocks": {
-        "logBlockCode": "lithos:log_acacia",
+        "logBlockCode": "lithos:log_acacia_ud",
         "leavesBlockCode": "lithos:leaves_acacia",
         "leavesBranchyBlockCode": "lithos:leaves_acacia",
         "vinesBlockCode": "lithos:air",

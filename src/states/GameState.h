@@ -62,6 +62,7 @@ private:
   glm::ivec3 m_HitPos;
   glm::ivec3 m_PrePos;
   bool m_Hit = false;
+  int m_HitFace = 0;
 
   // Debug UI Vars
   float m_DbgFrametimes[120] = {0};

@@ -120,7 +120,8 @@ public:
   // direction: Normalized direction
   // maxDist: Maximum distance to check
   bool raycast(glm::vec3 origin, glm::vec3 direction, float maxDist,
-               glm::ivec3 &outputPos, glm::ivec3 &outputPrePos);
+               glm::ivec3 &outputPos, glm::ivec3 &outputPrePos,
+               int *outputFace = nullptr);
 
 private:
   World *world;
