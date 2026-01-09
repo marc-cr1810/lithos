@@ -4,6 +4,7 @@
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 #include <mutex>
+#include <random>
 #include <vector>
 
 #include "../render/Shader.h"
@@ -76,6 +77,10 @@ public:
   void calculateSunlight(); // Step 1: Seed Skylight
   void calculateBlockLight();
   void spreadLight(); // Step 2: Spread light
+
+  // Random Ticking
+  void processRandomTicks(int tickCount, std::mt19937 &rng);
+
   void render(Shader &shader, const glm::mat4 &viewProjection,
               int pass); // 0=Opaque, 1=Transparent
   void initGL();

@@ -17,6 +17,7 @@
 #include "../render/ModelLoader.h"
 #include "../render/TextureAtlas.h"
 #include <glm/glm.hpp>
+#include <random>
 
 // Block ID type - dynamic assignment at runtime (matches Vintage Story's
 // ushort)
@@ -316,15 +317,22 @@ public:
     }
   }
 
+  virtual void onRandomTick(World &world, int x, int y, int z,
+                            std::mt19937 &rng) const {
+    for (size_t i = 0; i < behaviors.size(); ++i) {
+      behaviors[i]->onRandomTick(world, x, y, z, rng);
+    }
+  }
+
   // Hook for modifying block ID before placement (e.g. rotation)
   virtual block_id getPlacedBlockID(World &world, int x, int y, int z,
                                     const glm::vec3 &playerPos,
                                     const glm::vec3 &playerHeading,
                                     int clickedFace) const {
     block_id placedId = id;
-    for (const auto &b : behaviors) {
-      placedId = b->getPlacedBlockID(world, x, y, z, playerPos, playerHeading,
-                                     clickedFace, placedId);
+    for (size_t i = 0; i < behaviors.size(); ++i) {
+      placedId = behaviors[i]->getPlacedBlockID(
+          world, x, y, z, playerPos, playerHeading, clickedFace, placedId);
     }
     return placedId;
   }
@@ -357,6 +365,10 @@ public:
   }
   const std::string &getClimateColorMap() const { return climateColorMap; }
 
+  // Random Ticking
+  bool isRandomTickable() const { return isRandomTickable_; }
+  void setRandomTickable(bool tickable) { isRandomTickable_ = tickable; }
+
 protected:
   block_id id;
   std::string name;
@@ -364,6 +376,7 @@ protected:
   bool isOpaque_ = true;
   bool isSolid_ = true;
   bool isReplaceable_ = false;
+  bool isRandomTickable_ = false;
   float resistance = 1.0f;
   RenderLayer renderLayer = RenderLayer::OPAQUE;
   uint8_t emission_ = 0;

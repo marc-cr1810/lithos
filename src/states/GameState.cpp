@@ -374,12 +374,6 @@ void GameState::HandleInput(Application *app) {
               finalBlockId = placingBlockObj->getPlacedBlockID(
                   *app->GetWorld(), m_PrePos.x, m_PrePos.y, m_PrePos.z,
                   app->GetCamera().Position, app->GetCamera().Front, m_HitFace);
-
-              LOG_INFO("Placement Debug: HitFace={}, Original='{}', Final='{}'",
-                       m_HitFace, placingBlockObj->getName(),
-                       BlockRegistry::getInstance()
-                           .getBlock(finalBlockId)
-                           ->getName());
             }
 
             app->GetWorld()->setBlock(m_PrePos.x, m_PrePos.y, m_PrePos.z,

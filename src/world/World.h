@@ -9,6 +9,7 @@
 #include <memory>
 #include <mutex>
 #include <queue>
+#include <random>
 #include <thread>
 #include <tuple>
 #include <unordered_map>
@@ -177,6 +178,8 @@ private:
                       std::greater<BlockUpdate>>
       updateQueue;
   std::mutex updateQueueMutex;
+
+  std::mt19937 rng; // Random Number Generator
 
   std::unique_ptr<WorldGenerator> m_Generator;
 

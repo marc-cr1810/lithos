@@ -183,6 +183,13 @@ add_executable(lithos
     src/world/BlockRegistry.cpp
     src/world/BlockLoader.cpp
     src/world/BlockFactory.cpp
+    src/world/BlockFactory.cpp
+    src/world/behaviors/BlockBehaviorFactory.cpp
+    src/world/behaviors/BlockBehaviorBreakIfFloating.cpp
+    src/world/behaviors/BlockBehaviorGrowth.cpp
+    src/world/behaviors/BlockBehaviorHorizontalOrientable.cpp
+    src/world/behaviors/BlockBehaviorPillar.cpp
+    src/world/behaviors/BlockBehaviorOrientable.cpp
     src/world/gen/NoiseManager.cpp
     src/world/gen/Landform.cpp
     src/world/gen/RockStrata.cpp

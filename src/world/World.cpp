@@ -68,7 +68,11 @@ World::World(const WorldGenConfig &config, bool silent)
     meshThreads.emplace_back(&World::WorkerLoop, this);
   }
 
-  // Start generation worker threads
+  // Seed RNG
+  std::random_device rd;
+  rng.seed(rd());
+
+  // Initialize Generation Threadsker threads
   for (int i = 0; i < threadCount; ++i) {
     genThreads.emplace_back(&World::GenerationWorkerLoop, this);
   }
@@ -371,6 +375,26 @@ void World::GenerationWorkerLoop() {
       // Queue mesh update
       QueueMeshUpdate(c);
 
+      // Process Random Ticks
+      // 3 random ticks per section (sub-chunk) is standard Minecraft behavior.
+      // Our Chunks are 32x32x32.
+      // Standard chunk = 16x16x16 sections.
+      // Volume ratio: (32*32*32) / (16*16*16) = 8.
+      // So we should do 3 * 8 = 24 ticks per chunk to match density?
+      // Let's start with a configurable amount, say 10.
+      int randomTicksPerChunk = 12;
+
+      {
+        std::lock_guard<std::mutex> lock(worldMutex);
+        for (auto &pair : chunks) {
+          if (pair.second) {
+            pair.second->processRandomTicks(randomTicksPerChunk, rng);
+          }
+        }
+      }
+
+      // Update Entities
+      // ...
       // Update neighbors
       int dirs_indices[] = {
           Chunk::DIR_LEFT, Chunk::DIR_RIGHT, Chunk::DIR_FRONT,

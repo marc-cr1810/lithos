@@ -1874,9 +1874,10 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
 
             // Check neighbors for light (simplified: check 6 neighbors?
             // Better: Check the neighbor responsible for the face)
-            // But we are in a loop for faces? No, this is for Model/Shape.
-            // Let's modify addFaceQuad to take light overrides or calculate
-            // them.
+
+            // Returns true if a block was hitfaces? No, this is for
+            // Model/Shape. Let's modify addFaceQuad to take light overrides or
+            // calculate them.
 
             // Re-defining addFaceQuad to sample light
             auto addFaceQuad = [&](int face, float xMin, float yMin, float zMin,
@@ -3339,4 +3340,27 @@ int Chunk::vertexAO(bool side1, bool side2, bool corner) {
       3  // 111: all three
   };
   return AO_LOOKUP[(side1 << 2) | (side2 << 1) | corner];
+}
+
+void Chunk::processRandomTicks(int tickCount, std::mt19937 &rng) {
+  if (isAllAir)
+    return;
+
+  std::uniform_int_distribution<int> dist(0, CHUNK_SIZE - 1);
+
+  for (int i = 0; i < tickCount; ++i) {
+    int x = dist(rng);
+    int y = dist(rng);
+    int z = dist(rng);
+
+    ChunkBlock &cb = blocks[x][y][z];
+    if (cb.id != AIR) {
+      Block *block = cb.getBlock();
+      if (block->isRandomTickable()) {
+        block->onRandomTick(*world, chunkPosition.x * CHUNK_SIZE + x,
+                            chunkPosition.y * CHUNK_SIZE + y,
+                            chunkPosition.z * CHUNK_SIZE + z, rng);
+      }
+    }
+  }
 }

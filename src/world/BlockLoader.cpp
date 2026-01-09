@@ -1,10 +1,7 @@
 #include "BlockLoader.h"
 #include "../debug/Logger.h"
 #include "BlockFactory.h"
-#include "behaviors/BlockBehaviorBreakIfFloating.h"
-#include "behaviors/BlockBehaviorHorizontalOrientable.h"
-#include "behaviors/BlockBehaviorOrientable.h"
-#include "behaviors/BlockBehaviorPillar.h"
+#include "behaviors/BlockBehaviorFactory.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -665,25 +662,23 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
   auto behaviors =
       resolveProperty(def.behaviors, def.behaviorsByType, variantCode);
   for (const auto &bDef : behaviors) {
-    if (bDef.name == "BreakIfFloating") {
-      auto behavior = std::make_shared<BlockBehaviorBreakIfFloating>(block);
+    auto behavior =
+        BlockBehaviorFactory::getInstance().createBehavior(bDef.name, block);
+
+    if (behavior) {
       behavior->onLoaded(bDef.properties);
       block->addBehavior(behavior);
-    } else if (bDef.name == "HorizontalOrientable") {
-      auto behavior =
-          std::make_shared<BlockBehaviorHorizontalOrientable>(block);
-      behavior->onLoaded(bDef.properties);
-      block->addBehavior(behavior);
-    } else if (bDef.name == "Pillar") {
-      auto behavior = std::make_shared<BlockBehaviorPillar>(block);
-      behavior->onLoaded(bDef.properties);
-      block->addBehavior(behavior);
-    } else if (bDef.name == "Orientable") {
-      auto behavior = std::make_shared<BlockBehaviorOrientable>(block);
-      behavior->onLoaded(bDef.properties);
-      block->addBehavior(behavior);
+
+      // Special case property setting (TODO: Move to properties?)
+      // Check if behavior implies random ticking
+      // Ideally behavior should set this flag on the block in constructor or
+      // onLoaded But BlockBehavior doesn't have easy mutable access to Block
+      // flags? Actually it has 'block' pointer. Let's rely on behavior setting
+      // logic (e.g. Growth sets it).
+    } else {
+      LOG_ERROR("BlockLoader: Unknown behavior '{}' for block '{}'", bDef.name,
+                block->getName());
     }
-    // Add other behaviors here as they are implemented
   }
 
   return block;
