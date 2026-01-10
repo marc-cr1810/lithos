@@ -427,33 +427,8 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                   }
                 } else {
                   // Current block is OPAQUE (solid like stone)
-                  // DEBUG: Log when checking solid blocks against water/leaves
-                  if (nb.getBlock()->getName().find("water") !=
-                          std::string::npos ||
-                      nb.getBlock()->getName().find("leaves") !=
-                          std::string::npos) {
-                    static int logCount = 0;
-                    if (logCount++ < 5) {
-                      LOG_INFO("[FACE_CULL] Solid block '{}' (opaque={}) "
-                               "checking neighbor '{}' (opaque={})",
-                               b.getBlock()->getName(), b.isOpaque(),
-                               nb.getBlock()->getName(), nb.isOpaque());
-                    }
-                  }
-
                   if (nb.isOpaque())
                     occluded = true;
-
-                  // DEBUG: Log the result
-                  if (nb.getBlock()->getName().find("water") !=
-                          std::string::npos ||
-                      nb.getBlock()->getName().find("leaves") !=
-                          std::string::npos) {
-                    static int logCount2 = 0;
-                    if (logCount2++ < 5) {
-                      LOG_INFO("[FACE_CULL]   -> occluded={}", occluded);
-                    }
-                  }
                 }
               } else {
                 skyVal = blocks[nx][ny][nz].skyLight;
@@ -2317,6 +2292,44 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
 
               if (isNeighborSideSolid(f, oppositeFace)) {
                 faceVisible[f] = false;
+              } else {
+                // Neighbor face is not-solid (transparent or partial).
+                // EXCEPT: Cull if it's the SAME transparent block type
+                // (internal face culling) This prevents seeing boundaries
+                // between water/lava/leaves blocks.
+                if (!cb.isOpaque()) {
+                  int nx = x, ny = y, nz = z;
+                  if (f == 0)
+                    nz++;
+                  else if (f == 1)
+                    nz--;
+                  else if (f == 2)
+                    nx--;
+                  else if (f == 3)
+                    nx++;
+                  else if (f == 4)
+                    ny++;
+                  else if (f == 5)
+                    ny--;
+
+                  ChunkBlock nb;
+                  bool found = false;
+                  if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 &&
+                      ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
+                    nb = blocks[nx][ny][nz];
+                    found = true;
+                  } else if (world) {
+                    int gnx = chunkPosition.x * CHUNK_SIZE + nx;
+                    int gny = chunkPosition.y * CHUNK_SIZE + ny;
+                    int gnz = chunkPosition.z * CHUNK_SIZE + nz;
+                    nb = world->getBlock(gnx, gny, gnz);
+                    found = true;
+                  }
+
+                  if (found && nb.getType() == cb.getType()) {
+                    faceVisible[f] = false;
+                  }
+                }
               }
             }
 

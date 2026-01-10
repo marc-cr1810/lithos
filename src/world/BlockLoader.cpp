@@ -545,125 +545,164 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
     } else {
       block->setLiquidSource(false);
     }
-    LOG_INFO("Created Liquid Block: {} | Level: {} | Source: {} | Opaque: {} | "
-             "Solid: {}",
-             variantCode, level, block->isLiquidSource(), def.isOpaque,
-             def.isSolid);
-  }
+    // Apply properties
+    block->setOpaque(def.isOpaque);
 
-  // Set resource ID
-  LOG_DEBUG("      -> Setting resource ID");
-  block->setResourceId("lithos:" + variantCode);
+    block->setResistance(def.resistance);
+    block->setEmission(def.emission);
+    block->setReplaceable(def.replaceable);
 
-  // Set attributes
-  block->setAttributes(attributes);
+    // Apply Side Solid
+    if (!sideSolidMap.empty()) {
+      // 1. Check for "all"
+      if (sideSolidMap.count("all")) {
+        block->setSideSolid(sideSolidMap.at("all"));
+      } else {
+        // Default to isSolid/isOpaque logic if not explicit "all"?
+        // Logic: if sideSolid is present, we assume it overrides defaults.
+        // If "all" is not present, we default to false? Or true?
+        // VS logic: sideSolid defaults to true (opaque).
+        // If partial map provided (e.g. only "down": true), others should be
+        // false? Let's assume if any sideSolid is provided, we start false and
+        // add true ones, UNLESS "all" was handled. Actually, safer to respect
+        // "all" if present, otherwise set based on keys. If "sideSolid" was NOT
+        // in JSON, sideSolidMap is empty, so we skip this block and keep
+        // defaults (true).
 
-  // Apply properties
-  block->setOpaque(def.isOpaque);
+        // If map is NOT empty but "all" is missing, it implies we defined
+        // specific sides. So we should probably zero it out first? Let's assume
+        // explicit definition means "only these are solid" unless "all" says
+        // otherwise.
+        block->setSideSolid(false);
+      }
 
-  // DEBUG: Verify opacity was set correctly
-  if (variantCode.find("water") != std::string::npos ||
-      variantCode.find("leaves") != std::string::npos) {
-    LOG_INFO("[DEBUG] After setOpaque: block '{}' isOpaque()={}", variantCode,
-             block->isOpaque());
-  }
-
-  block->setResistance(def.resistance);
-  block->setEmission(def.emission);
-  block->setReplaceable(def.replaceable);
-
-  // Apply Side Solid
-  if (!sideSolidMap.empty()) {
-    // 1. Check for "all"
-    if (sideSolidMap.count("all")) {
-      block->setSideSolid(sideSolidMap.at("all"));
+      // 2. Apply specific faces
+      for (const auto &[face, val] : sideSolidMap) {
+        if (face == "north")
+          block->setSideSolid(1, val);
+        else if (face == "south")
+          block->setSideSolid(0, val);
+        else if (face == "east")
+          block->setSideSolid(3, val);
+        else if (face == "west")
+          block->setSideSolid(2, val);
+        else if (face == "up")
+          block->setSideSolid(4, val);
+        else if (face == "down")
+          block->setSideSolid(5, val);
+        else if (face == "horizontals") {
+          for (int i = 0; i < 4; ++i)
+            block->setSideSolid(i, val);
+        } else if (face == "verticals") {
+          block->setSideSolid(4, val);
+          block->setSideSolid(5, val);
+        }
+      }
     } else {
-      // Default to isSolid/isOpaque logic if not explicit "all"?
-      // Logic: if sideSolid is present, we assume it overrides defaults.
-      // If "all" is not present, we default to false? Or true?
-      // VS logic: sideSolid defaults to true (opaque).
-      // If partial map provided (e.g. only "down": true), others should be
-      // false? Let's assume if any sideSolid is provided, we start false and
-      // add true ones, UNLESS "all" was handled. Actually, safer to respect
-      // "all" if present, otherwise set based on keys. If "sideSolid" was NOT
-      // in JSON, sideSolidMap is empty, so we skip this block and keep defaults
-      // (true).
+      // If no explicit sideSolid, fallback to isOpaque/isSolid
+      // If block is NOT opaque (e.g. glass, leaves), sideSolid should be false?
+      // Or should glass be solid?
+      // VS Distinction:
+      // Full Opaque = SideSolid all true
+      // Transparent (Glass) = SideSolid all true (connects), but Rendering is
+      // transparent? Non-Solid (Slab) = SideSolid partial
 
-      // If map is NOT empty but "all" is missing, it implies we defined
-      // specific sides. So we should probably zero it out first? Let's assume
-      // explicit definition means "only these are solid" unless "all" says
-      // otherwise.
-      block->setSideSolid(false);
-    }
+      // If block->isOpaque() is true, sideSolid is true (default).
+      // If block->isOpaque() is false BUT isSolid() is true (Glass), sideSolid
+      // is true. If isSolid() is false (Flowers), sideSolid is false.
 
-    // 2. Apply specific faces
-    for (const auto &[face, val] : sideSolidMap) {
-      if (face == "north")
-        block->setSideSolid(1, val);
-      else if (face == "south")
-        block->setSideSolid(0, val);
-      else if (face == "east")
-        block->setSideSolid(3, val);
-      else if (face == "west")
-        block->setSideSolid(2, val);
-      else if (face == "up")
-        block->setSideSolid(4, val);
-      else if (face == "down")
-        block->setSideSolid(5, val);
-      else if (face == "horizontals") {
-        for (int i = 0; i < 4; ++i)
-          block->setSideSolid(i, val);
-      } else if (face == "verticals") {
-        block->setSideSolid(4, val);
-        block->setSideSolid(5, val);
+      if (!def.isOpaque) {
+        block->setSideSolid(false);
+      }
+
+      if (def.drawType == "cross" || def.drawType == "plant") {
+        block->setSideSolid(false);
       }
     }
-  } else {
-    // If no explicit sideSolid, fallback to isOpaque/isSolid
-    // If block is NOT opaque (e.g. glass, leaves), sideSolid should be false?
-    // Or should glass be solid?
-    // VS Distinction:
-    // Full Opaque = SideSolid all true
-    // Transparent (Glass) = SideSolid all true (connects), but Rendering is
-    // transparent? Non-Solid (Slab) = SideSolid partial
 
-    // If block->isOpaque() is true, sideSolid is true (default).
-    // If block->isOpaque() is false BUT isSolid() is true (Glass), sideSolid is
-    // true. If isSolid() is false (Flowers), sideSolid is false.
-
-    if (!def.isSolid) {
-      block->setSideSolid(false);
+    // Store which creative tabs this block belongs to (for later registration)
+    // We don't call BlockRegistry::getInstance() here to avoid deadlock
+    LOG_DEBUG("      -> Storing creative tab memberships (count: {})",
+              def.creativeInventory.size());
+    for (const auto &[tabCode, patterns] : def.creativeInventory) {
+      for (const auto &pattern : patterns) {
+        if (matchesPattern(pattern, variantCode)) {
+          block->addCreativeTab(tabCode);
+          break; // Only add once per tab
+        }
+      }
     }
-    // If solid but not opaque (Leaves, Glass), we generally keep SideSolid=true
-    // (it blocks movement/connects) EXCEPT Leaves usually don't cull neighbors?
-    // If I want Leaves to NOT cull behind them, SideSolid must be false.
-    if (def.drawType == "cross" || def.drawType == "plant") {
-      block->setSideSolid(false);
-    }
-  }
 
-  // Store which creative tabs this block belongs to (for later registration)
-  // We don't call BlockRegistry::getInstance() here to avoid deadlock
-  LOG_DEBUG("      -> Storing creative tab memberships (count: {})",
-            def.creativeInventory.size());
-  for (const auto &[tabCode, patterns] : def.creativeInventory) {
-    for (const auto &pattern : patterns) {
+    // Apply textures
+    // First check for texturesByType
+    bool foundTypeTextures = false;
+    for (const auto &[pattern, texMap] : def.texturesByType) {
       if (matchesPattern(pattern, variantCode)) {
-        block->addCreativeTab(tabCode);
-        break; // Only add once per tab
+        foundTypeTextures = true;
+        // 1. Apply 'all' first if it exists in this pattern
+        if (texMap.count("all")) {
+          const auto &texDef = texMap.at("all");
+          std::string texturePath =
+              substituteVariables(texDef.base, variantCode, ctx.variables);
+          block->setTexture(texturePath);
+          for (int i = 0; i < 6; ++i) {
+            block->setFaceRotation(i, texDef.rotation);
+            for (size_t k = 0; k < texDef.overlays.size(); ++k) {
+              std::string overlayPath = substituteVariables(
+                  texDef.overlays[k], variantCode, ctx.variables);
+              block->setOverlayTexture(i, overlayPath);
+            }
+          }
+        }
+
+        // 2. Apply specific faces for this pattern
+        for (const auto &[face, texDef] : texMap) {
+          if (face == "all")
+            continue;
+
+          std::string texturePath =
+              substituteVariables(texDef.base, variantCode, ctx.variables);
+
+          // Function to apply texture and overlays for a face index
+          auto applyTex = [&](int faceIdx) {
+            block->setTexture(faceIdx, texturePath);
+            block->setFaceRotation(faceIdx, texDef.rotation);
+            for (size_t i = 0; i < texDef.overlays.size(); ++i) {
+              std::string overlayPath = substituteVariables(
+                  texDef.overlays[i], variantCode, ctx.variables);
+              block->setOverlayTexture(faceIdx, overlayPath);
+            }
+          };
+
+          if (face == "north") {
+            applyTex(1);
+          } else if (face == "south") {
+            applyTex(0);
+          } else if (face == "east") {
+            applyTex(3);
+          } else if (face == "west") {
+            applyTex(2);
+          } else if (face == "up") {
+            applyTex(4);
+          } else if (face == "down") {
+            applyTex(5);
+          } else if (face == "horizontals") {
+            for (int i = 0; i < 4; ++i)
+              applyTex(i);
+          } else if (face == "verticals") {
+            applyTex(4);
+            applyTex(5);
+          }
+        }
+        break; // Use first matching pattern
       }
     }
-  }
 
-  // Apply textures
-  // First check for texturesByType
-  bool foundTypeTextures = false;
-  for (const auto &[pattern, texMap] : def.texturesByType) {
-    if (matchesPattern(pattern, variantCode)) {
-      foundTypeTextures = true;
-      // 1. Apply 'all' first if it exists in this pattern
-      if (texMap.count("all")) {
-        const auto &texDef = texMap.at("all");
+    // If no type-specific textures found, use default textures
+    if (!foundTypeTextures) {
+      // 1. Apply 'all' first if it exists
+      if (def.textures.count("all")) {
+        const auto &texDef = def.textures.at("all");
         std::string texturePath =
             substituteVariables(texDef.base, variantCode, ctx.variables);
         block->setTexture(texturePath);
@@ -677,15 +716,14 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
         }
       }
 
-      // 2. Apply specific faces for this pattern
-      for (const auto &[face, texDef] : texMap) {
+      // 2. Apply specific faces
+      for (const auto &[face, texDef] : def.textures) {
         if (face == "all")
           continue;
 
         std::string texturePath =
             substituteVariables(texDef.base, variantCode, ctx.variables);
 
-        // Function to apply texture and overlays for a face index
         auto applyTex = [&](int faceIdx) {
           block->setTexture(faceIdx, texturePath);
           block->setFaceRotation(faceIdx, texDef.rotation);
@@ -716,307 +754,247 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
           applyTex(5);
         }
       }
-      break; // Use first matching pattern
     }
-  }
 
-  // If no type-specific textures found, use default textures
-  if (!foundTypeTextures) {
-    // 1. Apply 'all' first if it exists
-    if (def.textures.count("all")) {
-      const auto &texDef = def.textures.at("all");
-      std::string texturePath =
-          substituteVariables(texDef.base, variantCode, ctx.variables);
-      block->setTexture(texturePath);
+    // Apply specialSecondTexture if defined (VS-style grass overlays)
+    if (!def.specialSecondTexture.empty()) {
+      std::string overlayPath = substituteVariables(def.specialSecondTexture,
+                                                    variantCode, ctx.variables);
+      // Apply to all faces by default (can be refined later if needed)
       for (int i = 0; i < 6; ++i) {
-        block->setFaceRotation(i, texDef.rotation);
-        for (size_t k = 0; k < texDef.overlays.size(); ++k) {
-          std::string overlayPath = substituteVariables(
-              texDef.overlays[k], variantCode, ctx.variables);
-          block->setOverlayTexture(i, overlayPath);
-        }
+        block->setOverlayTexture(i, overlayPath);
       }
     }
 
-    // 2. Apply specific faces
-    for (const auto &[face, texDef] : def.textures) {
-      if (face == "all")
-        continue;
-
-      std::string texturePath =
-          substituteVariables(texDef.base, variantCode, ctx.variables);
-
-      auto applyTex = [&](int faceIdx) {
-        block->setTexture(faceIdx, texturePath);
-        block->setFaceRotation(faceIdx, texDef.rotation);
-        for (size_t i = 0; i < texDef.overlays.size(); ++i) {
-          std::string overlayPath = substituteVariables(
-              texDef.overlays[i], variantCode, ctx.variables);
-          block->setOverlayTexture(faceIdx, overlayPath);
-        }
-      };
-
-      if (face == "north") {
-        applyTex(1);
-      } else if (face == "south") {
-        applyTex(0);
-      } else if (face == "east") {
-        applyTex(3);
-      } else if (face == "west") {
-        applyTex(2);
-      } else if (face == "up") {
-        applyTex(4);
-      } else if (face == "down") {
-        applyTex(5);
-      } else if (face == "horizontals") {
-        for (int i = 0; i < 4; ++i)
-          applyTex(i);
-      } else if (face == "verticals") {
-        applyTex(4);
-        applyTex(5);
+    // Set render shape
+    if (drawType == "cross") {
+      block->setRenderShape(Block::RenderShape::CROSS);
+      // Implied properties for cross shape:
+      if (def.renderLayer.empty()) {
+        block->setRenderLayer(Block::RenderLayer::CUTOUT);
       }
-    }
-  }
+      // Cross shapes are never opaque cubes
+      block->setOpaque(false);
 
-  // Apply specialSecondTexture if defined (VS-style grass overlays)
-  if (!def.specialSecondTexture.empty()) {
-    std::string overlayPath = substituteVariables(def.specialSecondTexture,
-                                                  variantCode, ctx.variables);
-    // Apply to all faces by default (can be refined later if needed)
-    for (int i = 0; i < 6; ++i) {
-      block->setOverlayTexture(i, overlayPath);
-    }
-  }
-
-  // Set render shape
-  if (drawType == "cross") {
-    block->setRenderShape(Block::RenderShape::CROSS);
-    // Implied properties for cross shape:
-    if (def.renderLayer.empty()) {
-      block->setRenderLayer(Block::RenderLayer::CUTOUT);
-    }
-    // Cross shapes are never opaque cubes
-    block->setOpaque(false);
-
-    // DEBUG
-    if (variantCode.find("leaves") != std::string::npos) {
-      LOG_INFO("[DEBUG] Cross shape - forced opaque=false for '{}'",
-               variantCode);
-    }
-  } else if (drawType == "cube") {
-    block->setRenderShape(Block::RenderShape::CUBE);
-  } else if (drawType == "json") {
-    // Load custom model if specified via model field
-    BlockDef::ModelDef modelDef =
-        resolveProperty(def.model, def.modelByType, variantCode);
-
-    if (!modelDef.base.empty()) {
-      // Resolve path: "block/stairs/planks" →
-      // "assets/models/block/stairs/planks.json"
-      std::string modelPathStr =
-          substituteVariables(modelDef.base, variantCode, ctx.variables);
-      std::filesystem::path modelPath =
-          std::filesystem::path("assets/models") / (modelPathStr + ".json");
-
-      if (std::filesystem::exists(modelPath)) {
-        LOG_RESOURCE_TRACE("Loading model for {} -> {}", variantCode,
-                           modelPath.string());
-        block->setModel(modelPath);
-        block->setRenderShape(Block::RenderShape::MODEL);
-
-        // Apply rotation if specified
-        block->setRotation(modelDef.rotateX, modelDef.rotateY,
-                           modelDef.rotateZ);
-      } else {
-        LOG_RESOURCE_WARN("Model file not found for {}: {}", variantCode,
-                          modelPath.string());
+      // DEBUG
+      if (variantCode.find("leaves") != std::string::npos) {
+        LOG_INFO("[DEBUG] Cross shape - forced opaque=false for '{}'",
+                 variantCode);
       }
-    }
-  }
+    } else if (drawType == "cube") {
+      block->setRenderShape(Block::RenderShape::CUBE);
+    } else if (drawType == "json") {
+      // Load custom model if specified via model field
+      BlockDef::ModelDef modelDef =
+          resolveProperty(def.model, def.modelByType, variantCode);
 
-  // Auto-assign default models for all drawTypes (universal model system)
-  // This makes ALL blocks use the model rendering path
-  if (block->getModel() == nullptr) {
-    std::string defaultModel;
+      if (!modelDef.base.empty()) {
+        // Resolve path: "block/stairs/planks" →
+        // "assets/models/block/stairs/planks.json"
+        std::string modelPathStr =
+            substituteVariables(modelDef.base, variantCode, ctx.variables);
+        std::filesystem::path modelPath =
+            std::filesystem::path("assets/models") / (modelPathStr + ".json");
 
-    if (drawType == "cube") {
-      defaultModel = "block/basic/cube";
-    } else if (drawType == "cross") {
-      defaultModel = "block/basic/cross";
-    } else if (drawType == "liquid") {
-      // Liquid uses specialized rendering in Chunk.cpp, NOT a static model
-      // But we set a default model just in case of fallback, or maybe we
-      // shouldn't? Actually, if we set a model, it becomes RenderShape::MODEL.
-      // We want RenderShape::LIQUID.
-      block->setRenderShape(Block::RenderShape::LIQUID);
-      // Do NOT set defaultModel, so it doesn't get overridden to MODEL below.
-    }
-    // json, slab, stair, layered types should have explicit models set
+        if (std::filesystem::exists(modelPath)) {
+          LOG_RESOURCE_TRACE("Loading model for {} -> {}", variantCode,
+                             modelPath.string());
+          block->setModel(modelPath);
+          block->setRenderShape(Block::RenderShape::MODEL);
 
-    if (!defaultModel.empty()) {
-      std::filesystem::path modelPath =
-          std::filesystem::path("assets/models") / (defaultModel + ".json");
-      if (std::filesystem::exists(modelPath)) {
-        block->setModel(modelPath);
-        block->setRenderShape(Block::RenderShape::MODEL);
-      }
-    }
-  }
-
-  // Set render layer
-  if (def.renderLayer == "cutout") {
-    block->setRenderLayer(Block::RenderLayer::CUTOUT);
-    block->setOpaque(false); // Default to non-opaque for cutout
-  } else if (def.renderLayer == "transparent") {
-    block->setRenderLayer(Block::RenderLayer::TRANSPARENT);
-    block->setOpaque(false); // Default to non-opaque for transparent
-  } else {
-    block->setRenderLayer(Block::RenderLayer::OPAQUE);
-  }
-
-  // Set opacity based on drawtype/material (Can override defaults from
-  // renderLayer if explicitly set in JSON)
-  block->setResistance(resistance);
-  // Only override isOpaque if it was explicitly present in JSON?
-  // Current logic: def.isOpaque defaults to true.
-  // If JSON had "opaque": false, def.isOpaque is false.
-  // But if JSON didn't have "opaque", def.isOpaque is true.
-  // We want renderLayer="transparent" to imply opaque=false unless specified
-  // otherwise. BUT def.isOpaque is already parsed. Issue: We don't know if
-  // "opaque" was present in JSON or default. FIX: use the fact that we set
-  // opaque=false above, then OR it with the explicit setting? No. Let's rely on
-  // manual "opaque": false in JSON if needed, OR just trust renderLayer? User
-  // wants "Cant the engine just figure it out based on 'opaque'?". User asked
-  // "Why have a renderLayer option?". So if I use renderLayer, I should
-  // probably enforce it. If renderLayer is transparent, it CANNOT be opaque.
-  if (block->getRenderLayer() != Block::RenderLayer::OPAQUE) {
-    block->setOpaque(false);
-  } else {
-    block->setOpaque(def.isOpaque);
-  }
-
-  block->setSolid(def.isSolid);
-  block->setReplaceable(def.replaceable > 0);
-  block->setEmission(def.emission);
-  block->setRandomTickable(def.isRandomTickable);
-  block->setDoubleSided(def.doubleSided);
-  // The following line was moved to be inside the function scope.
-  // block->setOpaque(false); // This line was removed from here.
-
-  // Parse Climate Color Map
-  // Parse Climate Color Map
-  std::string climateMap =
-      resolveProperty<std::string>("", def.climateColorMapByType, variantCode);
-
-  if (!climateMap.empty()) {
-    block->setClimateColorMap(climateMap);
-
-    // Resolve tintTarget from definition
-    std::string targetStr =
-        resolveProperty(def.tintTarget, def.tintTargetByType, variantCode);
-
-    // Check attributes override
-    if (attributes.contains("tintTarget")) {
-      targetStr = attributes["tintTarget"].get<std::string>();
-    } else if (attributes.contains("tintOverlayOnly")) {
-      // Backwards compatibility
-      if (attributes["tintOverlayOnly"].get<bool>())
-        targetStr = "overlay";
-    }
-
-    Block::TintTarget target = Block::TintTarget::All;
-    if (targetStr == "none")
-      target = Block::TintTarget::None;
-    else if (targetStr == "base")
-      target = Block::TintTarget::Base;
-    else if (targetStr == "overlay")
-      target = Block::TintTarget::Overlay;
-
-    block->setTintTarget(target);
-  }
-
-  // Attach Behaviors
-  auto behaviors =
-      resolveProperty(def.behaviors, def.behaviorsByType, variantCode);
-  for (const auto &bDef : behaviors) {
-    auto behavior =
-        BlockBehaviorFactory::getInstance().createBehavior(bDef.name, block);
-
-    if (behavior) {
-      behavior->onLoaded(bDef.properties);
-      block->addBehavior(behavior);
-
-      // Special case property setting (TODO: Move to properties?)
-      // Check if behavior implies random ticking
-      // Ideally behavior should set this flag on the block in constructor or
-      // onLoaded But BlockBehavior doesn't have easy mutable access to Block
-      // flags? Actually it has 'block' pointer. Let's rely on behavior setting
-      // logic (e.g. Growth sets it).
-    } else {
-      LOG_ERROR("BlockLoader: Unknown behavior '{}' for block '{}'", bDef.name,
-                block->getName());
-    }
-  }
-
-  return block;
-}
-
-bool BlockLoader::matchesPattern(const std::string &pattern,
-                                 const std::string &value) {
-  // Simple glob matching support for '*'
-  size_t starPos = pattern.find('*');
-  if (starPos == std::string::npos) {
-    return pattern == value;
-  }
-
-  std::string prefix = pattern.substr(0, starPos);
-  std::string suffix = pattern.substr(starPos + 1);
-
-  if (value.length() < prefix.length() + suffix.length()) {
-    return false;
-  }
-
-  bool prefixMatch = value.compare(0, prefix.length(), prefix) == 0;
-  bool suffixMatch = value.compare(value.length() - suffix.length(),
-                                   suffix.length(), suffix) == 0;
-
-  return prefixMatch && suffixMatch;
-}
-
-std::string BlockLoader::substituteVariables(
-    const std::string &str, const std::string &variantCode,
-    const std::unordered_map<std::string, std::string> &vars) {
-  std::string result = str;
-
-  // 1. Use specific variables if available
-  if (!vars.empty()) {
-    for (const auto &[key, value] : vars) {
-      std::string placeholder = "{" + key + "}";
-      size_t pos = 0;
-      while ((pos = result.find(placeholder, pos)) != std::string::npos) {
-        result.replace(pos, placeholder.length(), value);
-        pos += value.length();
-      }
-    }
-  } else {
-    // 2. Fallback: Simple placeholder substitution (old behavior)
-    // Determine variant value (part after first underscore)
-    size_t underscore = variantCode.find('_');
-    if (underscore != std::string::npos) {
-      std::string variantVal = variantCode.substr(underscore + 1);
-
-      // Replace {wood}, {start}, {whatever} with the variant value
-      size_t start = result.find('{');
-      while (start != std::string::npos) {
-        size_t end = result.find('}', start);
-        if (end != std::string::npos) {
-          result.replace(start, end - start + 1, variantVal);
-          start = result.find('{', start + variantVal.length());
+          // Apply rotation if specified
+          block->setRotation(modelDef.rotateX, modelDef.rotateY,
+                             modelDef.rotateZ);
         } else {
-          break;
+          LOG_RESOURCE_WARN("Model file not found for {}: {}", variantCode,
+                            modelPath.string());
         }
       }
     }
+
+    // Auto-assign default models for all drawTypes (universal model system)
+    // This makes ALL blocks use the model rendering path
+    if (block->getModel() == nullptr) {
+      std::string defaultModel;
+
+      if (drawType == "cube") {
+        defaultModel = "block/basic/cube";
+      } else if (drawType == "cross") {
+        defaultModel = "block/basic/cross";
+      } else if (drawType == "liquid") {
+        // Liquid uses specialized rendering in Chunk.cpp, NOT a static model
+        // But we set a default model just in case of fallback, or maybe we
+        // shouldn't? Actually, if we set a model, it becomes
+        // RenderShape::MODEL. We want RenderShape::LIQUID.
+        block->setRenderShape(Block::RenderShape::LIQUID);
+        // Do NOT set defaultModel, so it doesn't get overridden to MODEL below.
+      }
+      // json, slab, stair, layered types should have explicit models set
+
+      if (!defaultModel.empty()) {
+        std::filesystem::path modelPath =
+            std::filesystem::path("assets/models") / (defaultModel + ".json");
+        if (std::filesystem::exists(modelPath)) {
+          block->setModel(modelPath);
+          block->setRenderShape(Block::RenderShape::MODEL);
+        }
+      }
+    }
+
+    // Set render layer
+    if (def.renderLayer == "cutout") {
+      block->setRenderLayer(Block::RenderLayer::CUTOUT);
+      block->setOpaque(false); // Default to non-opaque for cutout
+    } else if (def.renderLayer == "transparent") {
+      block->setRenderLayer(Block::RenderLayer::TRANSPARENT);
+      block->setOpaque(false); // Default to non-opaque for transparent
+    } else {
+      block->setRenderLayer(Block::RenderLayer::OPAQUE);
+    }
+
+    // Set opacity based on drawtype/material (Can override defaults from
+    // renderLayer if explicitly set in JSON)
+    block->setResistance(resistance);
+    // Only override isOpaque if it was explicitly present in JSON?
+    // Current logic: def.isOpaque defaults to true.
+    // If JSON had "opaque": false, def.isOpaque is false.
+    // But if JSON didn't have "opaque", def.isOpaque is true.
+    // We want renderLayer="transparent" to imply opaque=false unless specified
+    // otherwise. BUT def.isOpaque is already parsed. Issue: We don't know if
+    // "opaque" was present in JSON or default. FIX: use the fact that we set
+    // opaque=false above, then OR it with the explicit setting? No. Let's rely
+    // on manual "opaque": false in JSON if needed, OR just trust renderLayer?
+    // User wants "Cant the engine just figure it out based on 'opaque'?". User
+    // asked "Why have a renderLayer option?". So if I use renderLayer, I should
+    // probably enforce it. If renderLayer is transparent, it CANNOT be opaque.
+    if (block->getRenderLayer() != Block::RenderLayer::OPAQUE) {
+      block->setOpaque(false);
+    } else {
+      block->setOpaque(def.isOpaque);
+    }
+
+    block->setSolid(def.isSolid);
+    block->setReplaceable(def.replaceable > 0);
+    block->setEmission(def.emission);
+    block->setRandomTickable(def.isRandomTickable);
+    block->setDoubleSided(def.doubleSided);
+    // The following line was moved to be inside the function scope.
+    // block->setOpaque(false); // This line was removed from here.
+
+    // Parse Climate Color Map
+    // Parse Climate Color Map
+    std::string climateMap = resolveProperty<std::string>(
+        "", def.climateColorMapByType, variantCode);
+
+    if (!climateMap.empty()) {
+      block->setClimateColorMap(climateMap);
+
+      // Resolve tintTarget from definition
+      std::string targetStr =
+          resolveProperty(def.tintTarget, def.tintTargetByType, variantCode);
+
+      // Check attributes override
+      if (attributes.contains("tintTarget")) {
+        targetStr = attributes["tintTarget"].get<std::string>();
+      } else if (attributes.contains("tintOverlayOnly")) {
+        // Backwards compatibility
+        if (attributes["tintOverlayOnly"].get<bool>())
+          targetStr = "overlay";
+      }
+
+      Block::TintTarget target = Block::TintTarget::All;
+      if (targetStr == "none")
+        target = Block::TintTarget::None;
+      else if (targetStr == "base")
+        target = Block::TintTarget::Base;
+      else if (targetStr == "overlay")
+        target = Block::TintTarget::Overlay;
+
+      block->setTintTarget(target);
+    }
+
+    // Attach Behaviors
+    auto behaviors =
+        resolveProperty(def.behaviors, def.behaviorsByType, variantCode);
+    for (const auto &bDef : behaviors) {
+      auto behavior =
+          BlockBehaviorFactory::getInstance().createBehavior(bDef.name, block);
+
+      if (behavior) {
+        behavior->onLoaded(bDef.properties);
+        block->addBehavior(behavior);
+
+        // Special case property setting (TODO: Move to properties?)
+        // Check if behavior implies random ticking
+        // Ideally behavior should set this flag on the block in constructor or
+        // onLoaded But BlockBehavior doesn't have easy mutable access to Block
+        // flags? Actually it has 'block' pointer. Let's rely on behavior
+        // setting logic (e.g. Growth sets it).
+      } else {
+        LOG_ERROR("BlockLoader: Unknown behavior '{}' for block '{}'",
+                  bDef.name, block->getName());
+      }
+    }
+
+    return block;
   }
-  return result;
-}
+
+  bool BlockLoader::matchesPattern(const std::string &pattern,
+                                   const std::string &value) {
+    // Simple glob matching support for '*'
+    size_t starPos = pattern.find('*');
+    if (starPos == std::string::npos) {
+      return pattern == value;
+    }
+
+    std::string prefix = pattern.substr(0, starPos);
+    std::string suffix = pattern.substr(starPos + 1);
+
+    if (value.length() < prefix.length() + suffix.length()) {
+      return false;
+    }
+
+    bool prefixMatch = value.compare(0, prefix.length(), prefix) == 0;
+    bool suffixMatch = value.compare(value.length() - suffix.length(),
+                                     suffix.length(), suffix) == 0;
+
+    return prefixMatch && suffixMatch;
+  }
+
+  std::string BlockLoader::substituteVariables(
+      const std::string &str, const std::string &variantCode,
+      const std::unordered_map<std::string, std::string> &vars) {
+    std::string result = str;
+
+    // 1. Use specific variables if available
+    if (!vars.empty()) {
+      for (const auto &[key, value] : vars) {
+        std::string placeholder = "{" + key + "}";
+        size_t pos = 0;
+        while ((pos = result.find(placeholder, pos)) != std::string::npos) {
+          result.replace(pos, placeholder.length(), value);
+          pos += value.length();
+        }
+      }
+    } else {
+      // 2. Fallback: Simple placeholder substitution (old behavior)
+      // Determine variant value (part after first underscore)
+      size_t underscore = variantCode.find('_');
+      if (underscore != std::string::npos) {
+        std::string variantVal = variantCode.substr(underscore + 1);
+
+        // Replace {wood}, {start}, {whatever} with the variant value
+        size_t start = result.find('{');
+        while (start != std::string::npos) {
+          size_t end = result.find('}', start);
+          if (end != std::string::npos) {
+            result.replace(start, end - start + 1, variantVal);
+            start = result.find('{', start + variantVal.length());
+          } else {
+            break;
+          }
+        }
+      }
+    }
+    return result;
+  }
