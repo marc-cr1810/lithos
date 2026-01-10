@@ -214,24 +214,35 @@ BlockDef::BlockDefinition BlockLoader::parseJSON(const nlohmann::json &j) {
   if (j.contains("textures")) {
     for (auto it = j.at("textures").begin(); it != j.at("textures").end();
          ++it) {
+      const std::string &face = it.key();
       BlockDef::TextureDef texDef;
-      const auto &value = it.value();
-      if (value.is_object()) {
-        if (value.contains("base")) {
-          texDef.base = value.at("base").get<std::string>();
-        }
-        if (value.contains("rotation")) {
-          texDef.rotation = value.at("rotation").get<int>();
-        }
-        if (value.contains("overlays")) {
-          for (const auto &ov : value.at("overlays")) {
+
+      if (it.value().is_object()) {
+        if (it.value().contains("base"))
+          texDef.base = it.value().at("base").get<std::string>();
+        if (it.value().contains("rotation"))
+          texDef.rotation = it.value().at("rotation").get<int>();
+        if (it.value().contains("overlays")) {
+          for (const auto &ov : it.value().at("overlays")) {
             texDef.overlays.push_back(ov.get<std::string>());
           }
         }
-      } else if (value.is_string()) {
-        texDef.base = value.get<std::string>();
+      } else if (it.value().is_string()) {
+        texDef.base = it.value().get<std::string>();
       }
+
       def.textures[it.key()] = texDef;
+    }
+  }
+
+  // Parse specialSecondTexture (for grass overlays like VS)
+  if (j.contains("textures") &&
+      j.at("textures").contains("specialSecondTexture")) {
+    const auto &sst = j.at("textures").at("specialSecondTexture");
+    if (sst.is_object() && sst.contains("base")) {
+      def.specialSecondTexture = sst.at("base").get<std::string>();
+    } else if (sst.is_string()) {
+      def.specialSecondTexture = sst.get<std::string>();
     }
   }
 
@@ -705,6 +716,16 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
         applyTex(4);
         applyTex(5);
       }
+    }
+  }
+
+  // Apply specialSecondTexture if defined (VS-style grass overlays)
+  if (!def.specialSecondTexture.empty()) {
+    std::string overlayPath = substituteVariables(def.specialSecondTexture,
+                                                  variantCode, ctx.variables);
+    // Apply to all faces by default (can be refined later if needed)
+    for (int i = 0; i < 6; ++i) {
+      block->setOverlayTexture(i, overlayPath);
     }
   }
 

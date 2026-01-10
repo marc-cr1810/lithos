@@ -64,6 +64,7 @@ struct BlockDefinition {
   std::unordered_map<std::string, TextureDef> textures;
   std::unordered_map<std::string, std::unordered_map<std::string, TextureDef>>
       texturesByType;
+  std::string specialSecondTexture; // NEW: For grass overlays (like VS)
 
   // Material & Physics
   std::string blockMaterial = "Stone";
