@@ -145,8 +145,8 @@ public:
 
     // Resolve Model Textures
     if (customModel) {
+      // First, resolve any textures defined in the model file
       for (const auto &[key, texParams] : customModel->textures) {
-        // ... (name parsing logic omitted for brevity, keeping existing)
         std::string name = texParams;
         const std::string prefix = "assets:block/";
         if (name.compare(0, prefix.length(), prefix) == 0) {
@@ -160,7 +160,23 @@ public:
 
         float u, v, u2, v2;
         if (atlas.GetTextureUV(name, u, v, u2, v2)) {
-          modelTextureUVs[key] = {u, v, u2, v2}; // Needs struct update
+          modelTextureUVs[key] = {u, v, u2, v2};
+        }
+      }
+
+      // Also populate common face names (north, south, etc.) from block's face
+      // textures This allows models to use #north, #south without defining them
+      // in the model file
+      const char *faceNames[] = {"north", "south", "east",
+                                 "west",  "up",    "down"};
+      int faceIndices[] = {1, 0, 3, 2, 4, 5}; // Map to engine face indices
+
+      for (int i = 0; i < 6; ++i) {
+        // Only populate if not already defined by model
+        if (modelTextureUVs.find(faceNames[i]) == modelTextureUVs.end()) {
+          modelTextureUVs[faceNames[i]] = {
+              uMin[faceIndices[i]], vMin[faceIndices[i]], uMax[faceIndices[i]],
+              vMax[faceIndices[i]]};
         }
       }
     }
@@ -383,6 +399,25 @@ protected:
   std::vector<std::string> creativeTabs;
 
   std::string textureNames[6];
+  bool sideSolid[6] = {true, true, true, true, true, true}; // Default to solid
+
+public:
+  void setSideSolid(int face, bool solid) {
+    if (face >= 0 && face < 6)
+      sideSolid[face] = solid;
+  }
+
+  void setSideSolid(bool solid) {
+    for (int i = 0; i < 6; ++i)
+      sideSolid[i] = solid;
+  }
+
+  virtual bool isSideSolid(int face, int metadata = 0) const {
+    // Default: ignore metadata, use static property
+    if (face >= 0 && face < 6)
+      return sideSolid[face];
+    return true;
+  }
   float uMin[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
   float vMin[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
   float uMax[6] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};

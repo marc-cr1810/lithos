@@ -12,7 +12,7 @@
     "solid": false,
     "opaque": false,
     "textures": {
-        "all": "plant/flower/poppy"
+        "all": "block/plant/flower/poppy"
     },
     "sounds": {
         "place": "game/step/grass",

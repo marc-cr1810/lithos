@@ -24,20 +24,20 @@
     ],
     "texturesByType": {
         "*_north": {
-            "all": "wood/planks/oak_planks",
-            "north": "wood/bark/oak_log"
+            "all": "block/wood/planks/oak_planks",
+            "north": "block/wood/bark/oak_log"
         },
         "*_east": {
-            "all": "wood/planks/oak_planks",
-            "east": "wood/bark/oak_log"
+            "all": "block/wood/planks/oak_planks",
+            "east": "block/wood/bark/oak_log"
         },
         "*_south": {
-            "all": "wood/planks/oak_planks",
-            "south": "wood/bark/oak_log"
+            "all": "block/wood/planks/oak_planks",
+            "south": "block/wood/bark/oak_log"
         },
         "*_west": {
-            "all": "wood/planks/oak_planks",
-            "west": "wood/bark/oak_log"
+            "all": "block/wood/planks/oak_planks",
+            "west": "block/wood/bark/oak_log"
         }
     }
 }

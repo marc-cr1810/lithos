@@ -159,8 +159,12 @@ add_executable(lithos
     src/render/TextureAtlas.cpp
     src/render/Framebuffer.cpp
     src/render/ModelLoader.cpp
+    src/render/ModelMesh.cpp
+    src/render/ModelMeshCache.cpp
+    src/render/Tessellator.cpp
     src/render/NoisePreview.cpp
     src/world/Chunk.cpp
+    src/world/ChunkMeshWorker.cpp
     src/world/WorldGenerator.cpp
     src/world/WorldGenRegion.cpp
     src/world/CaveGenerator.cpp

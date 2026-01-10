@@ -14,8 +14,8 @@
         "walk": "grass_walk"
     },
     "textures": {
-        "up": "soil/podzol_top",
-        "down": "soil/dirt",
-        "all": "soil/podzol_side"
+        "up": "block/soil/podzol_top",
+        "down": "block/soil/dirt",
+        "all": "block/soil/podzol_side"
     }
 }

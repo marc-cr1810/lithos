@@ -1,5 +1,6 @@
 #include "ColorMapRegistry.h"
 #include "../debug/Logger.h"
+#include "../render/TextureAtlas.h"
 #include "../vendor/stb_image.h"
 #include <algorithm>
 #include <fstream>
@@ -52,6 +53,7 @@ void ColorMapRegistry::LoadColorMaps(const std::string &configPath) {
 
     ColorMap map;
     map.code = code;
+    map.textureKey = baseTexture; // Store key for Atlas lookup
 
     // Parse extra params
     if (item.contains("padding")) {
@@ -181,6 +183,25 @@ void ColorMapRegistry::SetAtlasUVRect(const std::string &mapCode,
     it->second.atlasUVRect = rect;
   } else {
     LOG_WARN("Cannot set Atlas UV Rect: Map '{}' not found", mapCode);
+  }
+}
+
+void ColorMapRegistry::ResolveAtlasUVs(const TextureAtlas &atlas) {
+  for (auto &[code, map] : maps) {
+    if (map.loadIntoBlockTextureAtlas && !map.textureKey.empty()) {
+      float uMin, vMin, uMax, vMax;
+      if (atlas.GetTextureUV(map.textureKey, uMin, vMin, uMax, vMax)) {
+        // atlasUVRect: xy = min, zw = width/height
+        map.atlasUVRect = glm::vec4(uMin, vMin, uMax - uMin, vMax - vMin);
+        LOG_INFO(
+            "Resolved Atlas UVs for ColorMap '{}' (Key: {}): {}, {}, {}, {}",
+            code, map.textureKey, uMin, vMin, map.atlasUVRect.z,
+            map.atlasUVRect.w);
+      } else {
+        LOG_WARN("Failed to resolve Atlas UVs for ColorMap '{}' (Key: {})",
+                 code, map.textureKey);
+      }
+    }
   }
 }
 

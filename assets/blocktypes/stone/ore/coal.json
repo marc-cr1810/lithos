@@ -14,6 +14,6 @@
         "walk": "stone_walk"
     },
     "textures": {
-        "all": "stone/ore/coal_ore"
+        "all": "block/stone/ore/coal_ore"
     }
 }

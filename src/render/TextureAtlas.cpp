@@ -34,15 +34,37 @@ void TextureAtlas::Load(const std::string &directory) {
   }
 
   LOG_RESOURCE_INFO("Loading textures from {}...", directory);
-  fs::path baseDir(directory);
 
+  // Resolve absolute path for base directory to ensure fs::relative works
+  // reliably
+  fs::path baseDir;
+  try {
+    baseDir = fs::canonical(directory);
+  } catch (const std::exception &e) {
+    // Fallback to absolute if canonical fails (e.g. symlinks issue?)
+    baseDir = fs::absolute(directory);
+  }
+
+  // Iterate using the original directory string, but process paths as absolute
   for (const auto &entry : fs::recursive_directory_iterator(directory)) {
     if (entry.path().extension() == ".png") {
       // Use generic path processing
       std::string path = entry.path().string();
       std::string filename = entry.path().filename().string();
-      std::string name =
-          fs::relative(entry.path(), baseDir).replace_extension("").string();
+
+      // Compute relative path using absolute paths
+      std::string name;
+      try {
+        fs::path absPath = fs::absolute(entry.path());
+        // If absPath fails (e.g. file doesn't exist?), we catch it.
+        // fs::relative might throw if paths have different roots on Windows
+        // (impossible here)
+        name = fs::relative(absPath, baseDir).replace_extension("").string();
+      } catch (const std::exception &e) {
+        LOG_RESOURCE_ERROR("Failed to compute relative path for {}", path);
+        continue;
+      }
+
       std::replace(name.begin(), name.end(), '\\', '/');
 
       int w, h, c;
@@ -89,6 +111,7 @@ void TextureAtlas::Load(const std::string &directory) {
           frames = h / w;
 
         // Queue it
+        // LOG_INFO("Loaded Texture: {}", name);
         PackTexture(name, img, w, h, 4, frames, frameTime);
 
         stbi_image_free(img);

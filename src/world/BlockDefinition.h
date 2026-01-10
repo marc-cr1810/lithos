@@ -30,8 +30,8 @@ struct VariantGroup {
   std::string loadFromProperties; // For external property files (future)
 };
 
-// Shape/Model definition
-struct ShapeDef {
+// Model definition
+struct ModelDef {
   std::string base;
   int rotateX = 0;
   int rotateY = 0;
@@ -60,7 +60,7 @@ struct BlockDefinition {
   // Rendering
   std::string drawType = "cube";
   std::string renderLayer = "opaque"; // New field
-  ShapeDef shape;
+  ModelDef model;
   std::unordered_map<std::string, TextureDef> textures;
   std::unordered_map<std::string, std::unordered_map<std::string, TextureDef>>
       texturesByType;
@@ -103,7 +103,7 @@ struct BlockDefinition {
   std::unordered_map<std::string, std::string> drawTypeByType;
   // idByType removed
   std::unordered_map<std::string, float> resistanceByType;
-  std::unordered_map<std::string, ShapeDef> shapeByType;
+  std::unordered_map<std::string, ModelDef> modelByType;
   std::unordered_map<std::string, std::unordered_map<std::string, bool>>
       sideOpaqueByType;
   std::unordered_map<std::string, std::unordered_map<std::string, bool>>

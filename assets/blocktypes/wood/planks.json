@@ -24,7 +24,7 @@
         }
     ],
     "textures": {
-        "all": "wood/planks/{wood}_planks"
+        "all": "block/wood/planks/{wood}_planks"
     },
     "blockMaterial": "Wood",
     "sounds": {

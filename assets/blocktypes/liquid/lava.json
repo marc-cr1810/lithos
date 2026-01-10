@@ -15,6 +15,6 @@
         "walk": "lava_walk"
     },
     "textures": {
-        "all": "liquid/lava_still"
+        "all": "block/liquid/lava_still"
     }
 }

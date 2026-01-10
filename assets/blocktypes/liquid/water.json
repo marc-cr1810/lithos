@@ -19,6 +19,6 @@
         "*": "climateWaterTint"
     },
     "textures": {
-        "all": "liquid/water_still"
+        "all": "block/liquid/water_still"
     }
 }

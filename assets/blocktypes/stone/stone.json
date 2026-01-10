@@ -14,6 +14,6 @@
         "breakSound": "stone_hit"
     },
     "textures": {
-        "all": "stone/rock/stone"
+        "all": "block/stone/rock/stone"
     }
 }

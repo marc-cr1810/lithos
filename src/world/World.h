@@ -16,7 +16,9 @@
 #include <unordered_set>
 #include <vector>
 
+#include "../render/ModelMeshCache.h"
 #include "../render/Shader.h"
+#include "../render/Tessellator.h"
 #include "Block.h"
 #include "Chunk.h"
 #include "ChunkColumn.h"
@@ -197,6 +199,10 @@ private:
 
 public:
   WorldGenerator *GetGenerator() { return m_Generator.get(); }
+
+  // Rendering / Tessellation
+  Lithos::ModelMeshCache meshCache;
+  Lithos::Tessellator tessellator;
 };
 
 #endif

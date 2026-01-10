@@ -14,9 +14,9 @@
         "hit": "game/step/cloth"
     },
     "textures": {
-        "all": "plant/cactus/cactus_side",
-        "up": "plant/cactus/cactus_top",
-        "down": "plant/cactus/cactus_bottom"
+        "all": "block/plant/cactus/cactus_side",
+        "up": "block/plant/cactus/cactus_top",
+        "down": "block/plant/cactus/cactus_bottom"
     },
     "opaque": false
 }

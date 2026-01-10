@@ -14,7 +14,7 @@
         "hit": "game/step/stone"
     },
     "textures": {
-        "all": "stone/rock/glowstone"
+        "all": "block/stone/rock/glowstone"
     },
     "emission": 15,
     "lightAbsorption": 0

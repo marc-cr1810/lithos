@@ -90,28 +90,6 @@ BlockRegistry::BlockRegistry() {
   }
   LOG_INFO("Creative tab registration complete");
 
-  // Dynamic Model Loading
-  for (auto &pair : blocks) {
-    Block *block = pair.second;
-    std::string resId = block->getResourceId();
-    if (resId.empty())
-      continue;
-
-    size_t colon = resId.find(':');
-    if (colon != std::string::npos) {
-      std::string path = resId.substr(colon + 1);
-      // Check for JSON
-      std::filesystem::path modelPath =
-          std::filesystem::path("assets/models/block") / (path + ".json");
-      if (std::filesystem::exists(modelPath)) {
-        LOG_RESOURCE_TRACE("Loading custom model for {} -> {}", resId,
-                           modelPath.string());
-        block->setRenderShape(Block::RenderShape::MODEL);
-        block->setModel(modelPath);
-      }
-    }
-  }
-
   LOG_INFO("BlockRegistry initialized. Registered {} blocks.", blocks.size());
 }
 

@@ -6,12 +6,13 @@
 #include <unordered_map>
 #include <vector>
 
-
 struct ModelFace {
-  float uv[4];         // [u1, v1, u2, v2]
-  std::string texture; // e.g. "#0"
-  int rotation = 0;    // 0, 90, 180, 270
-  int cullFace = -1;   // -1 = none, 0-5 = direction
+  float uv[4] = {0.0f, 0.0f, 1.0f, 1.0f}; // [u1, v1, u2, v2]
+  std::string texture;                    // e.g. "#0"
+  int rotation = 0;                       // 0, 90, 180, 270
+  int cullFace = -1;                      // -1 = none, 0-5 = direction
+  bool enabled = true;                    // false = skip rendering this face
+  int tintIndex = -1; // -1 = no tint, >=0 = tint layer index
 };
 
 struct ModelRotation {
@@ -26,6 +27,7 @@ struct ModelElement {
   glm::vec3 to;
   ModelRotation rotation;
   bool hasRotation = false;
+  bool shade = true; // false = disable AO for this element
 
   // Faces: 0=north, 1=east, 2=south, 3=west, 4=up, 5=down
   // Note: Render/Chunk logic might use different mapping.

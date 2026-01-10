@@ -11,6 +11,7 @@ public:
   bool isActive() const override { return false; }
   bool isSelectable() const override { return false; }
   bool isReplaceable() const override { return true; }
+  bool isSideSolid(int face, int metadata = 0) const override { return false; }
 };
 
 #endif

@@ -42,6 +42,6 @@
         }
     ],
     "textures": {
-        "all": "plant/leaves/{wood}_leaves"
+        "all": "block/plant/leaves/{wood}_leaves"
     }
 }

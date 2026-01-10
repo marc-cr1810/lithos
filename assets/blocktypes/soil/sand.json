@@ -15,6 +15,6 @@
         "walk": "sand_walk"
     },
     "textures": {
-        "all": "stone/sand/sand"
+        "all": "block/stone/sand/sand"
     }
 }

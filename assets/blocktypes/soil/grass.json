@@ -20,18 +20,18 @@
     },
     "textures": {
         "up": {
-            "base": "soil/dirt",
+            "base": "block/soil/dirt",
             "overlays": [
-                "soil/grass_block_top"
+                "block/soil/grass_block_top"
             ]
         },
         "down": {
-            "base": "soil/dirt"
+            "base": "block/soil/dirt"
         },
         "horizontals": {
-            "base": "soil/dirt",
+            "base": "block/soil/dirt",
             "overlays": [
-                "soil/grass_block_side_overlay"
+                "block/soil/grass_block_side_overlay"
             ]
         }
     }

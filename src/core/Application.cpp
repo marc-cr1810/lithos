@@ -92,10 +92,13 @@ void Application::Init() {
   ColorMapRegistry::Get().LoadColorMaps("assets/config/color_maps.json");
 
   // Texture Atlas
-  m_ResourceManager.LoadTextureAtlas("blocks", "assets/textures/block");
+  // Load from 'assets/textures' so keys include 'block/' prefix (e.g.
+  // "block/stone")
+  m_ResourceManager.LoadTextureAtlas("blocks", "assets/textures");
   // Resolve UVs for blocks globally once
   if (auto *atlas = m_ResourceManager.GetTextureAtlas("blocks")) {
     BlockRegistry::getInstance().resolveUVs(*atlas);
+    ColorMapRegistry::Get().ResolveAtlasUVs(*atlas);
   }
 
   // Load WorldGen Data Assets (Single Global Load)

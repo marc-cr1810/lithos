@@ -8,8 +8,9 @@
     "class": "LayeredBlock",
     "blockMaterial": "Snow",
     "drawType": "json",
+    "model": "block/basic/layers/2_voxel",
     "textures": {
-        "all": "liquid/snow"
+        "all": "block/liquid/snow"
     },
     "sounds": {
         "place": "game/step/snow",

@@ -8,6 +8,7 @@
     "class": "PlantBlock",
     "blockMaterial": "Plant",
     "drawType": "cross",
+    "model": "block/basic/cross-short",
     "climateColorMapByType": {
         "*_tall_green": "climatePlantTint"
     },
@@ -33,13 +34,13 @@
     },
     "texturesByType": {
         "*_tall_green": {
-            "all": "plant/tallgrass/short_grass"
+            "all": "block/plant/tallgrass/short_grass"
         },
         "*_dry_short": {
-            "all": "plant/tallgrass/short_dry_grass"
+            "all": "block/plant/tallgrass/short_dry_grass"
         },
         "*_dry_tall": {
-            "all": "plant/tallgrass/tall_dry_grass"
+            "all": "block/plant/tallgrass/tall_dry_grass"
         }
     },
     "sounds": {

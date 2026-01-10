@@ -92,6 +92,36 @@ BlockDef::BlockDefinition BlockLoader::parseJSON(const nlohmann::json &j) {
   if (j.contains("randomTickable")) {
     def.isRandomTickable = j.at("randomTickable").get<bool>();
   }
+
+  // Side Solid Parsing
+  if (j.contains("sideSolid")) {
+    auto &ss = j.at("sideSolid");
+    if (ss.is_boolean()) {
+      bool val = ss.get<bool>();
+      def.sideSolid["all"] = val;
+    } else if (ss.is_object()) {
+      for (auto &el : ss.items()) {
+        def.sideSolid[el.key()] = el.value().get<bool>();
+      }
+    }
+  }
+
+  if (j.contains("sideSolidByType")) {
+    for (auto &item : j.at("sideSolidByType").items()) {
+      auto &ss = item.value();
+      std::unordered_map<std::string, bool> map;
+      if (ss.is_boolean()) {
+        bool val = ss.get<bool>();
+        map["all"] = val;
+      } else if (ss.is_object()) {
+        for (auto &el : ss.items()) {
+          map[el.key()] = el.value().get<bool>();
+        }
+      }
+      def.sideSolidByType[item.key()] = map;
+    }
+  }
+
   // idByType parsing removed
 
   // Optional: class
@@ -247,22 +277,51 @@ BlockDef::BlockDefinition BlockLoader::parseJSON(const nlohmann::json &j) {
     }
   }
 
-  // Shape
-  if (j.contains("shape")) {
-    const auto &s = j.at("shape");
-    if (s.is_object()) {
-      if (s.contains("base")) {
-        def.shape.base = s.at("base").get<std::string>();
+  // Model
+  if (j.contains("model")) {
+    const auto &m = j.at("model");
+    if (m.is_object()) {
+      if (m.contains("base")) {
+        def.model.base = m.at("base").get<std::string>();
       }
-      if (s.contains("rotateX")) {
-        def.shape.rotateX = s.at("rotateX").get<int>();
+      if (m.contains("rotateX")) {
+        def.model.rotateX = m.at("rotateX").get<int>();
       }
-      if (s.contains("rotateY")) {
-        def.shape.rotateY = s.at("rotateY").get<int>();
+      if (m.contains("rotateY")) {
+        def.model.rotateY = m.at("rotateY").get<int>();
       }
-      if (s.contains("rotateZ")) {
-        def.shape.rotateZ = s.at("rotateZ").get<int>();
+      if (m.contains("rotateZ")) {
+        def.model.rotateZ = m.at("rotateZ").get<int>();
       }
+    } else if (m.is_string()) {
+      // Shorthand: "model": "block/cube"
+      def.model.base = m.get<std::string>();
+    }
+  }
+
+  // ModelByType
+  if (j.contains("modelByType")) {
+    for (auto it = j.at("modelByType").begin(); it != j.at("modelByType").end();
+         ++it) {
+      BlockDef::ModelDef modelDef;
+      const auto &value = it.value();
+      if (value.is_object()) {
+        if (value.contains("base")) {
+          modelDef.base = value.at("base").get<std::string>();
+        }
+        if (value.contains("rotateX")) {
+          modelDef.rotateX = value.at("rotateX").get<int>();
+        }
+        if (value.contains("rotateY")) {
+          modelDef.rotateY = value.at("rotateY").get<int>();
+        }
+        if (value.contains("rotateZ")) {
+          modelDef.rotateZ = value.at("rotateZ").get<int>();
+        }
+      } else if (value.is_string()) {
+        modelDef.base = value.get<std::string>();
+      }
+      def.modelByType[it.key()] = modelDef;
     }
   }
 
@@ -381,6 +440,10 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
   nlohmann::json attributes =
       resolveProperty(def.attributes, def.attributesByType, variantCode);
 
+  // Resolve Side Solid
+  std::unordered_map<std::string, bool> sideSolidMap =
+      resolveProperty(def.sideSolid, def.sideSolidByType, variantCode);
+
   // Create appropriate block type based on drawtype or behaviors
   Block *block = nullptr;
   // Check for specific behaviors that determine block class
@@ -438,6 +501,76 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
 
   // Set attributes
   block->setAttributes(attributes);
+
+  // Apply Side Solid
+  if (!sideSolidMap.empty()) {
+    // 1. Check for "all"
+    if (sideSolidMap.count("all")) {
+      block->setSideSolid(sideSolidMap.at("all"));
+    } else {
+      // Default to isSolid/isOpaque logic if not explicit "all"?
+      // Logic: if sideSolid is present, we assume it overrides defaults.
+      // If "all" is not present, we default to false? Or true?
+      // VS logic: sideSolid defaults to true (opaque).
+      // If partial map provided (e.g. only "down": true), others should be
+      // false? Let's assume if any sideSolid is provided, we start false and
+      // add true ones, UNLESS "all" was handled. Actually, safer to respect
+      // "all" if present, otherwise set based on keys. If "sideSolid" was NOT
+      // in JSON, sideSolidMap is empty, so we skip this block and keep defaults
+      // (true).
+
+      // If map is NOT empty but "all" is missing, it implies we defined
+      // specific sides. So we should probably zero it out first? Let's assume
+      // explicit definition means "only these are solid" unless "all" says
+      // otherwise.
+      block->setSideSolid(false);
+    }
+
+    // 2. Apply specific faces
+    for (const auto &[face, val] : sideSolidMap) {
+      if (face == "north")
+        block->setSideSolid(1, val);
+      else if (face == "south")
+        block->setSideSolid(0, val);
+      else if (face == "east")
+        block->setSideSolid(3, val);
+      else if (face == "west")
+        block->setSideSolid(2, val);
+      else if (face == "up")
+        block->setSideSolid(4, val);
+      else if (face == "down")
+        block->setSideSolid(5, val);
+      else if (face == "horizontals") {
+        for (int i = 0; i < 4; ++i)
+          block->setSideSolid(i, val);
+      } else if (face == "verticals") {
+        block->setSideSolid(4, val);
+        block->setSideSolid(5, val);
+      }
+    }
+  } else {
+    // If no explicit sideSolid, fallback to isOpaque/isSolid
+    // If block is NOT opaque (e.g. glass, leaves), sideSolid should be false?
+    // Or should glass be solid?
+    // VS Distinction:
+    // Full Opaque = SideSolid all true
+    // Transparent (Glass) = SideSolid all true (connects), but Rendering is
+    // transparent? Non-Solid (Slab) = SideSolid partial
+
+    // If block->isOpaque() is true, sideSolid is true (default).
+    // If block->isOpaque() is false BUT isSolid() is true (Glass), sideSolid is
+    // true. If isSolid() is false (Flowers), sideSolid is false.
+
+    if (!def.isSolid) {
+      block->setSideSolid(false);
+    }
+    // If solid but not opaque (Leaves, Glass), we generally keep SideSolid=true
+    // (it blocks movement/connects) EXCEPT Leaves usually don't cull neighbors?
+    // If I want Leaves to NOT cull behind them, SideSolid must be false.
+    if (def.drawType == "cross" || def.drawType == "plant") {
+      block->setSideSolid(false);
+    }
+  }
 
   // Store which creative tabs this block belongs to (for later registration)
   // We don't call BlockRegistry::getInstance() here to avoid deadlock
@@ -586,9 +719,59 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
     block->setOpaque(false);
   } else if (drawType == "cube") {
     block->setRenderShape(Block::RenderShape::CUBE);
-  } else if (drawType == "json" && !def.shape.base.empty()) {
-    // Load custom model if specified
-    // This would require model path resolution
+  } else if (drawType == "json") {
+    // Load custom model if specified via model field
+    BlockDef::ModelDef modelDef =
+        resolveProperty(def.model, def.modelByType, variantCode);
+
+    if (!modelDef.base.empty()) {
+      // Resolve path: "block/stairs/planks" →
+      // "assets/models/block/stairs/planks.json"
+      std::string modelPathStr =
+          substituteVariables(modelDef.base, variantCode, ctx.variables);
+      std::filesystem::path modelPath =
+          std::filesystem::path("assets/models") / (modelPathStr + ".json");
+
+      if (std::filesystem::exists(modelPath)) {
+        LOG_RESOURCE_TRACE("Loading model for {} -> {}", variantCode,
+                           modelPath.string());
+        block->setModel(modelPath);
+        block->setRenderShape(Block::RenderShape::MODEL);
+
+        // Apply rotation if specified
+        if (modelDef.rotateY != 0) {
+          // TODO: Apply rotation
+        }
+      } else {
+        LOG_RESOURCE_WARN("Model file not found for {}: {}", variantCode,
+                          modelPath.string());
+      }
+    }
+  }
+
+  // Auto-assign default models for all drawTypes (universal model system)
+  // This makes ALL blocks use the model rendering path
+  if (block->getModel() == nullptr) {
+    std::string defaultModel;
+
+    if (drawType == "cube") {
+      // defaultModel = "block/basic/cube"; // Don't force CUBE to MODEL, keep
+      // using optimized CUBE path with Overlay support
+    } else if (drawType == "cross") {
+      defaultModel = "block/basic/cross";
+    } else if (drawType == "liquid") {
+      // defaultModel = "block/basic/liquid"; // Liquids have special rendering
+    }
+    // json, slab, stair, layered types should have explicit models set
+
+    if (!defaultModel.empty()) {
+      std::filesystem::path modelPath =
+          std::filesystem::path("assets/models") / (defaultModel + ".json");
+      if (std::filesystem::exists(modelPath)) {
+        block->setModel(modelPath);
+        block->setRenderShape(Block::RenderShape::MODEL);
+      }
+    }
   }
 
   // Set render layer

@@ -22,32 +22,32 @@
     "solid": false,
     "opaque": false,
     "textures": {
-        "all": "plant/wheat/wheat_1"
+        "all": "block/plant/wheat/wheat_1"
     },
     "texturesByType": {
         "test_growth_0": {
-            "all": "plant/wheat/wheat_1"
+            "all": "block/plant/wheat/wheat_1"
         },
         "test_growth_1": {
-            "all": "plant/wheat/wheat_2"
+            "all": "block/plant/wheat/wheat_2"
         },
         "test_growth_2": {
-            "all": "plant/wheat/wheat_3"
+            "all": "block/plant/wheat/wheat_3"
         },
         "test_growth_3": {
-            "all": "plant/wheat/wheat_4"
+            "all": "block/plant/wheat/wheat_4"
         },
         "test_growth_4": {
-            "all": "plant/wheat/wheat_5"
+            "all": "block/plant/wheat/wheat_5"
         },
         "test_growth_5": {
-            "all": "plant/wheat/wheat_6"
+            "all": "block/plant/wheat/wheat_6"
         },
         "test_growth_6": {
-            "all": "plant/wheat/wheat_7"
+            "all": "block/plant/wheat/wheat_7"
         },
         "test_growth_7": {
-            "all": "plant/wheat/wheat_7"
+            "all": "block/plant/wheat/wheat_7"
         }
     },
     "behaviorsByType": {

@@ -15,6 +15,6 @@
         "walk": "gravel_walk"
     },
     "textures": {
-        "all": "stone/gravel/gravel"
+        "all": "block/stone/gravel/gravel"
     }
 }

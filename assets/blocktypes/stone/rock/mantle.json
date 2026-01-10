@@ -9,6 +9,6 @@
         "mapColor": "#220000"
     },
     "textures": {
-        "all": "stone/rock/mantle"
+        "all": "block/stone/rock/mantle"
     }
 }

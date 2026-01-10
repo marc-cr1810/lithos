@@ -57,97 +57,97 @@
     },
     "texturesByType": {
         "*_obsidian": {
-            "all": "stone/rock/obsidian"
+            "all": "block/stone/rock/obsidian"
         },
         "*_cobblestone": {
-            "all": "stone/rock/cobblestone"
+            "all": "block/stone/rock/cobblestone"
         },
         "*_andesite": {
-            "all": "stone/rock/andesite"
+            "all": "block/stone/rock/andesite"
         },
         "*_diorite": {
-            "all": "stone/rock/diorite"
+            "all": "block/stone/rock/diorite"
         },
         "*_granite": {
-            "all": "stone/rock/granite"
+            "all": "block/stone/rock/granite"
         },
         "*_basalt": {
-            "all": "stone/rock/basalt_side",
-            "verticals": "stone/rock/basalt_top"
+            "all": "block/stone/rock/basalt_side",
+            "verticals": "block/stone/rock/basalt_top"
         },
         "*_sandstone": {
-            "all": "stone/sand/sandstone",
-            "up": "stone/sand/sandstone_top",
-            "down": "stone/sand/sandstone_bottom"
+            "all": "block/stone/sand/sandstone",
+            "up": "block/stone/sand/sandstone_top",
+            "down": "block/stone/sand/sandstone_bottom"
         },
         "*_tuff": {
-            "all": "stone/rock/tuff"
+            "all": "block/stone/rock/tuff"
         },
         "*_anthracite": {
-            "all": "stone/rock/anthracite"
+            "all": "block/stone/rock/anthracite"
         },
         "*_bauxite": {
-            "all": "stone/rock/bauxite"
+            "all": "block/stone/rock/bauxite"
         },
         "*_chalk": {
-            "all": "stone/rock/chalk"
+            "all": "block/stone/rock/chalk"
         },
         "*_chert": {
-            "all": "stone/rock/chert"
+            "all": "block/stone/rock/chert"
         },
         "*_claystone": {
-            "all": "stone/rock/claystone"
+            "all": "block/stone/rock/claystone"
         },
         "*_conglomerate": {
-            "all": "stone/rock/conglomerate"
+            "all": "block/stone/rock/conglomerate"
         },
         "*_green_marble": {
-            "all": "stone/rock/green_marble"
+            "all": "block/stone/rock/green_marble"
         },
         "*_halite": {
-            "all": "stone/rock/halite"
+            "all": "block/stone/rock/halite"
         },
         "*_kimberlite": {
-            "all": "stone/rock/kimberlite"
+            "all": "block/stone/rock/kimberlite"
         },
         "*_limestone": {
-            "all": "stone/rock/limestone"
+            "all": "block/stone/rock/limestone"
         },
         "*_mantle": {
-            "all": "stone/rock/mantle"
+            "all": "block/stone/rock/mantle"
         },
         "*_peridotite": {
-            "all": "stone/rock/peridotite"
+            "all": "block/stone/rock/peridotite"
         },
         "*_phyllite": {
-            "all": "stone/rock/phyllite"
+            "all": "block/stone/rock/phyllite"
         },
         "*_pink_marble": {
-            "all": "stone/rock/pink_marble"
+            "all": "block/stone/rock/pink_marble"
         },
         "*_scoria": {
-            "all": "stone/rock/scoria"
+            "all": "block/stone/rock/scoria"
         },
         "*_shale": {
-            "all": "stone/rock/shale"
+            "all": "block/stone/rock/shale"
         },
         "*_slate": {
-            "all": "stone/rock/slate"
+            "all": "block/stone/rock/slate"
         },
         "*_suevite": {
-            "all": "stone/rock/suevite"
+            "all": "block/stone/rock/suevite"
         },
         "*_white_marble": {
-            "all": "stone/rock/white_marble"
+            "all": "block/stone/rock/white_marble"
         },
         "*_gneiss": {
-            "all": "stone/rock/gneiss"
+            "all": "block/stone/rock/gneiss"
         },
         "*_schist": {
-            "all": "stone/rock/schist"
+            "all": "block/stone/rock/schist"
         },
         "*_rhyolite": {
-            "all": "stone/rock/rhyolite"
+            "all": "block/stone/rock/rhyolite"
         }
     },
     "sounds": {

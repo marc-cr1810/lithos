@@ -100,6 +100,11 @@ ModelLoader::loadModel(const std::filesystem::path &path) {
         }
       }
 
+      // Shade (AO control)
+      if (elemJson.contains("shade")) {
+        elem.shade = elemJson["shade"].get<bool>();
+      }
+
       // Faces
       if (elemJson.contains("faces")) {
         for (auto &[dirStr, faceJson] : elemJson["faces"].items()) {
@@ -113,7 +118,11 @@ ModelLoader::loadModel(const std::filesystem::path &path) {
             face.uv[2] = uv[2] / 16.0f;
             face.uv[3] = uv[3] / 16.0f;
           } else {
-            // Default UV?
+            // Default UV: 0..16 (full texture)
+            face.uv[0] = 0.0f;
+            face.uv[1] = 0.0f;
+            face.uv[2] = 1.0f;
+            face.uv[3] = 1.0f;
           }
 
           if (faceJson.contains("texture")) {
@@ -122,8 +131,27 @@ ModelLoader::loadModel(const std::filesystem::path &path) {
           if (faceJson.contains("rotation")) {
             face.rotation = faceJson["rotation"];
           }
+          if (faceJson.contains("enabled")) {
+            face.enabled = faceJson["enabled"].get<bool>();
+          }
+          if (faceJson.contains("tintIndex")) {
+            face.tintIndex = faceJson["tintIndex"].get<int>();
+          }
           if (faceJson.contains("cullface")) {
-            // Parse cullface if needed
+            std::string cullStr = faceJson["cullface"].get<std::string>();
+            // Map cullface direction to index
+            if (cullStr == "north")
+              face.cullFace = 1;
+            else if (cullStr == "south")
+              face.cullFace = 0;
+            else if (cullStr == "east")
+              face.cullFace = 3;
+            else if (cullStr == "west")
+              face.cullFace = 2;
+            else if (cullStr == "up")
+              face.cullFace = 4;
+            else if (cullStr == "down")
+              face.cullFace = 5;
           }
 
           // Map direction string to engine face index

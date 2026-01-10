@@ -57,7 +57,7 @@ bool isAABBInFrustum(const glm::vec3 &min, const glm::vec3 &max,
 }
 
 World::World(const WorldGenConfig &config, bool silent)
-    : config(config), shutdown(false) {
+    : config(config), tessellator(meshCache), shutdown(false) {
   worldSeed = config.seed;
 
   // Start mesh worker threads

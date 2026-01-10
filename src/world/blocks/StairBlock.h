@@ -12,6 +12,7 @@ public:
 
   // Stairs might need rotation based on metadata.
   // We'll rely on Chunk.cpp to interpret metadata for rotation.
+  bool isSideSolid(int face, int metadata) const override;
 };
 
 #endif

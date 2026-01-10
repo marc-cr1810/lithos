@@ -598,14 +598,23 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
         for (int u = 0; u < CHUNK_SIZE; ++u) {
           if (mask[u][v].block->isActive()) {
 
-            // Skip Special Shapes for Cube Meshing
+            // Universal Model System (like VS's Shape Tessellation):
+            // ALL blocks now use MODEL rendering
+            // Greedy meshing is skipped - models handle everything
             Block::RenderShape shape = mask[u][v].block->getRenderShape();
-            if (shape == Block::RenderShape::CROSS ||
-                shape == Block::RenderShape::SLAB_BOTTOM ||
-                shape == Block::RenderShape::STAIRS ||
-                shape == Block::RenderShape::MODEL ||
-                shape == Block::RenderShape::LAYERED)
-              continue;
+
+            // Since all blocks have models (auto-assigned in BlockLoader),
+            // skip greedy meshing entirely. The MODEL rendering path below
+            // handles all blocks consistently (like VS's Tesselator)
+            if (shape == Block::RenderShape::MODEL) {
+              continue; // Will be rendered in MODEL section below
+            }
+
+            // These shouldn't exist anymore with auto-assignment,
+            // but check for safety during transition
+            if (shape != Block::RenderShape::CUBE) {
+              continue; // Non-cube shapes - deprecated, use models
+            }
 
             MaskInfo current = mask[u][v];
             // Greedy Extend
@@ -1846,446 +1855,160 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
               }
             }
           }
-        } else if (shape == Block::RenderShape::MODEL) {
-          const Model *model = cb.getBlock()->getModel();
-          if (model) {
-            // Pre-calculate Max Light for fallback (Rotated elements or
-            // internal)
-            uint8_t maxSky = cb.skyLight;
-            uint8_t maxBlock = cb.blockLight;
+        } else if (shape == Block::RenderShape::MODEL && world) {
+          const Lithos::ModelMeshData *mesh =
+              world->tessellator.getMesh(cb.getBlock());
+          if (mesh) {
+            // Helper to get light
+            auto getLight = [&](int faceIdx) -> std::pair<float, float> {
+              int nx = x, ny = y, nz = z;
+              // Determine neighbor based on face
+              if (faceIdx == 0)
+                nz++;
+              else if (faceIdx == 1)
+                nz--;
+              else if (faceIdx == 2)
+                nx--;
+              else if (faceIdx == 3)
+                nx++;
+              else if (faceIdx == 4)
+                ny++;
+              else if (faceIdx == 5)
+                ny--;
 
-            auto checkMax = [&](int nx, int ny, int nz) {
-              if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE &&
-                  nz >= 0 && nz < CHUNK_SIZE) {
-                maxSky = std::max(maxSky, blocks[nx][ny][nz].skyLight);
-                maxBlock = std::max(maxBlock, blocks[nx][ny][nz].blockLight);
-              } else if (world) {
-                int gnx = chunkPosition.x * CHUNK_SIZE + nx;
-                int gny = chunkPosition.y * CHUNK_SIZE + ny;
-                int gnz = chunkPosition.z * CHUNK_SIZE + nz;
-                uint8_t sky = world->getSkyLight(gnx, gny, gnz);
-                uint8_t bl = world->getBlockLight(gnx, gny, gnz);
-                // Adjust for opacity if inside block?
-                // Standard addFace gets neighbor light.
-                maxSky = std::max(maxSky, sky);
-                maxBlock = std::max(maxBlock, bl);
-              }
-            };
+              uint8_t s = cb.skyLight, b = cb.blockLight;
 
-            // Check neighbors for light (simplified: check 6 neighbors?
-            // Better: Check the neighbor responsible for the face)
-
-            // Returns true if a block was hitfaces? No, this is for
-            // Model/Shape. Let's modify addFaceQuad to take light overrides or
-            // calculate them.
-
-            // Re-defining addFaceQuad to sample light
-            auto addFaceQuad = [&](int face, float xMin, float yMin, float zMin,
-                                   float xMax, float yMax, float zMax) {
-              int dx = 0, dy = 0, dz = 0;
-              if (face == 0)
-                dz = 1; // Z+
-              else if (face == 1)
-                dz = -1; // Z-
-              else if (face == 2)
-                dx = -1; // X-
-              else if (face == 3)
-                dx = 1; // X+
-              else if (face == 4)
-                dy = 1; // Y+
-              else if (face == 5)
-                dy = -1; // Y-
-
-              int nx = x + dx;
-              int ny = y + dy;
-              int nz = z + dz;
-
-              uint8_t s = 0, b = 0;
+              // If pointing outside, use neighbor light
               if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE &&
                   nz >= 0 && nz < CHUNK_SIZE) {
                 s = blocks[nx][ny][nz].skyLight;
                 b = blocks[nx][ny][nz].blockLight;
               } else if (world) {
-                int gx = chunkPosition.x * CHUNK_SIZE + nx;
-                int gy = chunkPosition.y * CHUNK_SIZE + ny;
-                int gz = chunkPosition.z * CHUNK_SIZE + nz;
-                s = world->getSkyLight(gx, gy, gz);
-                b = world->getBlockLight(gx, gy, gz);
+                int gnx = chunkPosition.x * CHUNK_SIZE + nx;
+                int gny = chunkPosition.y * CHUNK_SIZE + ny;
+                int gnz = chunkPosition.z * CHUNK_SIZE + nz;
+                // Safe check
+                if (gny >= 0 && gny < 256) {
+                  s = world->getSkyLight(gnx, gny, gnz);
+                  b = world->getBlockLight(gnx, gny, gnz);
+                }
               }
-
-              float l1 = pow((float)s / 15.0f, 0.8f);
-              float l2 = pow((float)b / 15.0f, 0.8f);
-
-              float uBase = 0.0f, vBase = 0.0f, uMax = 1.0f, vMax = 1.0f;
-              float w = zMax - zMin; // Default for Side X
-              float h = yMax - yMin;
-              if (face <= 1)
-                w = xMax - xMin; // Side Z
-              else if (face >= 4) {
-                w = xMax - xMin;
-                h = zMax - zMin;
-              } // Top/Bottom
-
-              cb.getBlock()->getTextureUV(face, uBase, vBase, uMax, vMax,
-                                          chunkPosition.x * CHUNK_SIZE + x,
-                                          chunkPosition.y * CHUNK_SIZE + y,
-                                          chunkPosition.z * CHUNK_SIZE + z,
-                                          cb.metadata, 0);
-              float uW = uMax - uBase;
-              float vH = vMax - vBase;
-
-              // Face Dimming Logic
-              float shade = 1.0f;
-              if (face == 4)
-                shade = 1.0f; // Top
-              else if (face == 5)
-                shade = 0.6f; // Bottom
-              else
-                shade = 0.8f; // Sides (All) - Matches addFace
-
-              // Draw
-              auto pV = [&](float vx, float vy, float vz, float u, float v,
-                            float ao) {
-                // Calc overlayFlags for this specific model face
-                float modelFaceOverlayFlags = 0.0f;
-                if (cb.getBlock()->shouldTint(face, 0)) {
-                  modelFaceOverlayFlags += 4.0f;
-                }
-                if (cb.getBlock()->hasOverlay(face)) {
-                  modelFaceOverlayFlags += 1.0f;
-                }
-                if (cb.getBlock()->shouldTint(face, 1)) {
-                  modelFaceOverlayFlags += 2.0f;
-                }
-
-                pushVert(fx + vx, fy + vy, fz + vz, u, v, uBase, vBase, uW, vH,
-                         ao, l1, l2, shade, modelFaceOverlayFlags);
-              };
-
-              // U,V mapping helpers
-              // Sides: V matches Y. U matches X or Z.
-              // Top/Bottom: U matches X, V matches Z.
-
-              // Simplification: Standard full-face mapping adapted to partial
-              // If face is 0 (Z+), u=x, v=y.
-              float u0 = 0.0f, v0 = 0.0f;
-              float u1 = 1.0f, v1 = 1.0f;
-
-              // Partial logic
-              if (face <= 3) {
-                // Side faces
-                v0 = yMin;
-                v1 = yMax;
-                if (face == 0 || face == 1) { // Z faces -> X varies
-                  if (face == 0) {
-                    u0 = xMin;
-                    u1 = xMax;
-                  } else {
-                    u0 = xMax;
-                    u1 = xMin;
-                  } // Inverted for Back face? Check logic
-                    // Actually addFace logic:
-                  // Face 0 (Z+): (fx, fy, fz+1) to (fx+1, fy+1, fz+1). U: 0->1
-                } else { // X faces -> Z varies
-                  if (face == 3) {
-                    u0 = 1.0f - zMax;
-                    u1 = 1.0f - zMin;
-                  } // X+
-                  else {
-                    u0 = zMin;
-                    u1 = zMax;
-                  } // X-
-                }
-              } else {
-                // Top/Bottom
-                u0 = xMin;
-                u1 = xMax;
-                v0 = zMin;
-                v1 = zMax;
-              }
-
-              // AO sampling currently only for Top Face (4) in caller?
-              // The caller calculates aoTL etc for Face 4.
-              // For other faces, defaulting to 0.0 (Bright).
-              // We should probably implement AO for sides too, but user only
-              // complained about Top/General diff. Top face uses passed AO
-              // values? No, addFaceQuad doesn't take AO args. We need to fix
-              // this. My previous edit removed the MANUAL pushVertS for face 4!
-              // Wait, I am replacing the OLD addFaceQuad.
-              // AND I need to respect the manual loop I wrote earlier?
-              // The manual loop for LAYERED (line 1280+) called pushVert.
-              // It did NOT use addFaceQuad.
-              // Ah! The `LAYERED` block logic was checking `faceDir` loop 976?
-              // No. `Pass 2` iterates `mask` and does `if (shape == LAYERED)`.
-              // Inside that, it does `addFaceQuad` for sides?
-              // Let's check lines 1350 roughly.
-
-              // I need to be careful not to break the manual top face AO I
-              // added. My previous manual top face code: if (face == 4) { ...
-              // pushVert(...) ... }
-
-              // The `addFaceQuad` I am editing is defined at line ~1157.
-              // It is used by `SLAB_BOTTOM`, `STAIRS`, etc.
-              // `LAYERED` uses `addFaceQuad` for SIDES?
-
-              // Let's look at `LAYERED` implementation again (lines ~1360).
+              return {pow((float)s / 15.0f, 0.8f), pow((float)b / 15.0f, 0.8f)};
             };
 
-            for (const auto &elem : model->elements) {
-              glm::vec3 minP = elem.from;
-              glm::vec3 maxP = elem.to;
+            // Pre-calculate face visibility (Culling)
+            bool faceVisible[6] = {true, true, true, true, true, true};
 
-              auto transform = [&](glm::vec3 p) -> glm::vec3 {
-                glm::vec3 res = p;
-                if (elem.hasRotation) {
-                  glm::vec3 local = p - elem.rotation.origin;
-                  float rad = glm::radians(elem.rotation.angle);
-                  float s = sin(rad), c = cos(rad);
-                  float nx = local.x, ny = local.y, nz = local.z;
-                  if (elem.rotation.axis == 'x') {
-                    ny = local.y * c - local.z * s;
-                    nz = local.y * s + local.z * c;
-                  } else if (elem.rotation.axis == 'y') {
-                    nx = local.x * c + local.z * s;
-                    nz = -local.x * s + local.z * c;
-                  } else if (elem.rotation.axis == 'z') {
-                    nx = local.x * c - local.y * s;
-                    ny = local.x * s + local.y * c;
-                  }
-                  res = elem.rotation.origin + glm::vec3(nx, ny, nz);
-                }
+            // Optimization: If block is NOT a full opaque cube (like partial
+            // blocks), we typically ALWAYS render its faces (except maybe
+            // against another solid block?). BUT VS logic allows partial
+            // culling. Let's stick to standard behavior: If *neighbor* obscures
+            // our face, we cull. Who is the neighbor? My Face 0 (Z+) -->
+            // Neighbor is at Z+1. Neighbor's checking face is 1 (Z-).
 
-                // Global Rotation for Logs
-                if (cb.getBlock()->isLog()) {
-                  if (cb.metadata == 1) { // X-Axis
-                    // Rotate 90 deg around Z axis
-                    // Center is 0.5, 0.5, 0.5
-                    glm::vec3 center(0.5f);
-                    glm::vec3 local = res - center;
-                    // Z-Axis rotation 90 deg (Clockwise? or CCW?)
-                    // To point Y to X.
-                    // X' = X*c - Y*s
-                    // Y' = X*s + Y*c
-                    // -90 deg: s=-1, c=0 => X'=Y, Y'=-X
-                    float tmpx = local.x;
-                    local.x = local.y;
-                    local.y = -tmpx;
-                    res = center + local;
-                  } else if (cb.metadata == 2) { // Z-Axis
-                    // Rotate 90 deg around X axis
-                    // Y to Z.
-                    // Y' = Y*c - Z*s
-                    // Z' = Y*s + Z*c
-                    // 90 deg: s=1, c=0 => Y'=-Z, Z'=Y
-                    glm::vec3 center(0.5f);
-                    glm::vec3 local = res - center;
-                    float tmpy = local.y;
-                    local.y = -local.z;
-                    local.z = tmpy;
-                    res = center + local;
-                  }
-                }
-                return res;
-              };
+            // Helper to get neighbor solidity
+            auto isNeighborSideSolid = [&](int f, int neighborFace) -> bool {
+              int nx = x, ny = y, nz = z;
+              if (f == 0)
+                nz++;
+              else if (f == 1)
+                nz--;
+              else if (f == 2)
+                nx--;
+              else if (f == 3)
+                nx++;
+              else if (f == 4)
+                ny++;
+              else if (f == 5)
+                ny--;
 
-              auto getFaceLight = [&](int faceIdx) -> std::pair<float, float> {
-                if (elem.hasRotation) {
-                  return {pow((float)maxSky / 15.0f, 0.8f),
-                          pow((float)maxBlock / 15.0f, 0.8f)};
-                }
-                int nx = x, ny = y, nz = z;
-                if (faceIdx == 0)
-                  nz++;
-                else if (faceIdx == 1)
-                  nz--;
-                else if (faceIdx == 2)
-                  nx--;
-                else if (faceIdx == 3)
-                  nx++;
-                else if (faceIdx == 4)
-                  ny++;
-                else if (faceIdx == 5)
-                  ny--;
+              if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE &&
+                  nz >= 0 && nz < CHUNK_SIZE) {
+                ChunkBlock *nb = &blocks[nx][ny][nz];
+                return nb->getBlock()->isSideSolid(neighborFace, nb->metadata);
+              } else if (world) {
+                // Check global neighbor
+                int gnx = chunkPosition.x * CHUNK_SIZE + nx;
+                int gny = chunkPosition.y * CHUNK_SIZE + ny;
+                int gnz = chunkPosition.z * CHUNK_SIZE + nz;
 
-                uint8_t s = cb.skyLight, b = cb.blockLight;
-                if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE &&
-                    nz >= 0 && nz < CHUNK_SIZE) {
-                  s = blocks[nx][ny][nz].skyLight;
-                  b = blocks[nx][ny][nz].blockLight;
-                } else if (world) {
-                  int gnx = chunkPosition.x * CHUNK_SIZE + nx;
-                  int gny = chunkPosition.y * CHUNK_SIZE + ny;
-                  int gnz = chunkPosition.z * CHUNK_SIZE + nz;
-                  ChunkBlock wb = world->getBlock(gnx, gny, gnz);
-                  s = wb.skyLight;
-                  b = wb.blockLight;
-                }
-                return {pow((float)s / 15.0f, 0.8f),
-                        pow((float)b / 15.0f, 0.8f)};
-              };
-
-              for (const auto &[faceIdx, faceProp] : elem.faces) {
-                glm::vec3 p0, p1, p2, p3;
-                if (faceIdx == 0) { // Z+
-                  p0 = glm::vec3(minP.x, minP.y, maxP.z);
-                  p1 = glm::vec3(maxP.x, minP.y, maxP.z);
-                  p2 = glm::vec3(maxP.x, maxP.y, maxP.z);
-                  p3 = glm::vec3(minP.x, maxP.y, maxP.z);
-                } else if (faceIdx == 1) { // Z-
-                  p0 = glm::vec3(maxP.x, minP.y, minP.z);
-                  p1 = glm::vec3(minP.x, minP.y, minP.z);
-                  p2 = glm::vec3(minP.x, maxP.y, minP.z);
-                  p3 = glm::vec3(maxP.x, maxP.y, minP.z);
-                } else if (faceIdx == 2) { // X-
-                  p0 = glm::vec3(minP.x, minP.y, minP.z);
-                  p1 = glm::vec3(minP.x, minP.y, maxP.z);
-                  p2 = glm::vec3(minP.x, maxP.y, maxP.z);
-                  p3 = glm::vec3(minP.x, maxP.y, minP.z);
-                } else if (faceIdx == 3) { // X+
-                  p0 = glm::vec3(maxP.x, minP.y, maxP.z);
-                  p1 = glm::vec3(maxP.x, minP.y, minP.z);
-                  p2 = glm::vec3(maxP.x, maxP.y, minP.z);
-                  p3 = glm::vec3(maxP.x, maxP.y, maxP.z);
-                } else if (faceIdx == 4) { // Y+
-                  p0 = glm::vec3(minP.x, maxP.y, maxP.z);
-                  p1 = glm::vec3(maxP.x, maxP.y, maxP.z);
-                  p2 = glm::vec3(maxP.x, maxP.y, minP.z);
-                  p3 = glm::vec3(minP.x, maxP.y, minP.z);
-                } else { // Y-
-                  p0 = glm::vec3(minP.x, minP.y, minP.z);
-                  p1 = glm::vec3(maxP.x, minP.y, minP.z);
-                  p2 = glm::vec3(maxP.x, minP.y, maxP.z);
-                  p3 = glm::vec3(minP.x, minP.y, maxP.z);
-                }
-
-                auto finalP0 = transform(p0) + glm::vec3(fx, fy, fz);
-                auto finalP1 = transform(p1) + glm::vec3(fx, fy, fz);
-                auto finalP2 = transform(p2) + glm::vec3(fx, fy, fz);
-                auto finalP3 = transform(p3) + glm::vec3(fx, fy, fz);
-
-                float uMin, vMin, uMax, vMax;
-                cb.getBlock()->getModelTextureUV(faceProp.texture, uMin, vMin,
-                                                 uMax, vMax);
-                float uW = uMax - uMin;
-                float vH = vMax - vMin;
-
-                float localU1 = faceProp.uv[0];
-                float localV1 = 1.0f - faceProp.uv[1];
-                float localU2 = faceProp.uv[2];
-                float localV2 = 1.0f - faceProp.uv[3];
-
-                // Check for Log Rotation UV Adjustment
-                bool rotateUV = false;
-                if (cb.getBlock()->isLog()) {
-                  if (cb.metadata == 1 || cb.metadata == 2) {
-                    // Rotate UVs for Bark Faces (0, 1, 2, 3) geometry-wise
-                    // Faces 4 and 5 are Rings (Ends), usually don't need
-                    // rotation
-                    if (faceIdx <= 3) {
-                      rotateUV = true;
-                    }
-                  }
-                }
-
-                if (rotateUV) {
-                  auto rot = [](float &u, float &v) {
-                    float nu = 0.5f + (v - 0.5f);
-                    float nv = 0.5f - (u - 0.5f);
-                    u = nu;
-                    v = nv;
-                  };
-                  // We have U1, V2 for P0. U2, V2 for P1. U2, V1 for P2. U1, V1
-                  // for P3. Actually we define range [U1, U2] x [V2, V1]? No,
-                  // faceProp.uv is just 2 corners? Usually U1=0, V1=1 (Top),
-                  // U2=1, V2=0 (Bot)? If we rotate the abstract rectangle? No,
-                  // we should rotate the 4 coordinate pairs used in pushVert.
-                  // P0_UV: (localU1, localV2)
-                  // P1_UV: (localU2, localV2)
-                  // P2_UV: (localU2, localV1)
-                  // P3_UV: (localU1, localV1)
-
-                  float u_p0 = localU1, v_p0 = localV2;
-                  float u_p1 = localU2, v_p1 = localV2;
-                  float u_p2 = localU2, v_p2 = localV1;
-                  float u_p3 = localU1, v_p3 = localV1;
-
-                  rot(u_p0, v_p0);
-                  rot(u_p1, v_p1);
-                  rot(u_p2, v_p2);
-                  rot(u_p3, v_p3);
-
-                  // Push Vertices with ROTATED UVs
-                  std::pair<float, float> lights = getFaceLight(faceIdx);
-                  float l1 = lights.first, l2 = lights.second;
-
-                  // Calc overlayFlags for this specific custom model face
-                  float customFaceOverlayFlags = 0.0f;
-                  if (cb.getBlock()->shouldTint(faceIdx, 0)) {
-                    customFaceOverlayFlags += 4.0f;
-                  }
-                  if (cb.getBlock()->hasOverlay(faceIdx)) {
-                    customFaceOverlayFlags += 1.0f;
-                  }
-                  if (cb.getBlock()->shouldTint(faceIdx, 1)) {
-                    customFaceOverlayFlags += 2.0f;
-                  }
-
-                  pushVert(finalP0.x, finalP0.y, finalP0.z, u_p0, v_p0, uMin,
-                           vMin, uW, vH, 0.0f, l1, l2, 1.0f,
-                           customFaceOverlayFlags);
-                  pushVert(finalP1.x, finalP1.y, finalP1.z, u_p1, v_p1, uMin,
-                           vMin, uW, vH, 0.0f, l1, l2, 1.0f,
-                           customFaceOverlayFlags);
-                  pushVert(finalP2.x, finalP2.y, finalP2.z, u_p2, v_p2, uMin,
-                           vMin, uW, vH, 0.0f, l1, l2, 1.0f,
-                           customFaceOverlayFlags);
-
-                  pushVert(finalP0.x, finalP0.y, finalP0.z, u_p0, v_p0, uMin,
-                           vMin, uW, vH, 0.0f, l1, l2, 1.0f,
-                           customFaceOverlayFlags);
-                  pushVert(finalP2.x, finalP2.y, finalP2.z, u_p2, v_p2, uMin,
-                           vMin, uW, vH, 0.0f, l1, l2, 1.0f,
-                           customFaceOverlayFlags);
-                  pushVert(finalP3.x, finalP3.y, finalP3.z, u_p3, v_p3, uMin,
-                           vMin, uW, vH, 0.0f, l1, l2, 1.0f,
-                           customFaceOverlayFlags);
-                } else {
-                  std::pair<float, float> lights = getFaceLight(faceIdx);
-                  float l1 = lights.first, l2 = lights.second;
-
-                  // Calc overlayFlags for this specific custom model face
-                  float customFaceOverlayFlags = 0.0f;
-                  if (cb.getBlock()->shouldTint(faceIdx, 0)) {
-                    customFaceOverlayFlags += 4.0f;
-                  }
-                  if (cb.getBlock()->hasOverlay(faceIdx)) {
-                    customFaceOverlayFlags += 1.0f;
-                  }
-                  if (cb.getBlock()->shouldTint(faceIdx, 1)) {
-                    customFaceOverlayFlags += 2.0f;
-                  }
-
-                  pushVert(finalP0.x, finalP0.y, finalP0.z, localU1, localV2,
-                           uMin, vMin, uW, vH, 0.0f, l1, l2, 1.0f,
-                           customFaceOverlayFlags);
-                  pushVert(finalP1.x, finalP1.y, finalP1.z, localU2, localV2,
-                           uMin, vMin, uW, vH, 0.0f, l1, l2, 1.0f,
-                           customFaceOverlayFlags);
-                  pushVert(finalP2.x, finalP2.y, finalP2.z, localU2, localV1,
-                           uMin, vMin, uW, vH, 0.0f, l1, l2, 1.0f,
-                           customFaceOverlayFlags);
-
-                  pushVert(finalP0.x, finalP0.y, finalP0.z, localU1, localV2,
-                           uMin, vMin, uW, vH, 0.0f, l1, l2, 1.0f,
-                           customFaceOverlayFlags);
-                  pushVert(finalP2.x, finalP2.y, finalP2.z, localU2, localV1,
-                           uMin, vMin, uW, vH, 0.0f, l1, l2, 1.0f,
-                           customFaceOverlayFlags);
-                  pushVert(finalP3.x, finalP3.y, finalP3.z, localU1, localV1,
-                           uMin, vMin, uW, vH, 0.0f, l1, l2, 1.0f,
-                           customFaceOverlayFlags);
-                }
+                // We need a way to check sideSolid globally.
+                // World::getBlock returns ChunkBlock.
+                // Accessing neighbor chunk lock safely?
+                // World::getChunk is safe.
+                // Let's implement a quick helper in World for this or just use
+                // getBlock.
+                ChunkBlock nb = world->getBlock(gnx, gny, gnz);
+                if (nb.id != 0)
+                  return nb.getBlock()->isSideSolid(neighborFace, nb.metadata);
               }
+              return false; // Default air/unloaded is not solid
+            };
+
+            for (int f = 0; f < 6; f++) {
+              // Mapping: 0(Z+)<->1(Z-), 2(X-)<->3(X+), 4(Y+)<->5(Y-)
+              // Actually:
+              // 0=Front(Z+), 1=Back(Z-), 2=Left(X-), 3=Right(X+), 4=Top(Y+),
+              // 5=Bottom(Y-) Opposites: 0<->1, 2<->3, 4<->5
+              int oppositeFace = (f % 2 == 0) ? f + 1 : f - 1;
+
+              if (isNeighborSideSolid(f, oppositeFace)) {
+                faceVisible[f] = false;
+              }
+            }
+
+            for (size_t i = 0; i < mesh->indices.size(); ++i) {
+              uint32_t vIdx = mesh->indices[i];
+
+              int faceIdx = mesh->faceInfo[vIdx].faceDirection;
+              if (faceIdx >= 0 && faceIdx <= 5) {
+                if (!faceVisible[faceIdx])
+                  continue;
+              }
+
+              glm::vec3 pos = mesh->positions[vIdx];
+              glm::vec2 uv = mesh->uvs[vIdx];
+              glm::vec4 texOrigin = mesh->texOrigins[vIdx];
+              float overlayFlag = mesh->overlayFlags[vIdx];
+              bool shadeEnabled = mesh->faceInfo[vIdx].enableAO;
+
+              // Apply Per-Instance Rotation (Logs)
+              if (cb.getBlock()->isLog()) {
+                glm::vec3 center(0.5f);
+                glm::vec3 local = pos - center;
+
+                if (cb.metadata == 1) { // X-Axis (Rotate around Z)
+                  // X' = Y, Y' = -X
+                  float tmpx = local.x;
+                  local.x = local.y;
+                  local.y = -tmpx;
+                } else if (cb.metadata == 2) { // Z-Axis (Rotate around X)
+                  // Y' = -Z, Z' = Y
+                  float tmpy = local.y;
+                  local.y = -local.z;
+                  local.z = tmpy;
+                }
+                pos = center + local;
+                // Note: Same caveats about faceIdx and shading apply
+              }
+
+              auto [l1, l2] = getLight(faceIdx);
+
+              // Cardinal Shading
+              float shade = 1.0f;
+              if (shadeEnabled) { // Only if model element allows shading
+                if (faceIdx == 4)
+                  shade = 1.0f; // Top
+                else if (faceIdx == 5)
+                  shade = 0.6f; // Bottom
+                else
+                  shade = 0.8f; // Sides
+              }
+
+              pushVert(fx + pos.x, fy + pos.y, fz + pos.z, uv.x, uv.y,
+                       texOrigin.x, texOrigin.y, texOrigin.z, texOrigin.w,
+                       0.0f, // AO
+                       l1, l2, shade, overlayFlag);
             }
           }
         }
@@ -2293,7 +2016,6 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
     }
   }
 
-  // Stitch Vectors
   // Stitch Vectors
   outOpaqueCount = opaqueVertices.size() / 24;
   opaqueVertices.insert(opaqueVertices.end(), transparentVertices.begin(),
@@ -2461,8 +2183,8 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
   std::string mapCode = block->getClimateColorMap();
   if (!mapCode.empty()) {
     getClimate(x, z, temp, humid);
-    // We pass the tint index if exists. The shader handles whether to apply to
-    // base or overlay.
+    // We pass the tint index if exists. The shader handles whether to apply
+    // to base or overlay.
     tintIndex = (float)ColorMapRegistry::Get().GetMapIndex(mapCode);
   }
 
@@ -2578,7 +2300,8 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
       hBR = H;
       hTR = H;
       hTL = H;
-    } else { // Top/Bottom Faces: height is Z-extent (or X), Y-extent is 1 block
+    } else { // Top/Bottom Faces: height is Z-extent (or X), Y-extent is 1
+             // block
       hBL = 1.0f;
       hBR = 1.0f;
       hTR = 1.0f;
@@ -2815,15 +2538,15 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
 
     if (isDoubleSided) {
       // float eps = 0.01f; // Removed redundant definition
-      // Top starts at fy + fh (since fw=width, fh=height usually? For top face
-      // fw is X, fh is Z? No, see Face 4 code) Face 4 code: `pushVert(fx, fy +
-      // yTL, fz + fh...)` Wait, fh is Height?? For Top Face, yTL is Height
-      // offset? Chunk.cpp line 2483 comments: "The 'width' (fw) here is along
-      // X, 'height' (fh) is along Z." So Top Plane is at Ymax? Actually Face 4
-      // code uses `fy + yTL`. yTL/TR/etc are the computed heights
-      // (usually 1.0). So Top Plane is roughly `fy + 1.0`. The Backface should
-      // be slightly lower. But we have 4 different Ys! We should subtract eps
-      // from ALL Ys.
+      // Top starts at fy + fh (since fw=width, fh=height usually? For top
+      // face fw is X, fh is Z? No, see Face 4 code) Face 4 code:
+      // `pushVert(fx, fy + yTL, fz + fh...)` Wait, fh is Height?? For Top
+      // Face, yTL is Height offset? Chunk.cpp line 2483 comments: "The
+      // 'width' (fw) here is along X, 'height' (fh) is along Z." So Top Plane
+      // is at Ymax? Actually Face 4 code uses `fy + yTL`. yTL/TR/etc are the
+      // computed heights (usually 1.0). So Top Plane is roughly `fy + 1.0`.
+      // The Backface should be slightly lower. But we have 4 different Ys! We
+      // should subtract eps from ALL Ys.
 
       float yTL_B = yTL - eps;
       float yTR_B = yTR - eps;
@@ -2923,7 +2646,8 @@ bool Chunk::raycast(glm::vec3 origin, glm::vec3 direction, float maxDist,
         // Calculate local position within the block (0..1 range)
         float localY = pos.y - (float)y;
 
-        // Only hit if ray position is within the block's actual vertical bounds
+        // Only hit if ray position is within the block's actual vertical
+        // bounds
         if (localY >= blockMin.y && localY <= blockMax.y) {
           outputPos = glm::ivec3(x, y, z);
           int lx = (int)floor(lastPos.x);

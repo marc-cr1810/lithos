@@ -8,13 +8,22 @@
     "class": "SlabBlock",
     "blockMaterial": "Stone",
     "drawType": "json",
+    "model": "block/basic/slab/slab_up",
     "textures": {
-        "all": "stone/rock/stone"
+        "all": "block/stone/rock/stone"
     },
     "sounds": {
         "place": "game/step/stone",
         "breakSound": "game/step/stone",
         "hit": "game/step/stone"
     },
-    "resistance": 3.0
+    "resistance": 3.0,
+    "sideSolid": {
+        "down": true,
+        "up": false,
+        "north": false,
+        "south": false,
+        "east": false,
+        "west": false
+    }
 }

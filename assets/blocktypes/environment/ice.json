@@ -14,7 +14,7 @@
         "hit": "game/step/glass"
     },
     "textures": {
-        "all": "liquid/ice"
+        "all": "block/liquid/ice"
     },
     "opaque": false
 }

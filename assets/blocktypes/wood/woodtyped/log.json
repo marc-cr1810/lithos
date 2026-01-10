@@ -45,26 +45,26 @@
         }
     ],
     "textures": {
-        "all": "wood/bark/{wood}_log",
-        "up": "wood/treetrunk/{wood}_log_top",
-        "down": "wood/treetrunk/{wood}_log_top"
+        "all": "block/wood/bark/{wood}_log",
+        "up": "block/wood/treetrunk/{wood}_log_top",
+        "down": "block/wood/treetrunk/{wood}_log_top"
     },
     "texturesByType": {
         "*_ud": {
-            "all": "wood/bark/{wood}_log",
-            "up": "wood/treetrunk/{wood}_log_top",
-            "down": "wood/treetrunk/{wood}_log_top"
+            "all": "block/wood/bark/{wood}_log",
+            "up": "block/wood/treetrunk/{wood}_log_top",
+            "down": "block/wood/treetrunk/{wood}_log_top"
         },
         "*_ns": {
-            "all": "wood/bark/{wood}_log",
-            "north": "wood/treetrunk/{wood}_log_top",
-            "south": "wood/treetrunk/{wood}_log_top",
+            "all": "block/wood/bark/{wood}_log",
+            "north": "block/wood/treetrunk/{wood}_log_top",
+            "south": "block/wood/treetrunk/{wood}_log_top",
             "rotation": 90
         },
         "*_we": {
-            "all": "wood/bark/{wood}_log",
-            "east": "wood/treetrunk/{wood}_log_top",
-            "west": "wood/treetrunk/{wood}_log_top",
+            "all": "block/wood/bark/{wood}_log",
+            "east": "block/wood/treetrunk/{wood}_log_top",
+            "west": "block/wood/treetrunk/{wood}_log_top",
             "rotation": 90
         }
     }

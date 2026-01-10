@@ -8,8 +8,9 @@
     "class": "StairBlock",
     "blockMaterial": "Wood",
     "drawType": "json",
+    "model": "block/basic/stairs/normal",
     "textures": {
-        "all": "wood/planks/oak_planks"
+        "all": "block/wood/planks/oak_planks"
     },
     "sounds": {
         "place": "game/step/wood",
@@ -17,5 +18,13 @@
         "hit": "game/step/wood",
         "walk": "game/step/wood"
     },
-    "resistance": 2.0
+    "resistance": 2.0,
+    "sideSolid": {
+        "down": true,
+        "up": false,
+        "north": true,
+        "south": false,
+        "east": false,
+        "west": false
+    }
 }

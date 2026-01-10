@@ -14,6 +14,6 @@
         "hit": "game/step/stone"
     },
     "textures": {
-        "all": "stone/ore/gold_ore"
+        "all": "block/stone/ore/gold_ore"
     }
 }

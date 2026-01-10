@@ -21,6 +21,7 @@ public:
     unsigned int textureID = 0;
     int runtimeIndex = 0;
     glm::vec4 atlasUVRect = glm::vec4(0.0f); // uMin, vMin, uWidth, vHeight
+    std::string textureKey;                  // Key used in TextureAtlas
   };
 
   static ColorMapRegistry &Get();
@@ -40,6 +41,9 @@ public:
   // Set/Get Atlas UV Rect
   void SetAtlasUVRect(const std::string &mapCode, const glm::vec4 &rect);
   glm::vec4 GetAtlasUVRect(const std::string &mapCode) const;
+
+  // Resolve UVs from Atlas
+  void ResolveAtlasUVs(const class TextureAtlas &atlas);
 
   // Bind all textures to units starting at baseUnit
   void BindTextures(int baseUnit);

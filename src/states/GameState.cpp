@@ -118,7 +118,8 @@ void GameState::InitRendering() {
       if (i >= 8)
         break; // Shader limit
       std::string uniformName = "u_TintRects[" + std::to_string(i) + "]";
-      m_Shader->setVec4(uniformName, cmr.GetAtlasUVRect(mapCodes[i]));
+      glm::vec4 r = cmr.GetAtlasUVRect(mapCodes[i]);
+      m_Shader->setVec4(uniformName, r);
     }
 
     // Bind legacy/fallback tint maps (Units 1-8)
