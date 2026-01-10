@@ -1,20 +1,75 @@
 {
     "code": "lava",
-    "creativeInventory": {
-        "liquids": [
-            "*"
-        ]
+    "classByType": {
+        "lava-still-*": "LavaBlock",
+        "*": "LiquidBlock"
     },
-    "class": "LavaBlock",
     "blockMaterial": "Liquid",
+    "liquidCode": "lava",
     "drawType": "liquid",
     "renderLayer": "opaque",
+    "opaque": false,
+    "solid": false,
+    "behaviors": [
+        {
+            "name": "FiniteSpreadingLiquid",
+            "properties": {
+                "spreadDelay": 1500,
+                "liquidCollisionSound": "sizzle",
+                "sourceReplacementCode": "rock-obsidian",
+                "flowingReplacementCode": "rock-basalt",
+                "collidesWith": "water"
+            }
+        }
+    ],
+    "variantgroups": [
+        {
+            "code": "flow",
+            "states": [
+                "n",
+                "ne",
+                "e",
+                "se",
+                "s",
+                "sw",
+                "w",
+                "nw",
+                "d",
+                "still"
+            ]
+        },
+        {
+            "code": "height",
+            "states": [
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7"
+            ]
+        }
+    ],
+    "textures": {
+        "all": {
+            "base": "block/liquid/lava_still"
+        }
+    },
+    "liquidLevelByType": {
+        "*-1": 1,
+        "*-2": 2,
+        "*-3": 3,
+        "*-4": 4,
+        "*-5": 5,
+        "*-6": 6,
+        "*-7": 7
+    },
     "sounds": {
         "place": "lava_place",
         "breakSound": "lava_break",
         "walk": "lava_walk"
     },
-    "textures": {
-        "all": "block/liquid/lava_still"
-    }
+    "lightAbsorption": 0,
+    "emission": 22
 }

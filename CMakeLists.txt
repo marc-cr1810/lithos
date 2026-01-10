@@ -194,6 +194,7 @@ add_executable(lithos
     src/world/behaviors/BlockBehaviorHorizontalOrientable.cpp
     src/world/behaviors/BlockBehaviorPillar.cpp
     src/world/behaviors/BlockBehaviorOrientable.cpp
+    src/world/behaviors/BlockBehaviorFiniteSpreadingLiquid.cpp
     src/world/gen/NoiseManager.cpp
     src/world/gen/Landform.cpp
     src/world/gen/RockStrata.cpp

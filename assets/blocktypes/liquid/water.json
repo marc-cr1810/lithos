@@ -1,15 +1,70 @@
 {
     "code": "water",
-    "creativeInventory": {
-        "liquids": [
-            "*"
-        ]
+    "classByType": {
+        "water-still-*": "WaterBlock",
+        "*": "LiquidBlock"
     },
-    "class": "WaterBlock",
     "blockMaterial": "Liquid",
+    "liquidCode": "water",
     "drawType": "liquid",
     "renderLayer": "transparent",
     "opaque": false,
+    "solid": false,
+    "behaviors": [
+        {
+            "name": "FiniteSpreadingLiquid",
+            "properties": {
+                "spreadDelay": 125,
+                "liquidCollisionSound": "sizzle",
+                "sourceReplacementCode": "lithos:rock-obsidian",
+                "flowingReplacementCode": "lithos:rock-basalt",
+                "collidesWith": "lithos:lava"
+            }
+        }
+    ],
+    "variantgroups": [
+        {
+            "code": "flow",
+            "states": [
+                "n",
+                "ne",
+                "e",
+                "se",
+                "s",
+                "sw",
+                "w",
+                "nw",
+                "d",
+                "still"
+            ]
+        },
+        {
+            "code": "height",
+            "states": [
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7"
+            ]
+        }
+    ],
+    "textures": {
+        "all": {
+            "base": "block/liquid/water_still"
+        }
+    },
+    "liquidLevelByType": {
+        "*-1": 1,
+        "*-2": 2,
+        "*-3": 3,
+        "*-4": 4,
+        "*-5": 5,
+        "*-6": 6,
+        "*-7": 7
+    },
     "sounds": {
         "place": "water_place",
         "breakSound": "water_break",
@@ -17,8 +72,5 @@
     },
     "climateColorMapByType": {
         "*": "climateWaterTint"
-    },
-    "textures": {
-        "all": "block/liquid/water_still"
     }
 }

@@ -585,7 +585,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
               chunk.blocks[lx][ly][lz].metadata = 0;
             } else if (wy < config.seaLevel) {
               chunk.blocks[lx][ly][lz].id = waterBlock->getId();
-              chunk.blocks[lx][ly][lz].metadata = 0;
+              chunk.blocks[lx][ly][lz].metadata = 7; // Source block (max level)
             } else {
               chunk.blocks[lx][ly][lz].id = airBlock->getId();
               chunk.blocks[lx][ly][lz].metadata = 0;
@@ -598,7 +598,7 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
             int wy = startY + ly;
             if (wy < config.seaLevel) {
               chunk.blocks[lx][ly][lz].id = waterBlock->getId();
-              chunk.blocks[lx][ly][lz].metadata = 0;
+              chunk.blocks[lx][ly][lz].metadata = 7; // Source block (max level)
             } else {
               chunk.blocks[lx][ly][lz].id = airBlock->getId();
               chunk.blocks[lx][ly][lz].metadata = 0;

@@ -275,7 +275,17 @@ public:
   void setResistance(float r) { resistance = r; }
 
   virtual bool isActive() const { return true; }
-  virtual bool isLiquid() const { return false; }
+  virtual bool isLiquid() const { return isLiquid_; } // Now uses member
+  void setLiquid(bool l) { isLiquid_ = l; }
+
+  virtual int getLiquidLevel() const { return liquidLevel_; }
+  void setLiquidLevel(int l) { liquidLevel_ = l; }
+
+  virtual bool isLiquidSource() const { return isLiquidSource_; }
+  void setLiquidSource(bool s) { isLiquidSource_ = s; }
+
+  void setAlpha(float a) { alpha = a; }
+
   virtual bool isLog() const { return false; }
   virtual bool isLeaves() const { return false; }
   virtual bool isDoubleSided() const { return doubleSided_; }
@@ -306,7 +316,15 @@ public:
   virtual RenderLayer getRenderLayer() const { return renderLayer; }
   void setRenderLayer(RenderLayer layer) { renderLayer = layer; }
 
-  enum class RenderShape { CUBE, CROSS, SLAB_BOTTOM, STAIRS, MODEL, LAYERED };
+  enum class RenderShape {
+    CUBE,
+    CROSS,
+    SLAB_BOTTOM,
+    STAIRS,
+    MODEL,
+    LAYERED,
+    LIQUID
+  };
   virtual RenderShape getRenderShape() const { return renderShape; }
   void setRenderShape(RenderShape shape) { renderShape = shape; }
 
@@ -370,7 +388,7 @@ public:
     return placedId;
   }
 
-  virtual float getAlpha() const { return 1.0f; }
+  virtual float getAlpha() const { return alpha; }
 
   // Layer-based Tinting
   // layer 0 = base, layer 1 = overlay
@@ -404,12 +422,16 @@ public:
 
 protected:
   block_id id;
+  float alpha = 1.0f;
   std::string name;
   std::string resourceId;
   bool isOpaque_ = true;
   bool isSolid_ = true;
   bool isReplaceable_ = false;
   bool isRandomTickable_ = false;
+  bool isLiquid_ = false;       // New field
+  int liquidLevel_ = 0;         // New field
+  bool isLiquidSource_ = false; // New field
   bool doubleSided_ = false;
   float resistance = 1.0f;
   RenderLayer renderLayer = RenderLayer::OPAQUE;

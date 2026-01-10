@@ -1,4 +1,5 @@
 #include "World.h"
+#include "../core/ResourceManager.h" // Added
 #include "../debug/Logger.h"
 #include "../debug/Profiler.h"
 #include "../ecs/Systems.h"
@@ -6,6 +7,8 @@
 #include "ColorMapRegistry.h"
 #include "WorldGenRegion.h"
 #include "WorldGenerator.h"
+#include <GL/glew.h>
+#include <GLFW/glfw3.h> // For glfwGetTime
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -1251,7 +1254,47 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection,
     }
   }
 
-  // Pass 2: Transparent
+  // Pass 2: Liquid
+  // Render after Opaque, before Transparent (or separate pass for specialized
+  // shader)
+  Shader *liquidShader = ResourceManager::Get().GetShader("liquid");
+  if (liquidShader) {
+    PROFILE_SCOPE("Render Liquid");
+    // Enable blending for water transparency
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    // Keep Depth Write ON for water? usually yes for near-solid surfaces, or NO
+    // if we want to see things inside it? VS writes depth for water surface.
+    glDepthMask(GL_TRUE);
+
+    liquidShader->use();
+    liquidShader->setMat4("viewProjection", viewProjection);
+    liquidShader->setVec3("viewPos", cameraPos);
+    // Simple time based on system time or tick
+    float timeVal = (float)glfwGetTime();
+    liquidShader->setFloat("u_Time", timeVal);
+    // Sun Pos (Hardcoded or from config/sky system)
+    liquidShader->setVec3("u_SunPos", glm::vec3(0.5f, 1.0f, 0.2f));
+    liquidShader->setFloat("sunStrength", 1.0f); // Full sun
+
+    // Bind Textures (Atlas to Unit 0)
+    glActiveTexture(GL_TEXTURE0);
+    Texture *atlasTex = ResourceManager::Get().GetTexture("blocks");
+    if (atlasTex) {
+      atlasTex->bind();
+    }
+
+    // We also need Depth Texture if we want Foam... skipping for simpler verify
+    // first.
+
+    for (const auto &c : visibleChunks) {
+      if (c) {
+        c->render(*liquidShader, viewProjection, 2); // Pass 2 = Liquid
+      }
+    }
+  }
+
+  // Pass 3: Transparent
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glDepthMask(GL_FALSE); // Disable depth write for transparent pass

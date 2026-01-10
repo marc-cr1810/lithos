@@ -388,6 +388,15 @@ BlockDef::BlockDefinition BlockLoader::parseJSON(const nlohmann::json &j) {
     }
   }
 
+  // Liquid Level By Type
+  if (j.contains("liquidLevelByType")) {
+    for (const auto &item : j.at("liquidLevelByType").items()) {
+      if (item.value().is_number()) { // Expect number (int)
+        def.liquidLevelByType[item.key()] = item.value().get<int>();
+      }
+    }
+  }
+
   // Tint Target
   if (j.contains("tintTarget")) {
     def.tintTarget = j.at("tintTarget").get<std::string>();
@@ -468,7 +477,8 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
   for (const auto &behavior : def.behaviors) {
     if (behavior.name == "UnstableFalling" || behavior.name == "Falling") {
       isFalling = true;
-    } else if (behavior.name == "Liquid") {
+    } else if (behavior.name == "Liquid" ||
+               behavior.name == "FiniteSpreadingLiquid") {
       isLiquid = true;
     }
   }
@@ -487,9 +497,9 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
     if (isFalling) {
       className = "FallingBlock";
     } else if (isLiquid) {
-      if (variantCode == "water")
+      if (variantCode.find("water") == 0)
         className = "WaterBlock";
-      else if (variantCode == "lava")
+      else if (variantCode.find("lava") == 0)
         className = "LavaBlock";
       else
         className = "LiquidBlock";
@@ -511,12 +521,56 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
     return nullptr;
   }
 
+  // DEBUG: Log block creation for water and leaves
+  if (variantCode.find("water") != std::string::npos ||
+      variantCode.find("leaves") != std::string::npos) {
+    LOG_INFO("[DEBUG] Created block '{}' with class '{}', isOpaque will be set "
+             "to {}",
+             variantCode, className, def.isOpaque);
+  }
+
+  // Set Liquid Properties
+  if (isLiquid) {
+    block->setLiquid(true);
+
+    // Resolve Level
+    int level =
+        resolveProperty(0, def.liquidLevelByType, variantCode); // Default to 0
+    block->setLiquidLevel(level);
+
+    // Resolve Source
+    if (variantCode.find("still") != std::string::npos) {
+      block->setLiquidSource(true);
+      block->setAlpha(0.75f);
+    } else {
+      block->setLiquidSource(false);
+    }
+    LOG_INFO("Created Liquid Block: {} | Level: {} | Source: {} | Opaque: {} | "
+             "Solid: {}",
+             variantCode, level, block->isLiquidSource(), def.isOpaque,
+             def.isSolid);
+  }
+
   // Set resource ID
   LOG_DEBUG("      -> Setting resource ID");
   block->setResourceId("lithos:" + variantCode);
 
   // Set attributes
   block->setAttributes(attributes);
+
+  // Apply properties
+  block->setOpaque(def.isOpaque);
+
+  // DEBUG: Verify opacity was set correctly
+  if (variantCode.find("water") != std::string::npos ||
+      variantCode.find("leaves") != std::string::npos) {
+    LOG_INFO("[DEBUG] After setOpaque: block '{}' isOpaque()={}", variantCode,
+             block->isOpaque());
+  }
+
+  block->setResistance(def.resistance);
+  block->setEmission(def.emission);
+  block->setReplaceable(def.replaceable);
 
   // Apply Side Solid
   if (!sideSolidMap.empty()) {
@@ -743,6 +797,12 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
     }
     // Cross shapes are never opaque cubes
     block->setOpaque(false);
+
+    // DEBUG
+    if (variantCode.find("leaves") != std::string::npos) {
+      LOG_INFO("[DEBUG] Cross shape - forced opaque=false for '{}'",
+               variantCode);
+    }
   } else if (drawType == "cube") {
     block->setRenderShape(Block::RenderShape::CUBE);
   } else if (drawType == "json") {
@@ -784,7 +844,12 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
     } else if (drawType == "cross") {
       defaultModel = "block/basic/cross";
     } else if (drawType == "liquid") {
-      defaultModel = "block/basic/liquid";
+      // Liquid uses specialized rendering in Chunk.cpp, NOT a static model
+      // But we set a default model just in case of fallback, or maybe we
+      // shouldn't? Actually, if we set a model, it becomes RenderShape::MODEL.
+      // We want RenderShape::LIQUID.
+      block->setRenderShape(Block::RenderShape::LIQUID);
+      // Do NOT set defaultModel, so it doesn't get overridden to MODEL below.
     }
     // json, slab, stair, layered types should have explicit models set
 

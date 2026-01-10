@@ -15,7 +15,8 @@
 
 Chunk::Chunk()
     : meshDirty(true), vertexCount(0), vertexCountTransparent(0),
-      chunkPosition(0, 0, 0), world(nullptr), VAO(0), VBO(0), EBO(0) {
+      liquidVertexCount(0), chunkPosition(0, 0, 0), world(nullptr), VAO(0),
+      VBO(0), EBO(0), liquidVAO(0), liquidVBO(0), liquidEBO(0) {
   // GL initialization deferred to Main Thread via initGL()
   // Initialize with air
   //  Block *air = BlockRegistry::getInstance().getBlock(AIR);
@@ -45,6 +46,9 @@ Chunk::~Chunk() {
   glDeleteVertexArrays(1, &VAO);
   glDeleteBuffers(1, &VBO);
   glDeleteBuffers(1, &EBO);
+  glDeleteVertexArrays(1, &liquidVAO);
+  glDeleteBuffers(1, &liquidVBO);
+  glDeleteBuffers(1, &liquidEBO);
 }
 
 // ... Setters ...
@@ -54,6 +58,11 @@ void Chunk::initGL() {
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
     glGenBuffers(1, &EBO);
+  }
+  if (liquidVAO == 0) {
+    glGenVertexArrays(1, &liquidVAO);
+    glGenBuffers(1, &liquidVBO);
+    glGenBuffers(1, &liquidEBO);
   }
 }
 
@@ -77,8 +86,13 @@ void Chunk::render(Shader &shader, const glm::mat4 &viewProjection, int pass) {
   glBindVertexArray(VAO);
   if (pass == 0) {
     glDrawArrays(GL_TRIANGLES, 0, vertexCount);
-  } else {
+  } else if (pass == 1) {
     glDrawArrays(GL_TRIANGLES, vertexCount, vertexCountTransparent);
+  } else if (pass == 2) {
+    if (liquidVertexCount > 0) {
+      glBindVertexArray(liquidVAO);
+      glDrawArrays(GL_TRIANGLES, 0, liquidVertexCount);
+    }
   }
   glBindVertexArray(0);
 }
@@ -211,6 +225,8 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
   // Typical chunk: ~800-1000 visible faces, 6 verts/face = ~8000-10000 verts
   opaqueVertices.reserve(12288);     // ~940 faces worth
   transparentVertices.reserve(3072); // ~235 faces worth
+  liquidVertices.clear();
+  liquidVertices.reserve(4096);
 
   // Cache Neighbors (Both cardinal and diagonal for performance)
   std::shared_ptr<Chunk> cardNeighbors[6];
@@ -285,7 +301,10 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
         }
 
         ChunkBlock cb = cardNeighbors[ni]->getBlock(nx, ny, nz);
-        borderCache[ni][u][v].isOpaque = cb.isOpaque();
+        // Don't treat liquids as opaque blockers - solid faces next to water
+        // should render
+        borderCache[ni][u][v].isOpaque =
+            cb.isOpaque() && !cb.getBlock()->isLiquid();
         borderCache[ni][u][v].isLayered =
             (cb.isActive() &&
              cb.getRenderShape() == Block::RenderShape::LAYERED);
@@ -407,8 +426,34 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                       occluded = true;
                   }
                 } else {
+                  // Current block is OPAQUE (solid like stone)
+                  // DEBUG: Log when checking solid blocks against water/leaves
+                  if (nb.getBlock()->getName().find("water") !=
+                          std::string::npos ||
+                      nb.getBlock()->getName().find("leaves") !=
+                          std::string::npos) {
+                    static int logCount = 0;
+                    if (logCount++ < 5) {
+                      LOG_INFO("[FACE_CULL] Solid block '{}' (opaque={}) "
+                               "checking neighbor '{}' (opaque={})",
+                               b.getBlock()->getName(), b.isOpaque(),
+                               nb.getBlock()->getName(), nb.isOpaque());
+                    }
+                  }
+
                   if (nb.isOpaque())
                     occluded = true;
+
+                  // DEBUG: Log the result
+                  if (nb.getBlock()->getName().find("water") !=
+                          std::string::npos ||
+                      nb.getBlock()->getName().find("leaves") !=
+                          std::string::npos) {
+                    static int logCount2 = 0;
+                    if (logCount2++ < 5) {
+                      LOG_INFO("[FACE_CULL]   -> occluded={}", occluded);
+                    }
+                  }
                 }
               } else {
                 skyVal = blocks[nx][ny][nz].skyLight;
@@ -572,7 +617,9 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                     int gx = chunkPosition.x * CHUNK_SIZE + nx;
                     int gy = chunkPosition.y * CHUNK_SIZE + ny;
                     int gz = chunkPosition.z * CHUNK_SIZE + nz;
-                    return world->getBlock(gx, gy, gz).isOpaque();
+                    ChunkBlock neighbor = world->getBlock(gx, gy, gz);
+                    return neighbor.isOpaque() &&
+                           !neighbor.getBlock()->isLiquid();
                   }
                   return false;
                 };
@@ -1009,11 +1056,18 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                   if (bVec.metadata >= 8)
                     return 0.0f;
 
-                  float calculatedHeight = (9.0f - bVec.metadata) / 9.0f;
-                  if (calculatedHeight > 0.88f)
-                    calculatedHeight = 0.88f;
-
-                  return calculatedHeight;
+                  // metadata is liquid level: 1 = lowest, 7 = highest
+                  // Convert to height fraction: 1->0.14, 7->1.0
+                  if (bVec.metadata <= 0) {
+                    return 0.0f;
+                  } else if (bVec.metadata >= 7) {
+                    return 0.88f;
+                  } else {
+                    // Linear scaling from level 1-7
+                    float calculatedHeight =
+                        0.14f + (float)(bVec.metadata - 1) * (0.86f / 6.0f);
+                    return calculatedHeight;
+                  }
                 }
                 if (bVec.isSolid()) {
                   return -2.0f; // Flag: Solid Block
@@ -1136,10 +1190,16 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
               }
             }
 
-            addFace(isTrans ? transparentVertices : opaqueVertices, lx, ly, lz,
-                    faceDir, current.block, w, h, current.ao[0], current.ao[1],
-                    current.ao[2], current.ao[3], current.metadata, hBL, hBR,
-                    hTR, hTL, current.isInternal);
+            if (current.block->isLiquid()) {
+              addLiquidFace(lx, ly, lz, faceDir, current.block, current.ao[0],
+                            current.ao[1], current.ao[2], current.ao[3], hBL,
+                            hBR, hTR, hTL, current.metadata);
+            } else {
+              addFace(isTrans ? transparentVertices : opaqueVertices, lx, ly,
+                      lz, faceDir, current.block, w, h, current.ao[0],
+                      current.ao[1], current.ao[2], current.ao[3],
+                      current.metadata, hBL, hBR, hTR, hTL, current.isInternal);
+            }
 
             for (int j = 0; j < h; ++j)
               for (int i = 0; i < w; ++i)
@@ -1256,6 +1316,27 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
           targetVerts.push_back(u2W);          // Overlay Width
           targetVerts.push_back(v2H);          // Overlay Height
           targetVerts.push_back(overlayFlags); // Bit flags for tint/overlay
+        };
+
+        auto pushLiquidVert = [&](float vx, float vy, float vz, float u,
+                                  float v, float r, float g, float b, float a,
+                                  float s, float bl, float ao, float flowX,
+                                  float flowZ, float flags) {
+          liquidVertices.push_back(vx);
+          liquidVertices.push_back(vy);
+          liquidVertices.push_back(vz);
+          liquidVertices.push_back(r);
+          liquidVertices.push_back(g);
+          liquidVertices.push_back(b);
+          liquidVertices.push_back(a);
+          liquidVertices.push_back(u);
+          liquidVertices.push_back(v);
+          liquidVertices.push_back(s);  // Sky
+          liquidVertices.push_back(bl); // Block
+          liquidVertices.push_back(ao);
+          liquidVertices.push_back(flowX);
+          liquidVertices.push_back(flowZ);
+          liquidVertices.push_back(flags);
         };
 
         if (shape == Block::RenderShape::CROSS) {
@@ -1888,7 +1969,256 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
               }
             }
           }
-        } else if (shape == Block::RenderShape::MODEL && world) {
+        } else if (shape == Block::RenderShape::LIQUID) {
+          // Liquid Rendering
+          int level =
+              cb.metadata; // Use ChunkBlock metadata for actual liquid level!
+          float height = (float)level / 7.0f;
+
+          // Source Block check
+          if (cb.getBlock()->isLiquidSource()) {
+            height = 0.88f; // Full block for source
+          } else {
+            // Flowing - scale from 0.14 (nearly empty) to 1.0 (level 7)
+            if (level <= 0) {
+              height = 0.0f; // No liquid
+            } else if (level >= 7) {
+              height = 0.88f; // Full height
+            } else {
+              // Linear scaling: level 1 = 0.14, level 7 = 1.0
+              height = 0.14f + (float)(level - 1) * (0.86f / 6.0f);
+            }
+          }
+
+          bool hasLiquidAbove = false;
+          if (y + 1 < CHUNK_SIZE) {
+            ChunkBlock ab = blocks[x][y + 1][z];
+            if (ab.isActive() && ab.getBlock()->isLiquid())
+              hasLiquidAbove = true;
+          } else if (world) {
+            ChunkBlock ab = world->getBlock(gx, gy + 1, gz);
+            if (ab.isActive() && ab.getBlock()->isLiquid())
+              hasLiquidAbove = true;
+          }
+          if (hasLiquidAbove)
+            height = 1.0f;
+
+          auto shouldRenderFace = [&](int face) -> bool {
+            int dx = 0, dy = 0, dz = 0;
+            if (face == 0)
+              dz = 1;
+            else if (face == 1)
+              dz = -1;
+            else if (face == 2)
+              dx = -1;
+            else if (face == 3)
+              dx = 1;
+            else if (face == 4)
+              dy = 1;
+            else if (face == 5)
+              dy = -1;
+
+            int nx = x + dx, ny = y + dy, nz = z + dz;
+            // If Top Face and liquid above, don't render
+            if (face == 4 && hasLiquidAbove)
+              return false;
+
+            if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_SIZE &&
+                nz >= 0 && nz < CHUNK_SIZE) {
+              ChunkBlock nb = blocks[nx][ny][nz];
+              if (nb.isOpaque())
+                return false;
+              if (nb.isActive() &&
+                  nb.getBlock()->getId() == cb.getBlock()->getId())
+                return false;
+            } else if (world) {
+              ChunkBlock nb = world->getBlock(gx + dx, gy + dy, gz + dz);
+              if (nb.isOpaque())
+                return false;
+              if (nb.isActive() &&
+                  nb.getBlock()->getId() == cb.getBlock()->getId())
+                return false;
+            }
+            return true;
+          };
+
+          float uBase, vBase, uMax, vMax;
+          cb.getBlock()->getTextureUV(0, uBase, vBase, uMax, vMax, gx, gy, gz,
+                                      cb.metadata);
+          float uW = uMax - uBase;
+          float vH = vMax - vBase;
+
+          uint8_t sc = cb.skyLight;
+          uint8_t bc = cb.blockLight;
+          float s = pow((float)sc / 15.0f, 0.8f);
+          float b = pow((float)bc / 15.0f, 0.8f);
+
+          float rVal = 1.0f, gVal = 1.0f, bVal = 1.0f,
+                aVal = cb.getBlock()->getAlpha();
+
+          // Apply Climate Tint
+          if (cb.getBlock()->shouldTint(0, 0)) {
+            if (cb.getBlock()->getClimateColorMap() != "") {
+              float temp, humid;
+              getClimate(x, z, temp, humid);
+              int tintIndex = ColorMapRegistry::Get().GetMapIndex(
+                  cb.getBlock()->getClimateColorMap());
+              if (tintIndex >= 0) {
+                auto tintColor = ColorMapRegistry::Get().GetColor(
+                    cb.getBlock()->getClimateColorMap(), temp, humid);
+                rVal = tintColor.r / 255.0f;
+                gVal = tintColor.g / 255.0f;
+                bVal = tintColor.b / 255.0f;
+              }
+            }
+          }
+
+          float flowX = 0.0f;
+          float flowZ = 0.0f;
+          float liquidFlags = 0.0f;
+          if (cb.getBlock()->isLiquidSource())
+            liquidFlags += 2.0f;
+          // Lava check?
+          if (cb.getBlock()->getEmission() > 0)
+            liquidFlags += 1.0f; // Hacky isLava check
+
+          // Top Face
+          if (shouldRenderFace(4)) {
+            float aoVal = 1.0f; // Simplified AO for now
+            pushLiquidVert(fx + 0, fy + height, fz + 1, uBase, vBase, rVal,
+                           gVal, bVal, aVal, s, b, aoVal, flowX, flowZ,
+                           liquidFlags);
+            pushLiquidVert(fx + 1, fy + height, fz + 1, uBase + uW, vBase, rVal,
+                           gVal, bVal, aVal, s, b, aoVal, flowX, flowZ,
+                           liquidFlags);
+            pushLiquidVert(fx + 1, fy + height, fz + 0, uBase + uW, vBase + vH,
+                           rVal, gVal, bVal, aVal, s, b, aoVal, flowX, flowZ,
+                           liquidFlags);
+
+            pushLiquidVert(fx + 0, fy + height, fz + 1, uBase, vBase, rVal,
+                           gVal, bVal, aVal, s, b, aoVal, flowX, flowZ,
+                           liquidFlags);
+            pushLiquidVert(fx + 1, fy + height, fz + 0, uBase + uW, vBase + vH,
+                           rVal, gVal, bVal, aVal, s, b, aoVal, flowX, flowZ,
+                           liquidFlags);
+            pushLiquidVert(fx + 0, fy + height, fz + 0, uBase, vBase + vH, rVal,
+                           gVal, bVal, aVal, s, b, aoVal, flowX, flowZ,
+                           liquidFlags);
+          }
+          // Bottom Face (render against air?)
+          if (shouldRenderFace(5)) {
+            float aoVal = 1.0f;
+            pushLiquidVert(fx + 0, fy + 0, fz + 0, uBase, vBase, rVal, gVal,
+                           bVal, aVal, s, b, aoVal, flowX, flowZ, liquidFlags);
+            pushLiquidVert(fx + 1, fy + 0, fz + 0, uBase + uW, vBase, rVal,
+                           gVal, bVal, aVal, s, b, aoVal, flowX, flowZ,
+                           liquidFlags);
+            pushLiquidVert(fx + 1, fy + 0, fz + 1, uBase + uW, vBase + vH, rVal,
+                           gVal, bVal, aVal, s, b, aoVal, flowX, flowZ,
+                           liquidFlags);
+
+            pushLiquidVert(fx + 0, fy + 0, fz + 0, uBase, vBase, rVal, gVal,
+                           bVal, aVal, s, b, aoVal, flowX, flowZ, liquidFlags);
+            pushLiquidVert(fx + 1, fy + 0, fz + 1, uBase + uW, vBase + vH, rVal,
+                           gVal, bVal, aVal, s, b, aoVal, flowX, flowZ,
+                           liquidFlags);
+            pushLiquidVert(fx + 0, fy + 0, fz + 1, uBase, vBase + vH, rVal,
+                           gVal, bVal, aVal, s, b, aoVal, flowX, flowZ,
+                           liquidFlags);
+          }
+
+          // Side Faces (Simplified, reusing height)
+          // 0: Z+
+          if (shouldRenderFace(0)) {
+            pushLiquidVert(fx + 0, fy + 0, fz + 1, uBase, vBase + vH, rVal,
+                           gVal, bVal, aVal, s, b, 1.0f, flowX, flowZ,
+                           liquidFlags);
+            pushLiquidVert(fx + 1, fy + 0, fz + 1, uBase + uW, vBase + vH, rVal,
+                           gVal, bVal, aVal, s, b, 1.0f, flowX, flowZ,
+                           liquidFlags);
+            pushLiquidVert(fx + 1, fy + height, fz + 1, uBase + uW,
+                           vBase + vH * (1.0f - height), rVal, gVal, bVal, aVal,
+                           s, b, 1.0f, flowX, flowZ, liquidFlags);
+
+            pushLiquidVert(fx + 0, fy + 0, fz + 1, uBase, vBase + vH, rVal,
+                           gVal, bVal, aVal, s, b, 1.0f, flowX, flowZ,
+                           liquidFlags);
+            pushLiquidVert(fx + 1, fy + height, fz + 1, uBase + uW,
+                           vBase + vH * (1.0f - height), rVal, gVal, bVal, aVal,
+                           s, b, 1.0f, flowX, flowZ, liquidFlags);
+            pushLiquidVert(fx + 0, fy + height, fz + 1, uBase,
+                           vBase + vH * (1.0f - height), rVal, gVal, bVal, aVal,
+                           s, b, 1.0f, flowX, flowZ, liquidFlags);
+          }
+          // 1: Z-
+          if (shouldRenderFace(1)) {
+            pushLiquidVert(fx + 1, fy + 0, fz + 0, uBase, vBase + vH, rVal,
+                           gVal, bVal, aVal, s, b, 1.0f, flowX, flowZ,
+                           liquidFlags);
+            pushLiquidVert(fx + 0, fy + 0, fz + 0, uBase + uW, vBase + vH, rVal,
+                           gVal, bVal, aVal, s, b, 1.0f, flowX, flowZ,
+                           liquidFlags);
+            pushLiquidVert(fx + 0, fy + height, fz + 0, uBase + uW,
+                           vBase + vH * (1.0f - height), rVal, gVal, bVal, aVal,
+                           s, b, 1.0f, flowX, flowZ, liquidFlags);
+
+            pushLiquidVert(fx + 1, fy + 0, fz + 0, uBase, vBase + vH, rVal,
+                           gVal, bVal, aVal, s, b, 1.0f, flowX, flowZ,
+                           liquidFlags);
+            pushLiquidVert(fx + 0, fy + height, fz + 0, uBase + uW,
+                           vBase + vH * (1.0f - height), rVal, gVal, bVal, aVal,
+                           s, b, 1.0f, flowX, flowZ, liquidFlags);
+            pushLiquidVert(fx + 1, fy + height, fz + 0, uBase,
+                           vBase + vH * (1.0f - height), rVal, gVal, bVal, aVal,
+                           s, b, 1.0f, flowX, flowZ, liquidFlags);
+          }
+          // 2: X-
+          if (shouldRenderFace(2)) {
+            pushLiquidVert(fx + 0, fy + 0, fz + 0, uBase, vBase + vH, rVal,
+                           gVal, bVal, aVal, s, b, 1.0f, flowX, flowZ,
+                           liquidFlags);
+            pushLiquidVert(fx + 0, fy + 0, fz + 1, uBase + uW, vBase + vH, rVal,
+                           gVal, bVal, aVal, s, b, 1.0f, flowX, flowZ,
+                           liquidFlags);
+            pushLiquidVert(fx + 0, fy + height, fz + 1, uBase + uW,
+                           vBase + vH * (1.0f - height), rVal, gVal, bVal, aVal,
+                           s, b, 1.0f, flowX, flowZ, liquidFlags);
+
+            pushLiquidVert(fx + 0, fy + 0, fz + 0, uBase, vBase + vH, rVal,
+                           gVal, bVal, aVal, s, b, 1.0f, flowX, flowZ,
+                           liquidFlags);
+            pushLiquidVert(fx + 0, fy + height, fz + 1, uBase + uW,
+                           vBase + vH * (1.0f - height), rVal, gVal, bVal, aVal,
+                           s, b, 1.0f, flowX, flowZ, liquidFlags);
+            pushLiquidVert(fx + 0, fy + height, fz + 0, uBase,
+                           vBase + vH * (1.0f - height), rVal, gVal, bVal, aVal,
+                           s, b, 1.0f, flowX, flowZ, liquidFlags);
+          }
+          // 3: X+
+          if (shouldRenderFace(3)) {
+            pushLiquidVert(fx + 1, fy + 0, fz + 1, uBase, vBase + vH, rVal,
+                           gVal, bVal, aVal, s, b, 1.0f, flowX, flowZ,
+                           liquidFlags);
+            pushLiquidVert(fx + 1, fy + 0, fz + 0, uBase + uW, vBase + vH, rVal,
+                           gVal, bVal, aVal, s, b, 1.0f, flowX, flowZ,
+                           liquidFlags);
+            pushLiquidVert(fx + 1, fy + height, fz + 0, uBase + uW,
+                           vBase + vH * (1.0f - height), rVal, gVal, bVal, aVal,
+                           s, b, 1.0f, flowX, flowZ, liquidFlags);
+
+            pushLiquidVert(fx + 1, fy + 0, fz + 1, uBase, vBase + vH, rVal,
+                           gVal, bVal, aVal, s, b, 1.0f, flowX, flowZ,
+                           liquidFlags);
+            pushLiquidVert(fx + 1, fy + height, fz + 0, uBase + uW,
+                           vBase + vH * (1.0f - height), rVal, gVal, bVal, aVal,
+                           s, b, 1.0f, flowX, flowZ, liquidFlags);
+            pushLiquidVert(fx + 1, fy + height, fz + 1, uBase,
+                           vBase + vH * (1.0f - height), rVal, gVal, bVal, aVal,
+                           s, b, 1.0f, flowX, flowZ, liquidFlags);
+          }
+        } // Bottom Face (5)
+
+        else if (shape == Block::RenderShape::MODEL && world) {
           const Lithos::ModelMeshData *mesh =
               world->tessellator.getMesh(cb.getBlock());
           if (mesh) {
@@ -2198,6 +2528,44 @@ void Chunk::uploadMesh(const std::vector<float> &data, int opaqueCount) {
   glVertexAttribPointer(7, 1, GL_FLOAT, GL_FALSE, stride,
                         (void *)(23 * sizeof(float))); // OverlayEnabled
   glEnableVertexAttribArray(7);
+
+  // Upload Liquid Mesh
+  if (!liquidVertices.empty()) {
+    liquidVertexCount = liquidVertices.size() / 15; // 15 floats per vert
+    glBindVertexArray(liquidVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, liquidVBO);
+    glBufferData(GL_ARRAY_BUFFER, liquidVertices.size() * sizeof(float),
+                 &liquidVertices[0], GL_STATIC_DRAW);
+
+    float lStride = 15 * sizeof(float);
+    // 0: Pos (3)
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, lStride, (void *)0);
+    glEnableVertexAttribArray(0);
+    // 1: Color (4)
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, lStride,
+                          (void *)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    // 2: UV (2)
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, lStride,
+                          (void *)(7 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+    // 3: Light (3) - Sun, Block, AO
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, lStride,
+                          (void *)(9 * sizeof(float)));
+    glEnableVertexAttribArray(3);
+    // 4: Flow (2)
+    glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, lStride,
+                          (void *)(12 * sizeof(float)));
+    glEnableVertexAttribArray(4);
+    // 5: Flags (1)
+    glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, lStride,
+                          (void *)(14 * sizeof(float)));
+    glEnableVertexAttribArray(5);
+
+    glBindVertexArray(0);
+  } else {
+    liquidVertexCount = 0;
+  }
 }
 
 void Chunk::sortAndUploadTransparent(const glm::vec3 &cameraPos) {
@@ -3211,5 +3579,247 @@ void Chunk::processRandomTicks(int tickCount, std::mt19937 &rng) {
                             chunkPosition.z * CHUNK_SIZE + z, rng);
       }
     }
+  }
+}
+
+std::pair<float, float> Chunk::getLiquidFlowVector(int x, int y, int z,
+                                                   uint8_t meta) {
+  // Source blocks don't flow
+  ChunkBlock cb = getBlock(x, y, z);
+  if (cb.getBlock()->isLiquidSource()) {
+    return {0.0f, 0.0f};
+  }
+
+  // Check if liquid can flow down - if so, no horizontal flow vector needed
+  ChunkBlock below = world
+                         ? world->getBlock(chunkPosition.x * CHUNK_SIZE + x,
+                                           chunkPosition.y * CHUNK_SIZE + y - 1,
+                                           chunkPosition.z * CHUNK_SIZE + z)
+                         : ChunkBlock();
+
+  if (below.isActive() && !below.isSolid() && below.getType() != cb.getType()) {
+    // Flowing down - minimal horizontal flow
+    return {0.0f, 0.0f};
+  }
+
+  // Calculate horizontal flow based on neighbor heights
+  float flowX = 0.0f;
+  float flowZ = 0.0f;
+
+  auto getLiquidHeight = [&](int dx, int dz) -> float {
+    if (!world)
+      return 0.0f;
+
+    int gx = chunkPosition.x * CHUNK_SIZE + x + dx;
+    int gy = chunkPosition.y * CHUNK_SIZE + y;
+    int gz = chunkPosition.z * CHUNK_SIZE + z + dz;
+
+    ChunkBlock neighbor = world->getBlock(gx, gy, gz);
+    if (!neighbor.isActive() || neighbor.getType() != cb.getType()) {
+      return 0.0f; // Air or different liquid
+    }
+
+    if (neighbor.getBlock()->isLiquidSource()) {
+      return 7.0f; // Max height
+    }
+
+    return (float)neighbor.metadata;
+  };
+
+  float currentHeight = (float)meta;
+
+  // Check 4 horizontal neighbors
+  float heightXPos = getLiquidHeight(1, 0);
+  float heightXNeg = getLiquidHeight(-1, 0);
+  float heightZPos = getLiquidHeight(0, 1);
+  float heightZNeg = getLiquidHeight(0, -1);
+
+  // Flow from higher to lower
+  if (heightXPos > currentHeight || heightXNeg > currentHeight) {
+    flowX = (heightXNeg - heightXPos) * 0.5f;
+  }
+
+  if (heightZPos > currentHeight || heightZNeg > currentHeight) {
+    flowZ = (heightZNeg - heightZPos) * 0.5f;
+  }
+
+  // Normalize if too large
+  float flowMag = std::sqrt(flowX * flowX + flowZ * flowZ);
+  if (flowMag > 1.0f) {
+    flowX /= flowMag;
+    flowZ /= flowMag;
+  }
+
+  return {flowX, flowZ};
+}
+
+void Chunk::pushLiquidVert(float x, float y, float z, float u, float v, float r,
+                           float g, float b, float a, float sun,
+                           float blockLight, float ao, float flowX, float flowZ,
+                           float flags) {
+  liquidVertices.push_back(x);
+  liquidVertices.push_back(y);
+  liquidVertices.push_back(z);
+  liquidVertices.push_back(r); // Color R
+  liquidVertices.push_back(g); // Color G
+  liquidVertices.push_back(b); // Color B
+  liquidVertices.push_back(a); // Color A
+  liquidVertices.push_back(u);
+  liquidVertices.push_back(v);
+  liquidVertices.push_back(sun);        // Light X
+  liquidVertices.push_back(blockLight); // Light Y
+  liquidVertices.push_back(ao);         // Light Z
+  liquidVertices.push_back(flowX);
+  liquidVertices.push_back(flowZ);
+  liquidVertices.push_back(flags);
+  liquidVertexCount++;
+}
+
+void Chunk::addLiquidFace(int x, int y, int z, int faceDir, const Block *block,
+                          int aoBL, int aoBR, int aoTR, int aoTL, float hBL,
+                          float hBR, float hTR, float hTL, uint8_t metadata) {
+  float fx = (float)x;
+  float fy = (float)y;
+  float fz = (float)z;
+
+  float uBase, vBase, uMax, vMax;
+  // Use frame 0 for liquid base UVs (animation handled by shader or atlas
+  // update?) Actually liquid shader usually does scrolling/animation. Let's
+  // pass base UVs.
+  block->getTextureUV(faceDir, uBase, vBase, uMax, vMax,
+                      chunkPosition.x * CHUNK_SIZE + x,
+                      chunkPosition.y * CHUNK_SIZE + y,
+                      chunkPosition.z * CHUNK_SIZE + z, metadata);
+
+  float uW = uMax - uBase;
+  float vH = vMax - vBase;
+
+  // Determine Flags
+  float flags = 0.0f;
+  if (block->isLiquidSource())
+    flags += 2.0f;
+  // if(isLava) flags += 1.0f;
+
+  // Flow Vector Calculation
+  auto [flowX, flowZ] = getLiquidFlowVector(x, y, z, metadata);
+
+  // Light calculation (simplified)
+  // We need to fetch light for each vertex.
+  // For now, use dummy uniform light for face.
+  float sun = 1.0f;
+  float blk = 1.0f;
+
+  if (faceDir == 4) { // Top (Y+)
+    // Vertices order: BL (0,0), BR (1,0), TR (1,1), TL (0,1)
+    // Heights: hBL, hBR, hTR, hTL are normalized (0.0-1.0)
+    // Standard Quad winding:
+    // 0: BL -> x, fy+hBL, z+1
+    // 1: BR -> x+1, fy+hBR, z+1
+    // 2: TR -> x+1, fy+hTR, z
+    // ... wait, standard winding depends on addFaceQuad.
+    // Let's use:
+    // BL: (x, z+1) y=hBL
+    // BR: (x+1, z+1) y=hBR
+    // TR: (x+1, z) y=hTR
+    // TL: (x, z) y=hTL
+
+    // UVs match world coords for flow
+    pushLiquidVert(fx + 0, fy + hTL, fz + 1, uBase, vBase, 1.0f, 1.0f, 1.0f,
+                   1.0f, sun, blk, (float)aoTL, flowX, flowZ, flags);
+    pushLiquidVert(fx + 1, fy + hTR, fz + 1, uBase + uW, vBase, 1.0f, 1.0f,
+                   1.0f, 1.0f, sun, blk, (float)aoTR, flowX, flowZ, flags);
+    pushLiquidVert(fx + 1, fy + hBR, fz + 0, uBase + uW, vBase + vH, 1.0f, 1.0f,
+                   1.0f, 1.0f, sun, blk, (float)aoBR, flowX, flowZ, flags);
+    pushLiquidVert(fx + 0, fy + hTL, fz + 1, uBase, vBase, 1.0f, 1.0f, 1.0f,
+                   1.0f, sun, blk, (float)aoTL, flowX, flowZ, flags);
+    pushLiquidVert(fx + 1, fy + hBR, fz + 0, uBase + uW, vBase + vH, 1.0f, 1.0f,
+                   1.0f, 1.0f, sun, blk, (float)aoBR, flowX, flowZ, flags);
+    pushLiquidVert(fx + 0, fy + hBL, fz + 0, uBase, vBase + vH, 1.0f, 1.0f,
+                   1.0f, 1.0f, sun, blk, (float)aoBL, flowX, flowZ, flags);
+  } else {
+    // Side Faces (0=Z+, 1=Z-, 2=X-, 3=X+, 5=Y-)
+    float x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4;
+
+    if (faceDir == 0) { // Z+ (Front)
+      x1 = fx;
+      y1 = fy;
+      z1 = fz + 1;
+      x2 = fx + 1;
+      y2 = fy;
+      z2 = fz + 1; // Used 1 in addFaceQuad?
+      x3 = fx + 1;
+      y3 = fy + 1;
+      z3 = fz + 1;
+      x4 = fx;
+      y4 = fy + 1;
+      z4 = fz + 1;
+    } else if (faceDir == 1) { // Z- (Back)
+      x1 = fx + 1;
+      y1 = fy;
+      z1 = fz;
+      x2 = fx;
+      y2 = fy;
+      z2 = fz;
+      x3 = fx;
+      y3 = fy + 1;
+      z3 = fz;
+      x4 = fx + 1;
+      y4 = fy + 1;
+      z4 = fz;
+    } else if (faceDir == 2) { // X- (Left)
+      x1 = fx;
+      y1 = fy;
+      z1 = fz;
+      x2 = fx;
+      y2 = fy;
+      z2 = fz + 1;
+      x3 = fx;
+      y3 = fy + 1;
+      z3 = fz + 1;
+      x4 = fx;
+      y4 = fy + 1;
+      z4 = fz;
+    } else if (faceDir == 3) { // X+ (Right)
+      x1 = fx + 1;
+      y1 = fy;
+      z1 = fz + 1;
+      x2 = fx + 1;
+      y2 = fy;
+      z2 = fz;
+      x3 = fx + 1;
+      y3 = fy + 1;
+      z3 = fz;
+      x4 = fx + 1;
+      y4 = fy + 1;
+      z4 = fz + 1;
+    } else { // Y- (Bottom)
+      x1 = fx;
+      y1 = fy;
+      z1 = fz;
+      x2 = fx + 1;
+      y2 = fy;
+      z2 = fz;
+      x3 = fx + 1;
+      y3 = fy;
+      z3 = fz + 1;
+      x4 = fx;
+      y4 = fy;
+      z4 = fz + 1;
+    }
+
+    // Push Quad (0, 1, 2, 0, 2, 3)
+    pushLiquidVert(x1, y1, z1, uBase, vBase + vH, 1.0f, 1.0f, 1.0f, 1.0f, sun,
+                   blk, (float)aoBL, flowX, flowZ, flags);
+    pushLiquidVert(x2, y2, z2, uBase + uW, vBase + vH, 1.0f, 1.0f, 1.0f, 1.0f,
+                   sun, blk, (float)aoBR, flowX, flowZ, flags);
+    pushLiquidVert(x3, y3, z3, uBase + uW, vBase, 1.0f, 1.0f, 1.0f, 1.0f, sun,
+                   blk, (float)aoTR, flowX, flowZ, flags);
+
+    pushLiquidVert(x1, y1, z1, uBase, vBase + vH, 1.0f, 1.0f, 1.0f, 1.0f, sun,
+                   blk, (float)aoBL, flowX, flowZ, flags);
+    pushLiquidVert(x3, y3, z3, uBase + uW, vBase, 1.0f, 1.0f, 1.0f, 1.0f, sun,
+                   blk, (float)aoTR, flowX, flowZ, flags);
+    pushLiquidVert(x4, y4, z4, uBase, vBase, 1.0f, 1.0f, 1.0f, 1.0f, sun, blk,
+                   (float)aoTL, flowX, flowZ, flags);
   }
 }

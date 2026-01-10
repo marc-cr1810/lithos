@@ -98,6 +98,15 @@ void TextureAtlas::Load(const std::string &directory) {
           }
         }
 
+        // Auto-detect animation by aspect ratio if not explicitly defined
+        if (!animated && w > 0 && h > w && (h % w) == 0) {
+          animated = true;
+          frameTime = 2; // Default speed (e.g. 2 ticks)
+          // If we want to be smarter, we could default to 1 or read config.
+          // Standard MC is usually 1 texture update per tick or variable.
+          // Lithos Update() method handles timer.
+        }
+
         // Auto-detect strip
         if (h > w && h % w == 0 && (h / w) > 1) {
           if (!animated) {

@@ -82,7 +82,7 @@ public:
   void processRandomTicks(int tickCount, std::mt19937 &rng);
 
   void render(Shader &shader, const glm::mat4 &viewProjection,
-              int pass); // 0=Opaque, 1=Transparent
+              int pass); // 0=Opaque, 1=Transparent, 2=Liquid
   void initGL();
 
   ChunkBlock getBlock(int x, int y, int z) const;
@@ -132,9 +132,12 @@ private:
   World *world;
   ChunkBlock blocks[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
   unsigned int VAO, VBO, EBO;
+  unsigned int liquidVAO, liquidVBO, liquidEBO; // Liquid buffers
   int vertexCount;
   int vertexCountTransparent;
   std::vector<float> transparentVertices; // CPU-side copy for sorting
+  std::vector<float> liquidVertices;      // CPU-side liquid mesh
+  int liquidVertexCount;
   glm::vec3 m_lastSortCameraPos = glm::vec3(-99999.0f); // Initialize far away
 
 public:
@@ -145,6 +148,19 @@ private:
                const Block *block, int width, int height, int aoBL, int aoBR,
                int aoTR, int aoTL, uint8_t metadata, float hBL, float hBR,
                float hTR, float hTL, bool isInternal = false);
+
+  // Liquid Helpers
+  void pushLiquidVert(float x, float y, float z, float u, float v, float r,
+                      float g, float b, float a, float sun, float blockLight,
+                      float ao, float flowX, float flowZ, float flags);
+
+  void addLiquidFace(int x, int y, int z, int faceDir, const Block *block,
+                     int aoBL, int aoBR, int aoTR, int aoTL, float hBL,
+                     float hBR, float hTR, float hTL, uint8_t metadata);
+
+  std::pair<float, float> getLiquidFlowVector(int x, int y, int z,
+                                              uint8_t meta);
+
   int vertexAO(bool side1, bool side2, bool corner);
 };
 

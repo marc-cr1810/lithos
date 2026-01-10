@@ -88,6 +88,8 @@ void Application::Init() {
   // Basic Shader
   m_ResourceManager.LoadShader("basic", "src/shaders/basic.vs",
                                "src/shaders/basic.fs");
+  m_ResourceManager.LoadShader("liquid", "src/shaders/liquid.vs",
+                               "src/shaders/liquid.fs");
   // Color Maps (Must be loaded before Atlas)
   ColorMapRegistry::Get().LoadColorMaps("assets/config/color_maps.json");
 

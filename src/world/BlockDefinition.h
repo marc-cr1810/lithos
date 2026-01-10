@@ -114,6 +114,8 @@ struct BlockDefinition {
   std::unordered_map<std::string, BoundingBox> selectionBoxByType;
   std::unordered_map<std::string, nlohmann::json> attributesByType;
   std::unordered_map<std::string, std::string> climateColorMapByType;
+  std::unordered_map<std::string, int>
+      liquidLevelByType; // Support raw integer map
   std::unordered_map<std::string, std::string> tintTargetByType;
 };
 
