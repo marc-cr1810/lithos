@@ -2004,26 +2004,9 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
               float overlayFlag = mesh->overlayFlags[vIdx];
               bool shadeEnabled = mesh->faceInfo[vIdx].enableAO;
 
-              // Apply Per-Instance Rotation (Logs)
-              if (cb.getBlock()->isLog()) {
-                glm::vec3 center(0.5f);
-                glm::vec3 local = pos - center;
-
-                if (cb.metadata == 1) { // X-Axis (Rotate around Z)
-                  // X' = Y, Y' = -X
-                  float tmpx = local.x;
-                  local.x = local.y;
-                  local.y = -tmpx;
-                } else if (cb.metadata == 2) { // Z-Axis (Rotate around X)
-                  // Y' = -Z, Z' = Y
-                  float tmpy = local.y;
-                  local.y = -local.z;
-                  local.z = tmpy;
-                }
-                pos = center + local;
-                // Note: Same caveats about faceIdx and shading apply
-              }
-
+              // Rotation is now handled by the Tessellator based on
+              // variant-specific rotateX/Y/Z. Manual rotation below is
+              // obsolete.
               auto [l1, l2] = getLight(faceIdx);
 
               // Cardinal Shading
@@ -2061,11 +2044,87 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 }
               }
 
+              // Calculate AO based on vertex position and normal
+              float aoVal = 0.0f;
+              if (shadeEnabled) {
+                // Determine which "corner" to sample based on position
+                // Snap vertex to nearest 0 or 1 block boundary
+                int dx = (pos.x > 0.5f) ? 1 : -1;
+                int dy = (pos.y > 0.5f) ? 1 : -1;
+                int dz = (pos.z > 0.5f) ? 1 : -1;
+
+                // Sides and Corner relative to vertex
+                // This is a simplified AO that samples the 8 blocks around the
+                // vertex
+                auto isSolid = [&](int ox, int oy, int oz) -> bool {
+                  int nx = x + ox;
+                  int ny = y + oy;
+                  int nz = z + oz;
+                  if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 &&
+                      ny < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
+                    return blocks[nx][ny][nz].isOpaque();
+                  } else if (world) {
+                    return world->getBlock(gx + ox, gy + oy, gz + oz)
+                        .isOpaque();
+                  }
+                  return false;
+                };
+
+                // Sample neighbors for AO (matching vertexAO pattern)
+                // We use the faceIdx to determine which plane to check
+                int px = 0, py = 0, pz = 0;
+                if (faceIdx == 0)
+                  pz = 1;
+                else if (faceIdx == 1)
+                  pz = -1;
+                else if (faceIdx == 2)
+                  px = -1;
+                else if (faceIdx == 3)
+                  px = 1;
+                else if (faceIdx == 4)
+                  py = 1;
+                else if (faceIdx == 5)
+                  py = -1;
+
+                int s1x, s1y, s1z;
+                int s2x, s2y, s2z;
+
+                if (px != 0) { // X face
+                  s1x = px;
+                  s1y = dy;
+                  s1z = 0;
+                  s2x = px;
+                  s2y = 0;
+                  s2z = dz;
+                } else if (py != 0) { // Y face
+                  s1x = dx;
+                  s1y = py;
+                  s1z = 0;
+                  s2x = 0;
+                  s2y = py;
+                  s2z = dz;
+                } else { // Z face
+                  s1x = dx;
+                  s1y = 0;
+                  s1z = pz;
+                  s2x = 0;
+                  s2y = dy;
+                  s2z = pz;
+                }
+                int cx = (px == 0) ? dx : px;
+                int cy = (py == 0) ? dy : py;
+                int cz = (pz == 0) ? dz : pz;
+
+                bool s1 = isSolid(s1x, s1y, s1z);
+                bool s2 = isSolid(s2x, s2y, s2z);
+                bool c = isSolid(cx, cy, cz);
+                aoVal = (float)vertexAO(s1, s2, c);
+              }
+
               pushVert(fx + pos.x, fy + pos.y, fz + pos.z, uv.x, uv.y,
                        texOrigin.x, texOrigin.y, texOrigin.z, texOrigin.w,
-                       0.0f, // AO
-                       l1, l2, shade, finalOverlayFlags, u2Min, v2Min, u2W,
-                       v2H);
+                       aoVal, l1, l2, shade, finalOverlayFlags, u2Min, v2Min,
+                       u2W, v2H);
             }
           }
         }

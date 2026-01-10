@@ -67,5 +67,18 @@
             "west": "block/wood/treetrunk/{wood}_log_top",
             "rotation": 90
         }
+    },
+    "modelByType": {
+        "*_ud": {
+            "base": "block/basic/cube"
+        },
+        "*_ns": {
+            "base": "block/basic/cube",
+            "rotateX": 90
+        },
+        "*_we": {
+            "base": "block/basic/cube",
+            "rotateZ": 90
+        }
     }
 }

@@ -285,6 +285,21 @@ public:
     return creativeTabs;
   }
 
+  // Model Rotation (VS-style)
+  void setRotation(int x, int y, int z) {
+    rotateX = x;
+    rotateY = y;
+    rotateZ = z;
+  }
+  void getRotation(int &x, int &y, int &z) const {
+    x = rotateX;
+    y = rotateY;
+    z = rotateZ;
+  }
+  int getRotateX() const { return rotateX; }
+  int getRotateY() const { return rotateY; }
+  int getRotateZ() const { return rotateZ; }
+
   enum class RenderLayer { OPAQUE, CUTOUT, TRANSPARENT };
   virtual RenderLayer getRenderLayer() const { return renderLayer; }
   void setRenderLayer(RenderLayer layer) { renderLayer = layer; }
@@ -397,6 +412,10 @@ protected:
   RenderLayer renderLayer = RenderLayer::OPAQUE;
   uint8_t emission_ = 0;
   std::vector<std::string> creativeTabs;
+
+  int rotateX = 0;
+  int rotateY = 0;
+  int rotateZ = 0;
 
   std::string textureNames[6];
   bool sideSolid[6] = {true, true, true, true, true, true}; // Default to solid

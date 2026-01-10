@@ -739,9 +739,8 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
         block->setRenderShape(Block::RenderShape::MODEL);
 
         // Apply rotation if specified
-        if (modelDef.rotateY != 0) {
-          // TODO: Apply rotation
-        }
+        block->setRotation(modelDef.rotateX, modelDef.rotateY,
+                           modelDef.rotateZ);
       } else {
         LOG_RESOURCE_WARN("Model file not found for {}: {}", variantCode,
                           modelPath.string());
