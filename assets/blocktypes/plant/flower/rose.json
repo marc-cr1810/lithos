@@ -11,6 +11,7 @@
     "replaceable": 1,
     "solid": false,
     "opaque": false,
+    "doubleSided": true,
     "textures": {
         "all": "block/plant/flower/poppy"
     },

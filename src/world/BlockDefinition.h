@@ -89,6 +89,7 @@ struct BlockDefinition {
   std::unordered_map<std::string, bool> sideSolid;  // per-face solidity
   std::string tintTarget = "all"; // "all", "none", "base", "overlay"
   bool isRandomTickable = false;
+  bool doubleSided = false; // VS-style: render both sides of faces
 
   // Behaviors
   std::vector<BehaviorDef> behaviors;

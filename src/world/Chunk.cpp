@@ -1993,7 +1993,9 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
               uint32_t vIdx = mesh->indices[i];
 
               int faceIdx = mesh->faceInfo[vIdx].faceDirection;
-              if (faceIdx >= 0 && faceIdx <= 5) {
+              // Only apply face culling for non-doubleSided blocks
+              if (faceIdx >= 0 && faceIdx <= 5 &&
+                  !cb.getBlock()->isDoubleSided()) {
                 if (!faceVisible[faceIdx])
                   continue;
               }
@@ -2007,7 +2009,10 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
               // Rotation is now handled by the Tessellator based on
               // variant-specific rotateX/Y/Z. Manual rotation below is
               // obsolete.
-              auto [l1, l2] = getLight(faceIdx);
+              // For models with shade disabled (e.g. cross plants), sample
+              // light from UP direction for uniform lighting, matching VS
+              // behavior
+              auto [l1, l2] = getLight(shadeEnabled ? faceIdx : 4);
 
               // Cardinal Shading
               float shade = 1.0f;

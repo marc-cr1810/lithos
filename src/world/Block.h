@@ -278,6 +278,8 @@ public:
   virtual bool isLiquid() const { return false; }
   virtual bool isLog() const { return false; }
   virtual bool isLeaves() const { return false; }
+  virtual bool isDoubleSided() const { return doubleSided_; }
+  void setDoubleSided(bool ds) { doubleSided_ = ds; }
   virtual uint8_t getLightDecay() const { return 1; }
 
   void addCreativeTab(const std::string &tab) { creativeTabs.push_back(tab); }
@@ -408,6 +410,7 @@ protected:
   bool isSolid_ = true;
   bool isReplaceable_ = false;
   bool isRandomTickable_ = false;
+  bool doubleSided_ = false;
   float resistance = 1.0f;
   RenderLayer renderLayer = RenderLayer::OPAQUE;
   uint8_t emission_ = 0;

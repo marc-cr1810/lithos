@@ -60,8 +60,41 @@ ModelLoader::loadModel(const std::filesystem::path &path) {
       elem.from = glm::vec3(from[0], from[1], from[2]) / 16.0f;
       elem.to = glm::vec3(to[0], to[1], to[2]) / 16.0f;
 
-      // Rotation
-      if (elemJson.contains("rotation")) {
+      // Rotation - Support VS-style element-level rotationX/Y/Z
+      // Format 1: "rotationY": -45.0, "rotationOrigin": [0, 0, 0]
+      // Format 2: "rotation": {"axis": "y", "angle": -45, "origin": [0, 0, 0]}
+      bool hasElementRotation = elemJson.contains("rotationX") ||
+                                elemJson.contains("rotationY") ||
+                                elemJson.contains("rotationZ");
+
+      if (hasElementRotation) {
+        elem.hasRotation = true;
+
+        // Parse origin
+        if (elemJson.contains("rotationOrigin")) {
+          std::vector<float> origin = elemJson["rotationOrigin"];
+          elem.rotation.origin =
+              glm::vec3(origin[0], origin[1], origin[2]) / 16.0f;
+        } else {
+          elem.rotation.origin = glm::vec3(0.5f, 0.5f, 0.5f); // Default center
+        }
+
+        // Parse rotation angle
+        float rx = elemJson.value("rotationX", 0.0f);
+        float ry = elemJson.value("rotationY", 0.0f);
+        float rz = elemJson.value("rotationZ", 0.0f);
+
+        if (rx != 0) {
+          elem.rotation.axis = 'x';
+          elem.rotation.angle = rx;
+        } else if (ry != 0) {
+          elem.rotation.axis = 'y';
+          elem.rotation.angle = ry;
+        } else if (rz != 0) {
+          elem.rotation.axis = 'z';
+          elem.rotation.angle = rz;
+        }
+      } else if (elemJson.contains("rotation")) {
         elem.hasRotation = true;
         auto &rotJson = elemJson["rotation"];
         std::vector<float> origin = rotJson["origin"];

@@ -400,6 +400,11 @@ BlockDef::BlockDefinition BlockLoader::parseJSON(const nlohmann::json &j) {
     }
   }
 
+  // Double Sided (VS-style)
+  if (j.contains("doubleSided")) {
+    def.doubleSided = j.at("doubleSided").get<bool>();
+  }
+
   return def;
 }
 
@@ -829,6 +834,7 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
   block->setReplaceable(def.replaceable > 0);
   block->setEmission(def.emission);
   block->setRandomTickable(def.isRandomTickable);
+  block->setDoubleSided(def.doubleSided);
   // The following line was moved to be inside the function scope.
   // block->setOpaque(false); // This line was removed from here.
 

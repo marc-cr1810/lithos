@@ -162,19 +162,26 @@ ModelMeshData Tessellator::tessellateBlock(const Block *block) {
       glm::vec3 rotatedNormal = rotateNormal(normal, brX, brY, brZ);
 
       // Determine new faceIdx for culling
-      int rotatedFaceIdx = -1;
-      if (rotatedNormal.z > 0.5f)
-        rotatedFaceIdx = 0;
-      else if (rotatedNormal.z < -0.5f)
-        rotatedFaceIdx = 1;
-      else if (rotatedNormal.x < -0.5f)
-        rotatedFaceIdx = 2;
-      else if (rotatedNormal.x > 0.5f)
-        rotatedFaceIdx = 3;
-      else if (rotatedNormal.y > 0.5f)
-        rotatedFaceIdx = 4;
-      else if (rotatedNormal.y < -0.5f)
-        rotatedFaceIdx = 5;
+      // For double-sided models (cross, etc.), keep original faceIdx for
+      // tinting/variant lookups but store separately for culling
+      int rotatedFaceIdx = faceIdx; // Use original by default
+      if (!block->isDoubleSided()) {
+        // For normal blocks, calculate rotated face for culling
+        if (rotatedNormal.z > 0.5f)
+          rotatedFaceIdx = 0;
+        else if (rotatedNormal.z < -0.5f)
+          rotatedFaceIdx = 1;
+        else if (rotatedNormal.x < -0.5f)
+          rotatedFaceIdx = 2;
+        else if (rotatedNormal.x > 0.5f)
+          rotatedFaceIdx = 3;
+        else if (rotatedNormal.y > 0.5f)
+          rotatedFaceIdx = 4;
+        else if (rotatedNormal.y < -0.5f)
+          rotatedFaceIdx = 5;
+      }
+      // For doubleSided models: rotatedFaceIdx = faceIdx (original)
+      // This allows tinting/variants to work while Chunk.cpp handles culling
 
       // UV Resolution
       float uMin, vMin, uMax, vMax;
@@ -198,7 +205,7 @@ ModelMeshData Tessellator::tessellateBlock(const Block *block) {
       glm::vec2 uv2(localU2, localV1);
       glm::vec2 uv3(localU1, localV1);
 
-      // Calculate Overlay Flags (use original faceIdx for tint logic?)
+      // Calculate Overlay Flags (use original faceIdx for tint logic?}
       // Actually VS usually expects the logic to stay with the model face,
       // but if the block is rotated, should the tint stay with the "Top" face
       // or the "Physical" face?
@@ -253,6 +260,51 @@ ModelMeshData Tessellator::tessellateBlock(const Block *block) {
       geom.indices.push_back(vertexOffset + 3);
 
       vertexOffset += 4;
+
+      // Generate backface for double-sided rendering (VS-style)
+      if (block->isDoubleSided()) {
+        // Duplicate vertices with reversed normal
+        geom.positions.push_back(rp0);
+        geom.positions.push_back(rp1);
+        geom.positions.push_back(rp2);
+        geom.positions.push_back(rp3);
+
+        geom.uvs.push_back(uv0);
+        geom.uvs.push_back(uv1);
+        geom.uvs.push_back(uv2);
+        geom.uvs.push_back(uv3);
+
+        glm::vec3 reversedNormal = -rotatedNormal;
+        geom.normals.push_back(reversedNormal);
+        geom.normals.push_back(reversedNormal);
+        geom.normals.push_back(reversedNormal);
+        geom.normals.push_back(reversedNormal);
+
+        geom.texOrigins.push_back(origin);
+        geom.texOrigins.push_back(origin);
+        geom.texOrigins.push_back(origin);
+        geom.texOrigins.push_back(origin);
+
+        geom.overlayFlags.push_back(overlayFlag);
+        geom.overlayFlags.push_back(overlayFlag);
+        geom.overlayFlags.push_back(overlayFlag);
+        geom.overlayFlags.push_back(overlayFlag);
+
+        geom.faceInfo.push_back({rotatedFaceIdx, elem.shade});
+        geom.faceInfo.push_back({rotatedFaceIdx, elem.shade});
+        geom.faceInfo.push_back({rotatedFaceIdx, elem.shade});
+        geom.faceInfo.push_back({rotatedFaceIdx, elem.shade});
+
+        // Reversed winding order for backface
+        geom.indices.push_back(vertexOffset + 0);
+        geom.indices.push_back(vertexOffset + 2);
+        geom.indices.push_back(vertexOffset + 1);
+        geom.indices.push_back(vertexOffset + 0);
+        geom.indices.push_back(vertexOffset + 3);
+        geom.indices.push_back(vertexOffset + 2);
+
+        vertexOffset += 4;
+      }
     }
   }
 
