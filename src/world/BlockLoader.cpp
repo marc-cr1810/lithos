@@ -755,12 +755,11 @@ BlockLoader::createBlockFromDefinition(const BlockDef::BlockDefinition &def,
     std::string defaultModel;
 
     if (drawType == "cube") {
-      // defaultModel = "block/basic/cube"; // Don't force CUBE to MODEL, keep
-      // using optimized CUBE path with Overlay support
+      defaultModel = "block/basic/cube";
     } else if (drawType == "cross") {
       defaultModel = "block/basic/cross";
     } else if (drawType == "liquid") {
-      // defaultModel = "block/basic/liquid"; // Liquids have special rendering
+      defaultModel = "block/basic/liquid";
     }
     // json, slab, stair, layered types should have explicit models set
 

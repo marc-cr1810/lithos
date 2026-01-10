@@ -1226,7 +1226,9 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                             float uOrigin, float vOrigin, float uWidth,
                             float vHeight, float aoVal = 0.0f,
                             float l1Override = -1.0f, float l2Override = -1.0f,
-                            float shade = 1.0f, float overlayFlags = 0.0f) {
+                            float shade = 1.0f, float overlayFlags = 0.0f,
+                            float u2Min = 0.0f, float v2Min = 0.0f,
+                            float u2W = 0.0f, float v2H = 0.0f) {
           targetVerts.push_back(vx);
           targetVerts.push_back(vy);
           targetVerts.push_back(vz);
@@ -1247,11 +1249,11 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
           targetVerts.push_back(temp);
           targetVerts.push_back(humid);
           targetVerts.push_back(tintIndex);
-          // Overlay (Special Shapes usually don't have overlays in this pass)
-          targetVerts.push_back(0.0f);         // Overlay Origin U
-          targetVerts.push_back(0.0f);         // Overlay Origin V
-          targetVerts.push_back(0.0f);         // Overlay Width
-          targetVerts.push_back(0.0f);         // Overlay Height
+          // Overlay
+          targetVerts.push_back(u2Min);        // Overlay Origin U
+          targetVerts.push_back(v2Min);        // Overlay Origin V
+          targetVerts.push_back(u2W);          // Overlay Width
+          targetVerts.push_back(v2H);          // Overlay Height
           targetVerts.push_back(overlayFlags); // Bit flags for tint/overlay
         };
 
@@ -1450,107 +1452,137 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
               faceOverlayFlags += 2.0f;
             }
 
-            // Fetch Overlay UVs (Standard PASS 2 doesn't usually use them, but
-            // for completeness)
             float u2Min = 0.0f, v2Min = 0.0f, u2Max = 0.0f, v2Max = 0.0f;
             if ((int(faceOverlayFlags) & 1) != 0) {
               cb.getBlock()->getTextureUV(face, u2Min, v2Min, u2Max, v2Max, gx,
                                           gy, gz, cb.metadata, 1);
             }
-            // (Note: pushVert doesn't currently take OverlayOrigin for special
-            // shapes in generateGeometry, but we can pass it if we want. For
-            // now, basic.fs just uses 0,0,0,0 if not provided by pushVert
-            // signature) Wait, pushVert in generateGeometry IS hardcoded to 0s
-            // for Overlay Origin. Let's just focus on tinting for now as
-            // requested.
+            float u2W = u2Max - u2Min;
+            float v2H = v2Max - v2Min;
 
             // Draw
             // 0=Z+, 1=Z-, 2=X-, 3=X+, 4=Y+, 5=Y-
             // Pass shade explicitly to pushVert
             if (face == 0) { // Z+ (Variable Z) -> Usually zMax
               pushVert(fx + xMin, fy + yMin, fz + zMax, u0, v0, uBase, vBase,
-                       uW, vH, aoBL, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoBL, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
               pushVert(fx + xMax, fy + yMin, fz + zMax, u1, v0, uBase, vBase,
-                       uW, vH, aoBR, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoBR, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
               pushVert(fx + xMax, fy + yMax, fz + zMax, u1, v1, uBase, vBase,
-                       uW, vH, aoTR, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoTR, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
 
               pushVert(fx + xMin, fy + yMin, fz + zMax, u0, v0, uBase, vBase,
-                       uW, vH, aoBL, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoBL, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
               pushVert(fx + xMax, fy + yMax, fz + zMax, u1, v1, uBase, vBase,
-                       uW, vH, aoTR, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoTR, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
               pushVert(fx + xMin, fy + yMax, fz + zMax, u0, v1, uBase, vBase,
-                       uW, vH, aoTL, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoTL, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
             } else if (face == 1) { // Z-
               pushVert(fx + xMax, fy + yMin, fz + zMin, u0, v0, uBase, vBase,
-                       uW, vH, aoBR, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoBR, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
               pushVert(fx + xMin, fy + yMin, fz + zMin, u1, v0, uBase, vBase,
-                       uW, vH, aoBL, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoBL, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
               pushVert(fx + xMin, fy + yMax, fz + zMin, u1, v1, uBase, vBase,
-                       uW, vH, aoTL, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoTL, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
 
               pushVert(fx + xMax, fy + yMin, fz + zMin, u0, v0, uBase, vBase,
-                       uW, vH, aoBR, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoBR, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
               pushVert(fx + xMin, fy + yMax, fz + zMin, u1, v1, uBase, vBase,
-                       uW, vH, aoTL, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoTL, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
               pushVert(fx + xMax, fy + yMax, fz + zMin, u0, v1, uBase, vBase,
-                       uW, vH, aoTR, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoTR, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
             } else if (face == 2) { // X-
               pushVert(fx + xMin, fy + yMin, fz + zMin, u0, v0, uBase, vBase,
-                       uW, vH, aoBL, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoBL, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
               pushVert(fx + xMin, fy + yMin, fz + zMax, u1, v0, uBase, vBase,
-                       uW, vH, aoBR, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoBR, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
               pushVert(fx + xMin, fy + yMax, fz + zMax, u1, v1, uBase, vBase,
-                       uW, vH, aoTR, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoTR, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
 
               pushVert(fx + xMin, fy + yMin, fz + zMin, u0, v0, uBase, vBase,
-                       uW, vH, aoBL, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoBL, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
               pushVert(fx + xMin, fy + yMax, fz + zMax, u1, v1, uBase, vBase,
-                       uW, vH, aoTR, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoTR, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
               pushVert(fx + xMin, fy + yMax, fz + zMin, u0, v1, uBase, vBase,
-                       uW, vH, aoTL, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoTL, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
             } else if (face == 3) { // X+
               pushVert(fx + xMax, fy + yMin, fz + zMax, u0, v0, uBase, vBase,
-                       uW, vH, aoBL, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoBL, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
               pushVert(fx + xMax, fy + yMin, fz + zMin, u1, v0, uBase, vBase,
-                       uW, vH, aoBR, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoBR, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
               pushVert(fx + xMax, fy + yMax, fz + zMin, u1, v1, uBase, vBase,
-                       uW, vH, aoTR, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoTR, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
 
               pushVert(fx + xMax, fy + yMin, fz + zMax, u0, v0, uBase, vBase,
-                       uW, vH, aoBL, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoBL, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
               pushVert(fx + xMax, fy + yMax, fz + zMin, u1, v1, uBase, vBase,
-                       uW, vH, aoTR, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoTR, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
               pushVert(fx + xMax, fy + yMax, fz + zMax, u0, v1, uBase, vBase,
-                       uW, vH, aoTL, l1, l2, shade, faceOverlayFlags);
+                       uW, vH, aoTL, l1, l2, shade, faceOverlayFlags, u2Min,
+                       v2Min, u2W, v2H);
             } else if (face == 4) { // Y+
               pushVert(fx + xMin, fy + yMax, fz + zMax, 0, 0, uBase, vBase, uW,
-                       vH, aoBL, l1, l2, shade, faceOverlayFlags);
+                       vH, aoBL, l1, l2, shade, faceOverlayFlags, u2Min, v2Min,
+                       u2W, v2H);
               pushVert(fx + xMax, fy + yMax, fz + zMax, 1, 0, uBase, vBase, uW,
-                       vH, aoBR, l1, l2, shade, faceOverlayFlags);
+                       vH, aoBR, l1, l2, shade, faceOverlayFlags, u2Min, v2Min,
+                       u2W, v2H);
               pushVert(fx + xMax, fy + yMax, fz + zMin, 1, 1, uBase, vBase, uW,
-                       vH, aoTR, l1, l2, shade, faceOverlayFlags);
+                       vH, aoTR, l1, l2, shade, faceOverlayFlags, u2Min, v2Min,
+                       u2W, v2H);
 
               pushVert(fx + xMin, fy + yMax, fz + zMax, 0, 0, uBase, vBase, uW,
-                       vH, aoBL, l1, l2, shade, faceOverlayFlags);
+                       vH, aoBL, l1, l2, shade, faceOverlayFlags, u2Min, v2Min,
+                       u2W, v2H);
               pushVert(fx + xMax, fy + yMax, fz + zMin, 1, 1, uBase, vBase, uW,
-                       vH, aoTR, l1, l2, shade, faceOverlayFlags);
+                       vH, aoTR, l1, l2, shade, faceOverlayFlags, u2Min, v2Min,
+                       u2W, v2H);
               pushVert(fx + xMin, fy + yMax, fz + zMin, 0, 1, uBase, vBase, uW,
-                       vH, aoTL, l1, l2, shade, faceOverlayFlags);
+                       vH, aoTL, l1, l2, shade, faceOverlayFlags, u2Min, v2Min,
+                       u2W, v2H);
             } else if (face == 5) { // Y-
               pushVert(fx + xMin, fy + yMin, fz + zMin, 0, 0, uBase, vBase, uW,
-                       vH, aoTL, l1, l2, shade, faceOverlayFlags);
+                       vH, aoTL, l1, l2, shade, faceOverlayFlags, u2Min, v2Min,
+                       u2W, v2H);
               pushVert(fx + xMax, fy + yMin, fz + zMin, 1, 0, uBase, vBase, uW,
-                       vH, aoTR, l1, l2, shade, faceOverlayFlags);
+                       vH, aoTR, l1, l2, shade, faceOverlayFlags, u2Min, v2Min,
+                       u2W, v2H);
               pushVert(fx + xMax, fy + yMin, fz + zMax, 1, 1, uBase, vBase, uW,
-                       vH, aoBR, l1, l2, shade, faceOverlayFlags);
+                       vH, aoBR, l1, l2, shade, faceOverlayFlags, u2Min, v2Min,
+                       u2W, v2H);
 
               pushVert(fx + xMin, fy + yMin, fz + zMin, 0, 0, uBase, vBase, uW,
-                       vH, aoTL, l1, l2, shade, faceOverlayFlags);
+                       vH, aoTL, l1, l2, shade, faceOverlayFlags, u2Min, v2Min,
+                       u2W, v2H);
               pushVert(fx + xMax, fy + yMin, fz + zMax, 1, 1, uBase, vBase, uW,
-                       vH, aoBR, l1, l2, shade, faceOverlayFlags);
+                       vH, aoBR, l1, l2, shade, faceOverlayFlags, u2Min, v2Min,
+                       u2W, v2H);
               pushVert(fx + xMin, fy + yMin, fz + zMax, 0, 1, uBase, vBase, uW,
-                       vH, aoBL, l1, l2, shade, faceOverlayFlags);
+                       vH, aoBL, l1, l2, shade, faceOverlayFlags, u2Min, v2Min,
+                       u2W, v2H);
             }
           };
 
@@ -2005,10 +2037,35 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                   shade = 0.8f; // Sides
               }
 
+              // Resolve specialized overlay and tint flags for this model face
+              float u2Min = 0.0f, v2Min = 0.0f, u2W = 0.0f, v2H = 0.0f;
+              float finalOverlayFlags = 0.0f;
+
+              if (faceIdx >= 0 && faceIdx <= 5) {
+                if (cb.getBlock()->shouldTint(faceIdx, 0)) {
+                  finalOverlayFlags += 4.0f;
+                }
+
+                if (cb.getBlock()->hasOverlay(faceIdx)) {
+                  finalOverlayFlags += 1.0f;
+                  float u2Max, v2Max;
+                  cb.getBlock()->getTextureUV(faceIdx, u2Min, v2Min, u2Max,
+                                              v2Max, gx, gy, gz, cb.metadata,
+                                              1);
+                  u2W = u2Max - u2Min;
+                  v2H = v2Max - v2Min;
+                }
+
+                if (cb.getBlock()->shouldTint(faceIdx, 1)) {
+                  finalOverlayFlags += 2.0f;
+                }
+              }
+
               pushVert(fx + pos.x, fy + pos.y, fz + pos.z, uv.x, uv.y,
                        texOrigin.x, texOrigin.y, texOrigin.z, texOrigin.w,
                        0.0f, // AO
-                       l1, l2, shade, overlayFlag);
+                       l1, l2, shade, finalOverlayFlags, u2Min, v2Min, u2W,
+                       v2H);
             }
           }
         }
