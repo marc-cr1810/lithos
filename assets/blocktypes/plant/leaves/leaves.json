@@ -21,7 +21,7 @@
         "*_dark_oak": "climateDarkerPlantTint"
     },
     "opaque": false,
-    "renderBackfaces": true,
+    "doubleSided": true,
     "resistance": 0.2,
     "sounds": {
         "place": "grass_place",

@@ -381,7 +381,7 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                   // Special Case: Liquid Top Face should NOT be occluded by
                   // Solids (unless full height? No, safer to render)
                   bool isLiquid = b.getBlock()->isLiquid();
-                  bool isLeaves = b.getBlock()->isLeaves();
+                  bool isDoubleSided = b.getBlock()->isDoubleSided();
 
                   if (isLiquid && faceDir == 4) {
                     // Only occlude if neighbor is also Liquid (same type)
@@ -390,14 +390,15 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                     if (nb.getBlock() == b.getBlock())
                       occluded = true;
                   }
-                  // Leaves: Don't cull against other leaves (transparent look)
-                  else if (isLeaves) {
+                  // DoubleSided (Leaves): Don't cull against other double sided
+                  // (transparent look)
+                  else if (isDoubleSided) {
                     if (nb.isOpaque()) {
                       occluded = true;
                     } else {
-                      // Check if neighbor is also leaf
-                      bool nbIsLeaves = nb.getBlock()->isLeaves();
-                      if (nbIsLeaves)
+                      // Check if neighbor is also double sided
+                      bool nbIsDoubleSided = nb.getBlock()->isDoubleSided();
+                      if (nbIsDoubleSided)
                         internalFace = true;
                     }
                     // Else false (draw against air or other leaves)
@@ -444,17 +445,17 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
                 if (nb.isActive()) {
                   if (!b.isOpaque()) {
                     bool isLiquid = b.getBlock()->isLiquid();
-                    bool isLeaves = b.getBlock()->isLeaves();
+                    bool isDoubleSided = b.getBlock()->isDoubleSided();
 
                     if (isLiquid && faceDir == 4) {
                       if (nb.getBlock() == b.getBlock())
                         occluded = true;
-                    } else if (isLeaves) {
+                    } else if (isDoubleSided) {
                       if (nb.isOpaque()) {
                         occluded = true;
                       } else {
-                        bool nbIsLeaves = nb.getBlock()->isLeaves();
-                        if (nbIsLeaves)
+                        bool nbIsDoubleSided = nb.getBlock()->isDoubleSided();
+                        if (nbIsDoubleSided)
                           internalFace = true;
                       }
                     } else {
@@ -2561,7 +2562,8 @@ void Chunk::addFace(std::vector<float> &vertices, int x, int y, int z,
     vTop = 0.0f;
   }
 
-  bool isDoubleSided = block->isLeaves();
+  // Use the new doubleSided flag (includes leaves via their block property)
+  bool isDoubleSided = block->isDoubleSided();
 
   if (isInternal) {
     if (faceDir % 2 != 0)
