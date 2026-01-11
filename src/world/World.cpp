@@ -1277,8 +1277,10 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection,
     liquidShader->setVec3("u_SunPos", glm::vec3(0.5f, 1.0f, 0.2f));
     liquidShader->setFloat("sunStrength", 1.0f); // Full sun
 
-    // Water Fog Parameters (optional, can be tweaked for different looks)
-    liquidShader->setVec3("u_WaterFogColor", glm::vec3(0.02f, 0.15f, 0.25f));
+    // Water Fog Parameters
+    // Fog color now automatically derived from climate-tinted vertex color
+    // liquidShader->setVec3("u_WaterFogColor", glm::vec3(0.02f, 0.15f, 0.25f));
+    // // Removed - automatic now
     liquidShader->setFloat("u_WaterFogDensity",
                            0.25f); // Increased for murkier water
 

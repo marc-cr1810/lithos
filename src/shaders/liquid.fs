@@ -18,7 +18,8 @@ uniform vec3 u_SunPos; // Relative sun position for specular
 
 // Optional: Water Fog Parameters (can be set from C++ for runtime tuning)
 // If not set, hardcoded values in shader will be used
-uniform vec3 u_WaterFogColor = vec3(0.02, 0.15, 0.25);
+// Note: Fog COLOR now derived from climate-tinted vertex color (ourColor)
+// uniform vec3 u_WaterFogColor = vec3(0.02, 0.15, 0.25); // No longer used
 uniform float u_WaterFogDensity = 0.25; //Murkier water
 
 void main()
@@ -79,8 +80,18 @@ void main()
         // Calculate distance from camera to fragment
         float viewDistance = length(viewPos - FragWorldPos);
         
-        // Use uniform parameters (with fallback defaults)
-        vec3 fogColor = u_WaterFogColor;
+        // Use climate-tinted water color for fog
+        // ourColor carries the climate tint from Chunk meshing (ColorMapRegistry)
+        // This makes fog automatically match biome colors:
+        // - Tropical/warm biomes: greener, lighter fog
+        // - Cold biomes: bluer, darker fog
+        vec3 baseFogColor = ourColor.rgb;
+        
+        // Darken the tinted color for fog (fog should be darker than surface)
+        // Multiplier: 0.5 = moderate darkening (balanced)
+        // Lower values (0.25) = very dark/black, Higher (0.7) = closer to surface color
+        vec3 fogColor = baseFogColor * 0.5;
+        
         float fogDensity = u_WaterFogDensity;
         
         // Exponential fog formula: fogFactor = exp(-density * distance)
