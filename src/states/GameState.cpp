@@ -560,12 +560,16 @@ void GameState::Render(Application *app) {
   float fDist = m_DbgFogDist;
   bool uFog = m_DbgUseFog;
 
+  // Underwater volume fog (applies to ALL geometry when camera is in water)
+  // This works WITH the shader water depth fog (which only applies to water
+  // surfaces)
   if (inWater) {
-    // Underwater Blue
+    // Underwater Blue - adjusted to match water depth fog color
     if (camBlockType == WATER) {
       skyColor = glm::vec3(0.1f, 0.1f, 0.4f) * m_SunStrength;
-      fogCol = glm::vec3(0.05f, 0.05f, 0.3f) * m_SunStrength;
-      fDist = 15.0f;
+      // Use similar fog color to shader depth fog for consistency
+      fogCol = glm::vec3(0.02f, 0.15f, 0.25f);
+      fDist = 25.0f; // Slightly longer distance for smoother transition
     } else {
       // Lava Red
       skyColor = glm::vec3(0.6f, 0.1f, 0.0f);

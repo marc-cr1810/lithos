@@ -16,6 +16,11 @@ uniform float sunStrength;
 uniform vec3 viewPos;
 uniform vec3 u_SunPos; // Relative sun position for specular
 
+// Optional: Water Fog Parameters (can be set from C++ for runtime tuning)
+// If not set, hardcoded values in shader will be used
+uniform vec3 u_WaterFogColor = vec3(0.02, 0.15, 0.25);
+uniform float u_WaterFogDensity = 0.25; //Murkier water
+
 void main()
 {
     // Basic Texture Sample
@@ -67,6 +72,30 @@ void main()
         float specularStrength = 0.5 * sunStrength; // Only if sun is out
         
         rgb += vec3(1.0) * spec * specularStrength;
+    }
+
+    // Water Depth Fog (Vintage Story style)
+    if (!isLava) {
+        // Calculate distance from camera to fragment
+        float viewDistance = length(viewPos - FragWorldPos);
+        
+        // Use uniform parameters (with fallback defaults)
+        vec3 fogColor = u_WaterFogColor;
+        float fogDensity = u_WaterFogDensity;
+        
+        // Exponential fog formula: fogFactor = exp(-density * distance)
+        // fogFactor = 1.0 (no fog) at distance 0
+        // fogFactor -> 0.0 (full fog) as distance increases
+        float fogFactor = exp(-fogDensity * viewDistance);
+        fogFactor = clamp(fogFactor, 0.0, 1.0);
+        
+        // Mix current color with fog color
+        // When fogFactor is high (close), use more of rgb
+        // When fogFactor is low (far), use more of fogColor
+        rgb = mix(fogColor, rgb, fogFactor);
+        
+        // Optionally increase alpha with distance (water appears more opaque when looking through more of it)
+        alpha = mix(1.0, alpha, fogFactor * 0.7 + 0.3);
     }
 
     FragColor = vec4(rgb, alpha);
