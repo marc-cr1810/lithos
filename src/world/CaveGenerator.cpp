@@ -618,11 +618,36 @@ bool CaveGenerator::SetBlocks(WorldGenRegion &region, float horRadius,
                               double centerZ, int chunkX, int chunkZ,
                               bool genHotSpring) {
 
+  // Current Chunk Bounds
+  int chunkMinX = chunkX * CHUNK_SIZE;
+  int chunkMaxX = chunkMinX + CHUNK_SIZE - 1;
+  int chunkMinZ = chunkZ * CHUNK_SIZE;
+  int chunkMaxZ = chunkMinZ + CHUNK_SIZE - 1;
+
+  // Carve Bounds (Carve Sphere)
+  int carveMinX = static_cast<int>(centerX - horRadius);
+  int carveMaxX = static_cast<int>(centerX + horRadius + 1.0);
+  int carveMinZ = static_cast<int>(centerZ - horRadius);
+  int carveMaxZ = static_cast<int>(centerZ + horRadius + 1.0);
+
+  // Early Exit: If the carving sphere doesn't intersect the current chunk, we
+  // do nothing.
+  if (carveMaxX < chunkMinX || carveMinX > chunkMaxX || carveMaxZ < chunkMinZ ||
+      carveMinZ > chunkMaxZ) {
+    return true;
+  }
+
+  // Define intersection logic for the carve loop
+  int startX = std::max(carveMinX, chunkMinX);
+  int endX = std::min(carveMaxX, chunkMaxX);
+  int startZ = std::max(carveMinZ, chunkMinZ);
+  int endZ = std::min(carveMaxZ, chunkMaxZ);
+
   // Expand radius for water check
   float checkHorRadius = horRadius + 1.0f;
   float checkVertRadius = vertRadius + 2.0f;
 
-  // Use world coordinates, not chunk-local
+  // Water Check Bounds
   int mindx = static_cast<int>(centerX - checkHorRadius);
   int maxdx = static_cast<int>(centerX + checkHorRadius + 1.0);
   int mindy = static_cast<int>(
@@ -648,7 +673,12 @@ bool CaveGenerator::SetBlocks(WorldGenRegion &region, float horRadius,
     for (int lz = mindz; lz <= maxdz; lz++) {
       double zdistRel = (lz - centerZ) * (lz - centerZ) / hRadiusSq;
 
-      for (int y = mindy; y <= maxdy + 10; y++) {
+      if (xdistRel + zdistRel > 1.0)
+        continue; // Optimization: Cylinder check first
+
+      // Tightened loop: Remove +10 buffer which is unnecessary given the radius
+      // check
+      for (int y = mindy; y <= maxdy; y++) {
         if (y > worldConfig.worldHeight - 1)
           continue;
 
@@ -671,41 +701,31 @@ bool CaveGenerator::SetBlocks(WorldGenRegion &region, float horRadius,
   hRadiusSq = horRadius * horRadius;
   vRadiusSq = vertRadius * vertRadius;
 
-  mindx = static_cast<int>(centerX - horRadius);
-  maxdx = static_cast<int>(centerX + horRadius + 1.0);
+  // Re-calculate vertical bounds for carving (tighter than water check)
   mindy = static_cast<int>(
       glm::clamp(centerY - vertRadius * 0.7, 1.0,
                  static_cast<double>(worldConfig.worldHeight - 1)));
   maxdy = static_cast<int>(
       glm::clamp(centerY + vertRadius + 1.0, 1.0,
                  static_cast<double>(worldConfig.worldHeight - 1)));
-  mindz = static_cast<int>(centerZ - horRadius);
-  maxdz = static_cast<int>(centerZ + horRadius + 1.0);
 
   // Block *airBlock = ... // Cached
   // Block *lavaBlock = ... // Cached
 
-  for (int lx = mindx; lx <= maxdx; lx++) {
-    // Optimization: Skip columns outside our target chunk
-    // Since we simulate all caves that COULD reach us, we only care about
-    // the parts that actually DO reach us. The other parts are handled
-    // when those respective chunks are generated.
-    int blockChunkX =
-        (lx >= 0) ? (lx / CHUNK_SIZE) : ((lx - CHUNK_SIZE + 1) / CHUNK_SIZE);
-    if (blockChunkX != chunkX)
-      continue;
-
+  // Use the intersection bounds [startX, endX] and [startZ, endZ]
+  // This ensures we ONLY iterate blocks that are BOTH in the cave AND in the
+  // chunk.
+  for (int lx = startX; lx <= endX; lx++) {
     double xdistRel = (lx - centerX) * (lx - centerX) / hRadiusSq;
 
-    for (int lz = mindz; lz <= maxdz; lz++) {
-      int blockChunkZ =
-          (lz >= 0) ? (lz / CHUNK_SIZE) : ((lz - CHUNK_SIZE + 1) / CHUNK_SIZE);
-      if (blockChunkZ != chunkZ)
-        continue;
-
+    for (int lz = startZ; lz <= endZ; lz++) {
       double zdistRel = (lz - centerZ) * (lz - centerZ) / hRadiusSq;
 
-      for (int y = maxdy + 10; y >= mindy; y--) {
+      if (xdistRel + zdistRel > 1.0)
+        continue;
+
+      // Tightened loop: Remove +10
+      for (int y = maxdy; y >= mindy; y--) {
         if (y > worldConfig.worldHeight - 1)
           continue;
 
