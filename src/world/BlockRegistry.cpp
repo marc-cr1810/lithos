@@ -127,15 +127,26 @@ Block *BlockRegistry::getBlock(const std::string &resourceId) {
   if (it != blocksByResourceId.end()) {
     return it->second;
   }
+
+  // Namespace Fallback Logic
+  // 1. If no namespace, try adding 'lithos:'
+  if (resourceId.find(':') == std::string::npos) {
+    auto it2 = blocksByResourceId.find("lithos:" + resourceId);
+    if (it2 != blocksByResourceId.end())
+      return it2->second;
+  }
+  // 2. If 'lithos:' namespace, try removing it
+  else if (resourceId.size() >= 7 && resourceId.compare(0, 7, "lithos:") == 0) {
+    auto it3 = blocksByResourceId.find(resourceId.substr(7));
+    if (it3 != blocksByResourceId.end())
+      return it3->second;
+  }
+
   return defaultBlock;
 }
 
 block_id BlockRegistry::getBlockId(const std::string &resourceId) {
-  auto it = blocksByResourceId.find(resourceId);
-  if (it != blocksByResourceId.end()) {
-    return it->second->getId();
-  }
-  return AIR;
+  return getBlock(resourceId)->getId();
 }
 
 BlockRegistry::~BlockRegistry() {

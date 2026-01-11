@@ -211,7 +211,6 @@ void RockStrataRegistry::LoadStrataLayers(const std::string &path) {
 
       Block *block = BlockRegistry::getInstance().getBlock(code);
       if (block->getId() == airBlockCache->getId() && code != "lithos:air") {
-        // Warning log?
         continue;
       }
 

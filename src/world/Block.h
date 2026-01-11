@@ -29,7 +29,8 @@ class World; // Forward declaration
 
 class Block {
 public:
-  Block(block_id id, const std::string &name) : id(id), name(name) {
+  Block(block_id id, const std::string &name)
+      : id(id), name(name), resourceId(name) {
     for (int i = 0; i < 6; ++i) {
       textureNames[i] = "pink"; // fallback
       uMin[i] = 0.0f;
