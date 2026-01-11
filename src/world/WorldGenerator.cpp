@@ -549,6 +549,8 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
             bool isSolid = false;
 
             if (ly <= maxLy) {
+              // Blocks at or below the calculated surface - use density
+              // calculation
               float threshold = columnThresholds[ly];
               if (threshold > 1.2f) {
                 isSolid = true;
@@ -575,6 +577,11 @@ void WorldGenerator::GenerateChunk(Chunk &chunk, const ChunkColumn &column) {
                 // Simple comparison: noise + landform threshold
                 isSolid = (noiseSum + threshold) > 0;
               }
+            } else {
+              // Blocks above the calculated surface - explicitly set to
+              // air/water This prevents uninitialized blocks from appearing as
+              // floating chunks
+              isSolid = false;
             }
 
             // Block Placement Logic inside loop
