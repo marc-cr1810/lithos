@@ -212,18 +212,12 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
       w2 /= totalW;
       w3 /= totalW;
 
-      // --- 3D Density Search ---
+      // 3D Density Search
       int surfaceY = 0;
 
-      // Simple noise generation (baseline)
-      static thread_local std::vector<float> noiseColumn(320);
-      if ((int)noiseColumn.size() < config.worldHeight)
-        noiseColumn.resize(config.worldHeight);
-
-      noiseManager.GenTerrainNoise3D(noiseColumn.data(), wx, 0, wz, 1,
-                                     config.worldHeight, 1);
-
-      // Optimization: Hoist LUT pointers
+      // Reverted: Lazy Noise Generation caused regression.
+      // Back to batch generation.
+      // Optimization: Hoist LUT pointers (Moved up for Pre-scan)
       const std::vector<float> *lut1Ptr = lf1->GetLUT();
       const float *lut1Data = lut1Ptr ? lut1Ptr->data() : nullptr;
       int lut1Size = lut1Ptr ? (int)lut1Ptr->size() : 0;
@@ -235,6 +229,55 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
       const std::vector<float> *lut3Ptr = lf3->GetLUT();
       const float *lut3Data = lut3Ptr ? lut3Ptr->data() : nullptr;
       int lut3Size = lut3Ptr ? (int)lut3Ptr->size() : 0;
+
+      // Smart Noise Bounds: Pre-scan to find where the Air starts
+      int maxNoiseHeight = config.worldHeight;
+
+      // Check every 4th block from top down
+      for (int y = config.worldHeight - 1; y > 0; y -= 4) {
+        int shiftedY = (int)(y - upheavalYShift);
+
+        float th1, th2, th3;
+        if (lut1Data && shiftedY >= 0 && shiftedY < lut1Size)
+          th1 = lut1Data[shiftedY];
+        else
+          th1 = lf1->GetDensityThreshold(shiftedY);
+
+        if (lut2Data && shiftedY >= 0 && shiftedY < lut2Size)
+          th2 = lut2Data[shiftedY];
+        else
+          th2 = lf2->GetDensityThreshold(shiftedY);
+
+        if (lut3Data && shiftedY >= 0 && shiftedY < lut3Size)
+          th3 = lut3Data[shiftedY];
+        else
+          th3 = lf3->GetDensityThreshold(shiftedY);
+
+        float th = th1 * w1 + th2 * w2 + th3 * w3;
+
+        // If threshold >= -1.2, noise could possibly make it solid.
+        // If threshold < -1.2, it is definitely air.
+        if (th >= -1.2f) {
+          // Found the highest point that MIGHT be solid.
+          // We need noise up to here (plus safety buffer).
+          maxNoiseHeight = std::min(config.worldHeight, y + 5);
+          break;
+        }
+        // If we reached here, this Y is definitely Air.
+        // So maxNoiseHeight can be lower.
+        maxNoiseHeight = y;
+      }
+
+      // Safety Clamp
+      maxNoiseHeight = std::max(1, maxNoiseHeight);
+
+      static thread_local std::vector<float> noiseColumn(320);
+      if ((int)noiseColumn.size() < config.worldHeight)
+        noiseColumn.resize(config.worldHeight);
+
+      // Generate noise ONLY for the relevant part of the column
+      noiseManager.GenTerrainNoise3D(noiseColumn.data(), wx, 0, wz, 1,
+                                     maxNoiseHeight, 1);
 
       // Optimization: Coarse Search
       const int coarseStep = 4;
@@ -275,6 +318,7 @@ void WorldGenerator::GenerateColumn(ChunkColumn &column, int cx, int cz) {
           // **Per-Octave Noise Processing (VS-Style)**
           // Generate 9 octaves and filter each with max(0, noise - threshold)
 
+          // Simple baseline: single noise value
           // Simple baseline: single noise value
           float n = 0.0f;
           if (sampleY >= 0 && sampleY < config.worldHeight) {

@@ -3,6 +3,7 @@
 #include "Block.h"
 #include "Chunk.h"
 #include "ChunkColumn.h"
+#include "FastTrig.h"
 #include "GlobalConfig.h"
 #include "WorldGenRegion.h"
 #include <algorithm>
@@ -13,6 +14,10 @@
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
+
+// FastTrig static definitions
+std::vector<float> FastTrig::sinLUT;
+bool FastTrig::initialized = false;
 
 // Load CaveConfig from JSON
 CaveConfig CaveConfig::LoadFromFile(const std::string &filepath) {
@@ -367,18 +372,64 @@ void CaveGenerator::CarveTunnel(WorldGenRegion &region, int chunkX, int chunkZ,
                    (extraBranchy ? caveConfig.horizontalBranchExtraBranchy
                                  : caveConfig.horizontalBranchBase);
 
+  // Optimization: Pre-calculate target chunk bounds for pruning
+  float tMinX = (float)(chunkX * CHUNK_SIZE);
+  float tMaxX = tMinX + (float)CHUNK_SIZE;
+  float tMinZ = (float)(chunkZ * CHUNK_SIZE);
+  float tMaxZ = tMinZ + (float)CHUNK_SIZE;
+
   while (currentIteration++ < maxIterations) {
+
+    // Aggressive Pruning: extensive profiling shows redundant simulation is the
+    // bottleneck. Check every 16 iterations if we can possibly reach the target
+    // chunk.
+    if ((currentIteration & 15) == 0) {
+      float remainingIter = (float)(maxIterations - currentIteration);
+      // Max possible travel distance (assuming straight line) is roughly
+      // remainingIter * 1.0 Plus current radius.
+      float maxReach =
+          remainingIter * 1.5f + std::max(horRadiusGainAccum, 10.0f) + 10.0f;
+
+      // Distance to AABB
+      float dx = 0.0f;
+      float dz = 0.0f;
+
+      if (posX < tMinX)
+        dx = tMinX - (float)posX;
+      else if (posX > tMaxX)
+        dx = (float)posX - tMaxX;
+
+      if (posZ < tMinZ)
+        dz = tMinZ - (float)posZ;
+      else if (posZ > tMaxZ)
+        dz = (float)posZ - tMaxZ;
+
+      // If nearest point of chunk is further than we can reach, abort.
+      if (dx > maxReach ||
+          dz > maxReach) { // Manhattan check is fast and conservative enough
+                           // implies Euclidean > maxReach
+        // Use Euclidean for stricter check if needed, but Manhattan is
+        // safer/faster reject. Actually, let's use a squared Check for
+        // correctness if specific.
+        if (dx * dx + dz * dz > maxReach * maxReach) {
+          return;
+        }
+      }
+    }
+
     float relPos = static_cast<float>(currentIteration) / maxIterations;
 
     // Calculate radii using sine wave
-    float horRadius = caveConfig.baseHorizontal +
-                      std::sin(relPos * glm::pi<float>()) * horizontalSize +
-                      horRadiusGainAccum;
+    // Calculate radii using sine wave
+    float horRadius =
+        caveConfig.baseHorizontal +
+        FastTrig::FastSin(relPos * glm::pi<float>()) * horizontalSize +
+        horRadiusGainAccum;
     horRadius = std::min(horRadius, std::max(caveConfig.minHorizontal,
                                              horRadius - horRadiusLossAccum));
 
     float vertRadius = caveConfig.baseVertical +
-                       std::sin(relPos * glm::pi<float>()) *
+                       FastTrig::FastSin(relPos * glm::pi<float>()) *
                            (verticalSize + horRadiusLossAccum / 4.0f) +
                        verHeightGainAccum;
     vertRadius =
@@ -386,8 +437,8 @@ void CaveGenerator::CarveTunnel(WorldGenRegion &region, int chunkX, int chunkZ,
                                       vertRadius - verHeightLossAccum));
 
     // Movement vectors
-    float advanceHor = std::cos(vertAngle);
-    float advanceVer = std::sin(vertAngle);
+    float advanceHor = FastTrig::FastCos(vertAngle);
+    float advanceVer = FastTrig::FastSin(vertAngle);
 
     // Caves get bigger near lava layer
     if (largeNearLava) {
@@ -549,6 +600,16 @@ void CaveGenerator::CarveTunnel(WorldGenRegion &region, int chunkX, int chunkZ,
     // The WorldGenRegion handles bounds checking safely
 
     // Carve the blocks
+    // Check just to prevent unnecessary calculations (From vssurvivalmod)
+    // As long as we are outside the currently generating chunk, we don't need
+    // to generate anything Check bounds slightly expanded by radius (x2 safety
+    // factor)
+    float boundsCheckRadius = horRadius * 2.0f;
+    if (posX <= -boundsCheckRadius || posX >= CHUNK_SIZE + boundsCheckRadius ||
+        posZ <= -boundsCheckRadius || posZ >= CHUNK_SIZE + boundsCheckRadius) {
+      continue;
+    }
+
     SetBlocks(region, horRadius, vertRadius + verHeightGainAccum, posX,
               posY + verHeightGainAccum / 2.0, posZ, chunkX, chunkZ,
               genHotSpring);
@@ -571,8 +632,8 @@ void CaveGenerator::CarveShaft(WorldGenRegion &region, int chunkX, int chunkZ,
     float horRadius = horizontalSize * (1.0f - relPos * 0.33f);
     float vertRadius = horRadius * verticalSize;
 
-    float advanceHor = std::cos(vertAngle);
-    float advanceVer = std::sin(vertAngle);
+    float advanceHor = FastTrig::FastCos(vertAngle);
+    float advanceVer = FastTrig::FastSin(vertAngle);
 
     if (vertRadius < 1.0f)
       vertAngle *= 0.1f;

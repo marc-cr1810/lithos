@@ -32,8 +32,8 @@ struct OreType {
 
   // Runtime Optimized IDs
   block_id resolvedBlockId = 0;
-  std::vector<bool> resolvedReplaceBlocks; // Lookup table for fast checks
-  std::vector<bool> resolvedExcludeBlocks; // Lookup table for fast checks
+  std::vector<uint8_t> resolvedReplaceBlocks; // Lookup table for fast checks
+  std::vector<uint8_t> resolvedExcludeBlocks; // Lookup table for fast checks
 
   OreType() {
     resolvedReplaceBlocks.resize(65536, false);
@@ -59,8 +59,9 @@ private:
   bool CanReplaceBlock(block_id blockId, const OreType &ore) const;
   bool MatchesPattern(const std::string &pattern,
                       const std::string &blockId) const;
-  void GenerateVein(WorldGenRegion &region, int x, int y, int z,
-                    const OreType &ore, int size);
+  void GenerateDisc(WorldGenRegion &region, int chunkX, int chunkZ, int cx,
+                    int cy, int cz, const OreType &ore, float radius,
+                    float thickness);
 };
 
 #endif

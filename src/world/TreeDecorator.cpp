@@ -547,6 +547,22 @@ void TreeDecorator::Decorate(WorldGenerator &generator, WorldGenRegion &region,
         int gx = startX + lx;
         int gz = startZ + lz;
 
+        // Optimization: Cull trees that are too far from the target chunk
+        // Max tree radius is conservatively around 24 blocks.
+        // If the tree center is further than radius from the chunk border, it
+        // won't affect us.
+        int tMinX = targetX * CHUNK_SIZE;
+        int tMaxX = tMinX + CHUNK_SIZE;
+        int tMinZ = targetZ * CHUNK_SIZE;
+        int tMaxZ = tMinZ + CHUNK_SIZE;
+
+        const int SAFE_RADIUS = 24;
+
+        if (gx + SAFE_RADIUS < tMinX || gx - SAFE_RADIUS >= tMaxX ||
+            gz + SAFE_RADIUS < tMinZ || gz - SAFE_RADIUS >= tMaxZ) {
+          continue;
+        }
+
         // Compute Climate Data on demand (since neighbors might not be
         // generated) Optimization: For current chunk (ox==0, oz==0), we could
         // use 'column'

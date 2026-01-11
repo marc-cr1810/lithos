@@ -2,6 +2,7 @@
 #include "../debug/Logger.h"
 #include "../debug/Profiler.h"
 #include "Block.h"
+#include "Chunk.h"
 #include "ChunkColumn.h"
 #include "World.h"
 #include "WorldGenRegion.h"
@@ -190,73 +191,170 @@ bool OreDecorator::CanReplaceBlock(block_id blockId, const OreType &ore) const {
   return ore.resolvedReplaceBlocks[blockId];
 }
 
-void OreDecorator::GenerateVein(WorldGenRegion &region, int x, int y, int z,
-                                const OreType &ore, int size) {
-  block_id oreType = ore.resolvedBlockId;
-  if (oreType == 0 && ore.blockId != "air") {
-    // Maybe failed to resolve? Try again or verify?
-    // If resolvedBlockId is 0 it technically means AIR, which might be valid
-    // but unlikely for ore. Assuming 0 is AIR and default. If original string
-    // wasn't air, then we failed.
-    Block *b = BlockRegistry::getInstance().getBlock(ore.blockId);
-    if (b)
-      oreType = b->getId();
-  }
+void OreDecorator::GenerateDisc(WorldGenRegion &region, int chunkX, int chunkZ,
+                                int cx, int cy, int cz, const OreType &ore,
+                                float radius, float thickness) {
+  // 1. Calculate Bounds (Clamps to Chunk + Buffer)
+  // Optimization: Only iterate intersection of Disc AABB and Chunk AABB
+  int minX = std::max(chunkX * CHUNK_SIZE, (int)(cx - radius));
+  int maxX = std::max(
+      minX, std::min((chunkX + 1) * CHUNK_SIZE, (int)(cx + radius + 1)));
 
-  // Generate blob-shaped vein
-  for (int i = 0; i < size; ++i) {
-    int dx = (rand() % 3) - 1;
-    int dy = (rand() % 3) - 1;
-    int dz = (rand() % 3) - 1;
+  int minZ = std::max(chunkZ * CHUNK_SIZE, (int)(cz - radius));
+  int maxZ = std::max(
+      minZ, std::min((chunkZ + 1) * CHUNK_SIZE, (int)(cz + radius + 1)));
 
-    int px = x + dx;
-    int py = y + dy;
-    int pz = z + dz;
+  int minY = std::max(1, (int)(cy - thickness));
+  int maxY = std::min(255, (int)(cy + thickness + 1));
 
-    // Check current block
-    block_id currentBlock = region.getBlock(px, py, pz);
+  float radSq = radius * radius;
+  float invRadSq = 1.0f / radSq;
+  float thickSq = thickness * thickness;
+  float invThickSq = 1.0f / thickSq;
 
-    // Fast check using pre-resolved table
-    if (CanReplaceBlock(currentBlock, ore)) {
-      region.setBlock(px, py, pz, oreType);
+  block_id oreBlock = ore.resolvedBlockId;
+
+  // Y-Major Loop Order to fetch Chunk once per Y-level (or fewer)
+  for (int y = minY; y < maxY; ++y) {
+    float dy = (float)(y - cy);
+    float dySq = dy * dy;
+
+    // Ellipsoid Y check
+    // (dx^2 + dz^2)/r^2 + dy^2/t^2 <= 1 => (dx^2 + dz^2) <= r^2 * (1 -
+    // dy^2/t^2) Radius at this Y slice
+    float radiusAtYFactor = 1.0f - (dySq * invThickSq);
+    if (radiusAtYFactor <= 0.0f)
+      continue;
+
+    float sliceRadSq = radSq * radiusAtYFactor;
+
+    // Get Chunk for this Y level
+    Chunk *chunk = region.getChunk(minX, y, minZ);
+    // Note: minX, minZ are inside the chunk (chunkX, chunkZ).
+
+    if (!chunk)
+      continue;
+
+    int chunkYBase = (y / CHUNK_SIZE) * CHUNK_SIZE; // Base Y of current chunk
+    int ly = y - chunkYBase;
+
+    for (int x = minX; x < maxX; ++x) {
+      float dx = (float)(x - cx);
+      float dxSq = dx * dx;
+
+      if (dxSq > sliceRadSq)
+        continue;
+
+      int lx = x - chunkX * CHUNK_SIZE;
+
+      for (int z = minZ; z < maxZ; ++z) {
+        float dz = (float)(z - cz);
+        float dzSq = dz * dz;
+
+        if (dxSq + dzSq > sliceRadSq)
+          continue;
+
+        int lz = z - chunkZ * CHUNK_SIZE;
+
+        // DIRECT CHUNK ACCESS: No Map Lookup!
+        const ChunkBlock &blk = chunk->getBlock(lx, ly, lz);
+        block_id currentBlock = blk.getType();
+
+        if (CanReplaceBlock(currentBlock, ore)) {
+          chunk->setBlockNoMeshUpdate(lx, ly, lz, oreBlock);
+        }
+      }
     }
   }
 }
 
 void OreDecorator::Decorate(Chunk &chunk, WorldGenerator &generator,
                             const ChunkColumn &column) {
-  // Old method - kept for compatibility but not used
+  // Unused
 }
+
+struct LCG {
+  uint32_t state;
+  LCG(uint32_t seed) : state(seed) {}
+  inline void Next() { state = state * 1664525u + 1013904223u; }
+  inline float Float01() {
+    Next();
+    return (float)state / 4294967296.0f;
+  }
+  inline int Int(int max) {
+    Next();
+    return state % max;
+  }
+};
 
 void OreDecorator::Decorate(WorldGenerator &generator, WorldGenRegion &region,
                             const ChunkColumn &column) {
   PROFILE_SCOPE_CONDITIONAL("Decorator_Ores_Region",
                             generator.IsProfilingEnabled());
 
-  int colX = region.getCenterX();
-  int colZ = region.getCenterZ();
+  int chunkX = region.getCenterX();
+  int chunkZ = region.getCenterZ();
 
-  // Process each ore type
-  for (const auto &ore : oreTypes) {
-    for (int i = 0; i < ore.veinsPerChunk; ++i) {
-      // Random position in chunk
-      int x = colX * CHUNK_SIZE + (rand() % CHUNK_SIZE);
-      int z = colZ * CHUNK_SIZE + (rand() % CHUNK_SIZE);
+  // We need to generate deposits that *originate* in neighboring chunks
+  // but spill into this one, to avoid straight cutoffs.
+  // Standard range is usually +/- 1 chunk for standard deposits.
+  const int range = 1;
 
-      // Sample Y based on distribution
-      float randomY = (float)(rand() % 10000) / 10000.0f;
-      float normalizedY = SampleDistribution(ore, randomY);
-      int y = (int)(normalizedY * 256.0f); // Convert to absolute Y
+  for (int ox = -range; ox <= range; ox++) {
+    for (int oz = -range; oz <= range; oz++) {
+      int originX = chunkX + ox;
+      int originZ = chunkZ + oz;
 
-      // Clamp to valid range
-      y = std::max(0, std::min(255, y));
+      // Use LCG seeded nicely
+      uint32_t seed =
+          generator.GetSeed() ^ (originX * 5221332) ^ (originZ * 27833211);
+      LCG rng(seed);
 
-      // Determine vein size
-      int veinSize =
-          ore.minVeinSize + (rand() % (ore.maxVeinSize - ore.minVeinSize + 1));
+      for (const auto &ore : oreTypes) {
+        // Deposits per chunk
+        // Use float accumulation for fractional counts
+        float count = (float)ore.veinsPerChunk;
+        while (count >= 1.0f) {
+          // Generate One
+          int lx = rng.Int(16);
+          int lz = rng.Int(16);
+          int cx = originX * CHUNK_SIZE + lx;
+          int cz = originZ * CHUNK_SIZE + lz;
 
-      // Generate vein
-      GenerateVein(region, x, y, z, ore, veinSize);
+          float normalizedY = SampleDistribution(ore, rng.Float01());
+          int cy = (int)(normalizedY * 256.0f);
+
+          // Radius and Thickness
+          // Map min/max size to radius (approximate)
+          float radius =
+              ore.minVeinSize / 2.0f +
+              rng.Float01() * (ore.maxVeinSize - ore.minVeinSize) / 2.0f;
+          float thickness = std::max(1.0f, radius * 0.5f); // Flattened disc
+
+          // Call optimized generator
+          // It handles bounds checking against the CURRENT chunk (chunkX,
+          // chunkZ)
+          GenerateDisc(region, chunkX, chunkZ, cx, cy, cz, ore, radius,
+                       thickness);
+
+          count -= 1.0f;
+        }
+        // Fractional chance
+        if (rng.Float01() < count) {
+          int lx = rng.Int(16);
+          int lz = rng.Int(16);
+          int cx = originX * CHUNK_SIZE + lx;
+          int cz = originZ * CHUNK_SIZE + lz;
+          float normalizedY = SampleDistribution(ore, rng.Float01());
+          int cy = (int)(normalizedY * 256.0f);
+          float radius =
+              ore.minVeinSize / 2.0f +
+              rng.Float01() * (ore.maxVeinSize - ore.minVeinSize) / 2.0f;
+          float thickness = std::max(1.0f, radius * 0.5f);
+          GenerateDisc(region, chunkX, chunkZ, cx, cy, cz, ore, radius,
+                       thickness);
+        }
+      }
     }
   }
 }

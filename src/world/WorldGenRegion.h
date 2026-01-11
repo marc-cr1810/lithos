@@ -59,6 +59,12 @@ public:
   void setBlock(int x, int y, int z, block_id type);
 
   /**
+   * Get Chunk at world coordinates (cached).
+   * Returns nullptr if out of bounds or not loaded.
+   */
+  class Chunk *getChunk(int x, int y, int z) const;
+
+  /**
    * Set block at world coordinates using Block pointer
    * Thread-safe via world's chunkMutex
    */
@@ -99,8 +105,11 @@ private:
 
   // Optimization: Track modified chunks to batch mesh updates
   mutable std::set<Chunk *> modifiedChunks;
-  mutable std::map<std::tuple<int, int, int>, std::shared_ptr<Chunk>>
-      chunkCache;
+
+  // Flat Array Cache for instant lookup [dx+1][chunkY][dz+1]
+  // Dimensions: 3 (X) * 16 (Y, max height 512) * 3 (Z)
+  Chunk *chunkArray[3][16][3];
+
   std::vector<std::shared_ptr<Chunk>> pinnedChunks;
 
   void markChunkModified(Chunk *chunk);

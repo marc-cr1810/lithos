@@ -25,11 +25,22 @@ WorldGenRegion::WorldGenRegion(World *world, int cx, int cz)
     // Pin chunks to prevent unloading during decoration
     pinnedChunks = world->PinChunksInRegion(cx, cz);
 
+    // Clear array cache
+    std::memset(chunkArray, 0, sizeof(chunkArray));
+
     // Populate cache with pinned chunks for faster access
     for (const auto &chunk : pinnedChunks) {
-      auto key = std::make_tuple(chunk->chunkPosition.x, chunk->chunkPosition.y,
-                                 chunk->chunkPosition.z);
-      chunkCache[key] = chunk;
+      if (!chunk)
+        continue;
+
+      int dx = chunk->chunkPosition.x - cx;
+      int chunkY = chunk->chunkPosition.y;
+      int dz = chunk->chunkPosition.z - cz;
+
+      if (dx >= -1 && dx <= 1 && dz >= -1 && dz <= 1 && chunkY >= 0 &&
+          chunkY < 16) {
+        chunkArray[dx + 1][chunkY][dz + 1] = chunk.get();
+      }
     }
 
     std::lock_guard<std::mutex> lock(world->columnMutex);
@@ -99,16 +110,20 @@ block_id WorldGenRegion::getBlock(int x, int y, int z) const {
     return AIR; // Column not loaded
   }
 
-  std::shared_ptr<Chunk> chunk = nullptr;
-  auto key = std::make_tuple(colX, chunkY, colZ);
-  auto it = chunkCache.find(key);
-  if (it != chunkCache.end()) {
-    chunk = it->second;
-  } else {
+  Chunk *chunk = nullptr;
+  if (chunkY >= 0 && chunkY < 16) {
+    chunk = chunkArray[dx + 1][chunkY][dz + 1];
+  }
+
+  if (!chunk) {
     // Note: getChunk might lock, so caching is valuable
-    chunk = world->getChunk(colX, chunkY, colZ);
-    if (chunk) {
-      const_cast<WorldGenRegion *>(this)->chunkCache[key] = chunk;
+    std::shared_ptr<Chunk> ptr = world->getChunk(colX, chunkY, colZ);
+    if (ptr) {
+      if (chunkY >= 0 && chunkY < 16) {
+        const_cast<WorldGenRegion *>(this)->chunkArray[dx + 1][chunkY][dz + 1] =
+            ptr.get();
+      }
+      chunk = ptr.get();
     }
   }
 
@@ -153,15 +168,19 @@ Block *WorldGenRegion::getBlockPtr(int x, int y, int z) const {
   if (!col)
     return airBlock;
 
-  std::shared_ptr<Chunk> chunk = nullptr;
-  auto key = std::make_tuple(colX, chunkY, colZ);
-  auto it = chunkCache.find(key);
-  if (it != chunkCache.end()) {
-    chunk = it->second;
-  } else {
-    chunk = world->getChunk(colX, chunkY, colZ);
-    if (chunk) {
-      const_cast<WorldGenRegion *>(this)->chunkCache[key] = chunk;
+  Chunk *chunk = nullptr;
+  if (chunkY >= 0 && chunkY < 16) {
+    chunk = chunkArray[dx + 1][chunkY][dz + 1];
+  }
+
+  if (!chunk) {
+    std::shared_ptr<Chunk> ptr = world->getChunk(colX, chunkY, colZ);
+    if (ptr) {
+      if (chunkY >= 0 && chunkY < 16) {
+        const_cast<WorldGenRegion *>(this)->chunkArray[dx + 1][chunkY][dz + 1] =
+            ptr.get();
+      }
+      chunk = ptr.get();
     }
   }
 
@@ -205,16 +224,13 @@ void WorldGenRegion::setBlock(int x, int y, int z, Block *block) {
   if (!col)
     return;
 
-  std::shared_ptr<Chunk> chunk = nullptr;
-  auto key = std::make_tuple(colX, chunkY, colZ);
-  auto it = chunkCache.find(key);
-  if (it != chunkCache.end()) {
-    chunk = it->second;
+  Chunk *chunk = nullptr;
+  if (chunkY >= 0 && chunkY < 16) {
+    chunk = chunkArray[dx + 1][chunkY][dz + 1];
   } else {
-    chunk = world->getChunk(colX, chunkY, colZ);
-    if (chunk) {
-      chunkCache[key] = chunk;
-    }
+    // Fallback if height > 16 (unlikely with current config)
+    auto ptr = world->getChunk(colX, chunkY, colZ);
+    chunk = ptr.get();
   }
 
   if (!chunk)
@@ -230,5 +246,43 @@ void WorldGenRegion::setBlock(int x, int y, int z, Block *block) {
   }
 
   chunk->setBlockNoMeshUpdate(lx, ly, lz, block->getId());
-  modifiedChunks.insert(chunk.get());
+  modifiedChunks.insert(chunk);
+}
+
+Chunk *WorldGenRegion::getChunk(int x, int y, int z) const {
+  if (!world)
+    return nullptr;
+
+  int colX = (x >= 0) ? (x / CHUNK_SIZE) : ((x - CHUNK_SIZE + 1) / CHUNK_SIZE);
+  int colZ = (z >= 0) ? (z / CHUNK_SIZE) : ((z - CHUNK_SIZE + 1) / CHUNK_SIZE);
+  int chunkY =
+      (y >= 0) ? (y / CHUNK_SIZE) : ((y - CHUNK_SIZE + 1) / CHUNK_SIZE);
+
+  int dx = colX - centerX;
+  int dz = colZ - centerZ;
+
+  if (dx < -1 || dx > 1 || dz < -1 || dz > 1)
+    return nullptr;
+
+  ChunkColumn *col = columns[dx + 1][dz + 1];
+  if (!col)
+    return nullptr;
+
+  if (chunkY >= 0 && chunkY < 16) {
+    Chunk *chunk = chunkArray[dx + 1][chunkY][dz + 1];
+    if (chunk)
+      return chunk;
+  }
+
+  // Fallback slow path
+  auto ptr = world->getChunk(colX, chunkY, colZ);
+  if (ptr) {
+    if (chunkY >= 0 && chunkY < 16) {
+      const_cast<WorldGenRegion *>(this)->chunkArray[dx + 1][chunkY][dz + 1] =
+          ptr.get();
+    }
+    return ptr.get();
+  }
+
+  return nullptr;
 }
