@@ -101,6 +101,7 @@ private:
   mutable std::set<Chunk *> modifiedChunks;
   mutable std::map<std::tuple<int, int, int>, std::shared_ptr<Chunk>>
       chunkCache;
+  std::vector<std::shared_ptr<Chunk>> pinnedChunks;
 
   void markChunkModified(Chunk *chunk);
 };

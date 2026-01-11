@@ -2,6 +2,7 @@
 #define CHUNK_H
 
 #include <GL/glew.h>
+#include <atomic>
 #include <glm/glm.hpp>
 #include <mutex>
 #include <random>
@@ -162,6 +163,9 @@ private:
                                               uint8_t meta);
 
   int vertexAO(bool side1, bool side2, bool corner);
+
+public:
+  std::atomic<int> pinCount{0};
 };
 
 #endif

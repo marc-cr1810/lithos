@@ -59,6 +59,32 @@ bool isAABBInFrustum(const glm::vec3 &min, const glm::vec3 &max,
   return true;
 }
 
+std::vector<std::shared_ptr<Chunk>> World::PinChunksInRegion(int cx, int cz) {
+  std::vector<std::shared_ptr<Chunk>> pinned;
+  pinned.reserve(72); // 3x3 columns * 8 chunks/col
+
+  std::lock_guard<std::mutex> lock(worldMutex);
+
+  for (int dx = -1; dx <= 1; ++dx) {
+    for (int dz = -1; dz <= 1; ++dz) {
+      int tx = cx + dx;
+      int tz = cz + dz;
+
+      // Iterate all vertical chunks
+      int chunksY = config.worldHeight / CHUNK_SIZE;
+
+      for (int y = 0; y < chunksY; ++y) {
+        auto it = chunks.find({tx, y, tz});
+        if (it != chunks.end()) {
+          it->second->pinCount++;
+          pinned.push_back(it->second);
+        }
+      }
+    }
+  }
+  return pinned;
+}
+
 World::World(const WorldGenConfig &config, bool silent)
     : config(config), tessellator(meshCache), shutdown(false) {
   worldSeed = config.seed;
@@ -348,7 +374,8 @@ void World::GenerationWorkerLoop() {
     // If not found, generate it
     if (!column) {
       auto newCol = std::make_unique<ChunkColumn>();
-      m_Generator->GenerateColumn(*newCol, x, z);
+      // Use thread-local generator to avoid noise race conditions!
+      generator.GenerateColumn(*newCol, x, z);
 
       std::lock_guard<std::mutex> lock(columnMutex);
       // Insert or get existing (if race happened)
@@ -682,7 +709,10 @@ void World::unloadChunks(const glm::vec3 &playerPos, int renderDistance) {
           glm::vec3(chunkWorldPos.x, 0, chunkWorldPos.z)); // 2D distance
 
       if (distSq > unloadDistSq * CHUNK_SIZE * CHUNK_SIZE) {
-        chunksToRemove.push_back(pair.first);
+        // Only unload if not pinned
+        if (pair.second->pinCount == 0) {
+          chunksToRemove.push_back(pair.first);
+        }
       }
     }
   }
@@ -1305,6 +1335,8 @@ int World::render(Shader &shader, const glm::mat4 &viewProjection,
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glDepthMask(GL_FALSE); // Disable depth write for transparent pass
+
+  shader.use(); // Restore basic shader after liquid pass
 
   // Sort and Draw Transparent (Far to Near)
   {

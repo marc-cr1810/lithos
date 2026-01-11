@@ -61,6 +61,9 @@ public:
   // Optimized neighbor cleanup
   void getNeighbors(int cx, int cy, int cz, Chunk *chunks[3][3]);
 
+  // Pinned Chunks
+  std::vector<std::shared_ptr<Chunk>> PinChunksInRegion(int cx, int cz);
+
   // Global world coordinates
   WorldGenConfig config;
   int worldSeed;

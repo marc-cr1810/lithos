@@ -22,6 +22,16 @@ WorldGenRegion::WorldGenRegion(World *world, int cx, int cz)
 
   // Fetch 3x3 grid of columns from world (if available)
   if (world) {
+    // Pin chunks to prevent unloading during decoration
+    pinnedChunks = world->PinChunksInRegion(cx, cz);
+
+    // Populate cache with pinned chunks for faster access
+    for (const auto &chunk : pinnedChunks) {
+      auto key = std::make_tuple(chunk->chunkPosition.x, chunk->chunkPosition.y,
+                                 chunk->chunkPosition.z);
+      chunkCache[key] = chunk;
+    }
+
     std::lock_guard<std::mutex> lock(world->columnMutex);
     for (int dx = -1; dx <= 1; dx++) {
       for (int dz = -1; dz <= 1; dz++) {
@@ -48,6 +58,11 @@ WorldGenRegion::~WorldGenRegion() {
       chunk->meshDirty = true;
       chunk->needsLightingUpdate = true;
     }
+  }
+
+  // Unpin chunks
+  for (auto &chunk : pinnedChunks) {
+    chunk->pinCount--;
   }
 }
 
