@@ -2041,9 +2041,9 @@ std::vector<float> Chunk::generateGeometry(int &outOpaqueCount) {
               if (tintIndex >= 0) {
                 auto tintColor = ColorMapRegistry::Get().GetColor(
                     cb.getBlock()->getClimateColorMap(), temp, humid);
-                rVal = tintColor.r / 255.0f;
-                gVal = tintColor.g / 255.0f;
-                bVal = tintColor.b / 255.0f;
+                rVal = tintColor.r;
+                gVal = tintColor.g;
+                bVal = tintColor.b;
               }
             }
           }
